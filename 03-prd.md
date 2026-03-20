@@ -47,6 +47,12 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-1.7** If the log file path cannot be found on startup (e.g. after a Claude Desktop update changes the MSIX package path), the app must display a persistent, actionable warning in the UI rather than silently failing.
 
+**FR-1.8** On startup, the log watcher must auto-discover the Claude Desktop data directory by globbing `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Roaming\Claude\logs\main.log` rather than hardcoding the MSIX package identifier. If multiple matches are found, the most recently modified file is used. If no match is found, the app falls back to a user-configurable path override in settings.
+
+**FR-1.9** The log watcher must track the timestamp of the last successfully parsed event. If `main.log` is actively growing (file size increasing) but no parseable events have been extracted for more than 60 minutes, the app must surface a warning indicating a possible log format change and prompt the user to check for an app update.
+
+**FR-1.10** On startup, the log watcher must parse the entire current `main.log` file from the beginning before switching to tail mode. This backfills any Cowork session events that occurred while the monitor was not running. Deduplication (FR-1.6) prevents duplicate insertion of events already in SQLite.
+
 ---
 
 ### FR-2: Claude Code JSONL Importer
@@ -93,7 +99,7 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-5.1** After each successful SQLite write, the app must asynchronously attempt to push the same data as InfluxDB line protocol points to the configured homelab instance.
 
-**FR-5.2** InfluxDB connection details (URL, bucket, org) must be configurable in the settings panel. The InfluxDB token must be stored in Windows Credential Manager via `keytar`, not in any plaintext file.
+**FR-5.2** InfluxDB connection details (URL, bucket, org) must be configurable in the settings panel. The InfluxDB token must be encrypted at rest using Electron's built-in `safeStorage` API, which delegates to the OS credential store (DPAPI on Windows). The token must never be stored in any plaintext file. Note: `keytar` is deprecated and must not be used.
 
 **FR-5.3** Sync failures must not block the UI or the local SQLite write path. A failed sync must be logged and the affected rows must remain with `synced_to_influx = 0`.
 
@@ -117,7 +123,31 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-6.5 Chat history view** — A chart showing Desktop chat conversation count over time (week/month toggle), sourced from the most recent export import. The date of the last import and a prompt to re-import must be visible on this screen.
 
-**FR-6.6 Usage heatmap** — A GitHub-style calendar heatmap showing relative activity intensity per day across all sources combined, covering the last 12 months (or available data range if shorter).
+**FR-6.6 Usage heatmap** — A GitHub-style calendar heatmap showing relative activity intensity per day across all sources combined, covering the last 12 months (or available data range if shorter). Activity intensity is defined as the count of distinct sessions or conversations per day across all sources. Each source contributes one count per session (a Cowork session = 1, a Code session = 1, a Chat conversation = 1) so that no single source dominates through volume alone.
+
+**FR-6.7 Trends view** — A dedicated view providing deeper usage analytics across all sources over configurable time ranges (7d / 30d / 90d / 1y). The view must include:
+
+- **Cache efficiency ratio** — `cache_read_tokens / (cache_read_tokens + input_tokens)` per project, displayed as a percentage. High values indicate effective prompt reuse; low values suggest redundant context.
+- **Turn duration trend** — A line chart showing average Cowork turn duration over time (daily or weekly granularity). A sustained upward trend may indicate sessions hitting context limits.
+- **Cost velocity** — Rolling 7-day average cost per day for Claude Code, displayed as a single number with a trend indicator (arrow up/down/flat compared to the prior 7-day window).
+- **Session density** — Sessions per hour of active time (derived from focus events). Displayed as a daily metric. High density indicates rapid iteration; low density indicates long deep sessions.
+- **Model migration tracking** — A stacked area chart showing the proportion of Claude Code sessions by model over time, making it visible when usage shifts between model tiers.
+- **Project activity timeline** — A horizontal Gantt-style chart showing which projects had Claude Code activity on which days over the selected time range, making context-switching patterns visible.
+- **Usage patterns summary** — Computed stats: peak hour of day, peak day of week, average sessions per day, average daily cost, longest consecutive-day streak, and current streak.
+
+**FR-6.8 Dashboard configuration** — The dashboard layout must be user-configurable. Configuration is stored as a JSON file at `%APPDATA%\ClaudeUsageMonitor\dashboard.json`. The file defines which views and widgets are visible, their display order, and per-widget settings (e.g. default time range, sort column). The app ships with a sensible default configuration. Users may edit the JSON file directly or use a settings panel within the app that exposes the same options via form controls. On startup, the app reads `dashboard.json` and renders accordingly; if the file is missing or malformed, the default configuration is used. No separate templating language or config format is introduced — JSON is sufficient and consistent with the rest of the Electron/Node.js stack.
+
+---
+
+### FR-7: Remote Connection Management
+
+**FR-7.1** Remote sync (InfluxDB) must be entirely optional. The app must be fully functional with no remote connection configured. All remote connection settings default to disabled on first run.
+
+**FR-7.2** Remote connection settings (InfluxDB URL, bucket, org, and encrypted token) must be stored in a dedicated section of the user settings file (`%APPDATA%\ClaudeUsageMonitor\settings.json`). The token value in this file must be encrypted via `safeStorage` — only the ciphertext is persisted.
+
+**FR-7.3** The settings panel must provide a connection test button that validates InfluxDB connectivity and authentication before enabling sync.
+
+**FR-7.4** The app must support multiple named remote connection profiles (e.g. "homelab", "work") stored in `settings.json`. Only one profile may be active at a time. This allows the user to switch between environments without re-entering credentials.
 
 ---
 
@@ -131,7 +161,8 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 | Reliability | SQLite WAL mode must be used to prevent database corruption on unexpected process termination |
 | Reliability | InfluxDB sync failure must never cause data loss in SQLite |
 | Reliability | The JSONL importer must be idempotent — running it multiple times must not create duplicate records |
-| Security | The InfluxDB token must be stored in Windows Credential Manager, never in a plaintext config file |
+| Security | The InfluxDB token must be encrypted using Electron `safeStorage` (DPAPI on Windows), never stored in a plaintext config file |
+| Resilience | The log watcher must detect and warn on suspected log format changes (see FR-1.9) within 60 minutes of format drift |
 | Privacy | No conversation content is stored or transmitted — only metadata (IDs, titles, counts, timestamps) |
 | Privacy | No data is sent to any service other than the user's own homelab InfluxDB instance |
 | Compatibility | Must run on Windows 11 on the same machine as Claude Desktop (MSIX install) |
@@ -144,9 +175,9 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 Scoped to individual weekend work sessions. Each phase is independently shippable.
 
 ### Phase v0.1 — Foundation
-**Scope:** Electron app skeleton with system tray support, SQLite setup with full schema, Claude Code JSONL importer, basic Code sessions list view.
+**Scope:** Electron app skeleton with persistent system tray process, SQLite setup with full schema, Claude Code JSONL importer, basic Code sessions list view, initial `settings.json` and `dashboard.json` scaffolding.
 
-**Done when:** The app runs in the system tray, imports Claude Code JSONL data on startup, displays a sortable sessions list with token counts and costs, and persists data across restarts.
+**Done when:** The app runs as a persistent system tray process (minimise-to-tray, launch-on-startup optional), imports Claude Code JSONL data on startup and every 5 minutes, displays a sortable sessions list with token counts and costs, and persists data across restarts. Closing the window minimises to tray rather than quitting the app.
 
 ---
 
@@ -157,24 +188,24 @@ Scoped to individual weekend work sessions. Each phase is independently shippabl
 
 ---
 
-### Phase v0.3 — Chat History
-**Scope:** claude.ai export importer (drag-and-drop), conversation count chart, 12-month usage heatmap, app launch/quit event capture.
+### Phase v0.3 — Trends & Analytics
+**Scope:** Trends view with cache efficiency, turn duration trend, cost velocity, session density, model migration chart, project activity timeline, and usage pattern summary. 12-month usage heatmap. Dashboard configuration via `dashboard.json`. App launch/quit event capture.
 
-**Done when:** Dropping a claude.ai export ZIP into the app populates the chat history view with conversation counts by date. The heatmap shows combined activity across Code, Cowork, and Chat.
-
----
-
-### Phase v0.4 — Homelab Sync
-**Scope:** InfluxDB writer with retry queue, settings panel with credential management, Grafana dashboard template for the `claude-usage` bucket.
-
-**Done when:** Data flows to `grafana.tkforgeworks.com` within 2 minutes of being written locally. A Grafana dashboard shows Cowork session count, Code token usage, and daily activity trends. The settings panel shows sync status and pending row counts.
+**Done when:** The Trends view renders all defined analytics widgets with real data. The heatmap shows combined activity across Code and Cowork. Users can customise visible widgets and their order via `dashboard.json` or the settings panel.
 
 ---
 
-### Phase v0.5 — Polish
-**Scope:** System tray notifications (e.g. on rate limit events from web log), app focus active time view, database backup UI, packaging as a distributable Windows installer.
+### Phase v0.4 — Remote Sync & Chat Import
+**Scope:** InfluxDB writer with retry queue, remote connection profiles with `safeStorage`-encrypted credentials, connection test, settings panel, Grafana dashboard template. claude.ai export importer (drag-and-drop), conversation count chart.
 
-**Done when:** The app can be installed from a standalone `.exe` installer without requiring Node.js or developer tooling on the host machine.
+**Done when:** Data flows to `grafana.tkforgeworks.com` within 2 minutes of being written locally. A Grafana dashboard shows Cowork session count, Code token usage, and daily activity trends. The settings panel shows sync status, pending row counts, and connection profiles. Dropping a claude.ai export ZIP into the app populates the chat history view.
+
+---
+
+### Phase v0.5 — Polish & Packaging
+**Scope:** System tray notifications (e.g. on rate limit events from web log), app focus active time view, database backup UI, packaging as a distributable Windows installer via `electron-builder`.
+
+**Done when:** The app can be installed from a standalone `.exe` installer without requiring Node.js or developer tooling on the host machine. The installer respects existing `settings.json` and `dashboard.json` on upgrade.
 
 ---
 
@@ -197,9 +228,10 @@ The following are explicitly out of scope for all phases covered by this documen
 
 | Item | Assumption |
 |---|---|
-| Claude Desktop install | Installed via MSIX (Windows Store) — the virtualised data path is used |
-| Log format stability | The `main.log` event patterns identified during research remain consistent across Claude Desktop updates |
-| InfluxDB availability | The homelab InfluxDB instance at `grafana.tkforgeworks.com` is accessible from the development machine on the home network |
+| Claude Desktop install | Installed via MSIX (Windows Store) — the virtualised data path is used. The MSIX package identifier may change between major versions; FR-1.8 mitigates this via auto-discovery |
+| Log format stability | The `main.log` event patterns identified during research remain consistent across Claude Desktop updates. FR-1.9 provides early warning if this assumption breaks |
+| InfluxDB availability | The homelab InfluxDB instance at `grafana.tkforgeworks.com` is accessible from the development machine on the home network. Remote sync is optional — the app is fully functional without it |
 | claude.ai export format | The JSON export schema from Settings > Privacy is sufficiently stable for parsing |
 | Node.js on host | Not required for end users — Electron bundles its own Node.js runtime |
 | Claude Code install | Claude Code is installed and has generated JSONL data in `~/.claude/projects/` |
+| Electron safeStorage | The `safeStorage` API is available in the target Electron version and DPAPI is functional on the host Windows installation |

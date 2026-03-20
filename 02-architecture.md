@@ -249,7 +249,7 @@ The Grafana/InfluxDB instance is the existing tkforgeworks homelab deployment.
 ### Sync Implementation Notes
 
 - Use `@influxdata/influxdb-client-js` — the official Node.js client, supports both Flux and InfluxQL query interfaces
-- InfluxDB token must be stored in Windows Credential Manager via `keytar`, not in plaintext config files
+- InfluxDB token must be encrypted at rest using Electron's `safeStorage` API (DPAPI on Windows), not stored in plaintext config files
 - The retry job queries `SELECT * FROM <table> WHERE synced_to_influx = 0` across all tables and attempts to write in batches of 100 points
 - On successful write, update `synced_to_influx = 1` for the affected rows
 - The settings panel should display: last successful sync timestamp, count of pending unsynced rows per table, and a manual "Sync now" button
@@ -288,33 +288,46 @@ Electron Renderer Process
 | Local DB | better-sqlite3 | Synchronous SQLite, best for Electron main process |
 | Log tailing | Node.js fs.watch + readline | No additional dependencies |
 | InfluxDB client | @influxdata/influxdb-client-js | Official client |
-| Credential storage | keytar | Wraps Windows Credential Manager |
+| Credential storage | Electron safeStorage | Built-in, DPAPI-backed, no native module needed (replaces deprecated keytar) |
 | Packaging | electron-builder | Standard, supports Windows NSIS installer |
 
 ### Dashboard Views
 
-**Today view** — sessions started today, total Cowork turns, total Claude Code cost today, estimated active time from focus events, quick-glance status indicators.
+**Today view** — sessions started today, total Cowork turns, total Claude Code cost today, estimated active time from focus events, quick-glance status indicators. Horizontal timeline bar showing session activity throughout the day.
 
 **Weekly chart** — bar chart with one bar per day for the last 7 days, stacked by source (Cowork / Code / Chat import).
 
-**Cowork sessions list** — sortable table: title, date, turn count, total session duration.
+**Cowork sessions list** — sortable table: title, date, turn count, total session duration, avg turn duration. Expandable rows for turn-level detail. Turn duration histogram (buckets: <1m, 1-3m, 3-5m, 5-10m, 10m+).
 
-**Claude Code sessions list** — sortable table: project path, model, input/output/cache tokens, estimated cost, date.
+**Claude Code sessions list** — sortable table: project path, model, input/output/cache tokens, estimated cost, date. Cost-by-project horizontal bar chart and model distribution donut chart.
+
+**Trends view** — cache efficiency ratio per project, turn duration trend line, 7-day rolling cost velocity, session density, model migration stacked area chart, project activity Gantt timeline, and computed usage pattern stats (peak hour/day, streaks, averages).
 
 **Chat history view** — conversation count over time (from export data), date of last import, import button.
 
-**Usage heatmap** — GitHub-style calendar heatmap across all sources combined, showing relative activity intensity per day.
+**Usage heatmap** — GitHub-style calendar heatmap across all sources combined, showing relative activity intensity per day (intensity = distinct session count across all sources).
 
-**Settings panel** — InfluxDB connection config, sync status, log file path override, export importer, database backup.
+**Settings panel** — Dashboard layout configuration, remote connection profiles (InfluxDB), sync status, log file path override, export importer, database backup.
+
+### Configuration Files
+
+All user-facing configuration is stored as JSON in the Electron `userData` directory (`%APPDATA%\ClaudeUsageMonitor\`):
+
+| File | Purpose |
+|---|---|
+| `settings.json` | App settings: remote connection profiles (with safeStorage-encrypted tokens), log path override, sync enable/disable, import history |
+| `dashboard.json` | Dashboard layout: visible views/widgets, display order, per-widget defaults (time range, sort column). Editable via settings panel or directly as JSON |
+
+No additional config formats (YAML, TOML, etc.) are introduced. JSON is consistent with the Electron/Node.js stack and requires no extra parsing dependencies.
 
 ---
 
 ## 6. Open Questions
 
-| # | Question | Impact |
-|---|---|---|
-| OQ-1 | Should the monitor app run as a persistent system tray process, or only when the window is open? | High — if it only runs when open, Cowork sessions started while the monitor is closed will not be captured in real time (though Code JSONL will still be imported on next open) |
-| OQ-2 | Does the MSIX package identifier `Claude_pzs8sxrjxfjjc` change between Claude Desktop major versions? | High — the log watcher path breaks silently if it does |
-| OQ-3 | Is the claude.ai export JSON schema documented or stable? | Medium — the export importer may need updating on schema changes |
-| OQ-4 | What InfluxDB retention policy should the `claude-usage` bucket use? | Low — homelab storage planning |
-| OQ-5 | Should Cowork active time be estimated from turn duration alone, or also factor in the gap between turns within a session? | Low — affects accuracy of daily active time metric |
+| # | Question | Status | Resolution |
+|---|---|---|---|
+| OQ-1 | Should the monitor app run as a persistent system tray process, or only when the window is open? | **Resolved** | Persistent system tray process. Close-to-tray behaviour from Phase v0.1. Full-file backfill on startup (FR-1.10) covers gaps. |
+| OQ-2 | Does the MSIX package identifier `Claude_pzs8sxrjxfjjc` change between Claude Desktop major versions? | **Mitigated** | Auto-discovery via glob `Claude_*` (FR-1.8) removes the hardcoded dependency. User-configurable fallback path in settings. |
+| OQ-3 | Is the claude.ai export JSON schema documented or stable? | Open | Medium — the export importer may need updating on schema changes. Chat import is deferred to Phase v0.4. |
+| OQ-4 | What InfluxDB retention policy should the `claude-usage` bucket use? | Open | Low — homelab storage planning. Suggested 365 days. |
+| OQ-5 | Should Cowork active time be estimated from turn duration alone, or also factor in the gap between turns within a session? | Open | Low — affects accuracy of daily active time metric |
