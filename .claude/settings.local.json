@@ -5,7 +5,26 @@
       "mcp__claude_ai_Atlassian__getVisibleJiraProjects",
       "mcp__claude_ai_Atlassian__getIssueLinkTypes",
       "mcp__claude_ai_Atlassian__getAccessibleAtlassianResources",
-      "mcp__claude_ai_Atlassian__createJiraIssue"
+      "mcp__claude_ai_Atlassian__createJiraIssue",
+      "Bash(wc:*)",
+      "Bash(find /c/Code/claude-observability-gui -type f ! -path '*/.git/*' -exec file {})",
+      "Bash(find /c/Code/claude-observability-gui -not -path */.git/*)",
+      "Bash(curl -s -L \"https://www.anthropic.com/pricing\" -o /tmp/pricing.html)",
+      "Read(//tmp/**)",
+      "Bash(grep -ioP '\\(\\\\$[\\\\d.]+\\\\s*/\\\\s*[mM]T[oi]k|claude[^<\"\"\"\"]{0,30}|input[^<\"\"\"\"]{0,50}|output[^<\"\"\"\"]{0,50}|cache[^<\"\"\"\"]{0,80}|haiku|sonnet|opus|per.?million|MTok|token\\)' /tmp/pricing.html)",
+      "WebFetch(domain:www.anthropic.com)",
+      "WebFetch(domain:claude.com)",
+      "WebFetch(domain:docs.anthropic.com)",
+      "mcp__claude_ai_Atlassian__searchJiraIssuesUsingJql",
+      "mcp__claude_ai_Atlassian__editJiraIssue",
+      "Bash(find /c/Code/claude-observability-gui -name *.ts -o -name *.tsx -o -name *.json -o -name *.html)",
+      "Bash(npm install:*)",
+      "Bash(npx tsc:*)",
+      "Bash(npm run:*)",
+      "Bash(npm audit:*)",
+      "Bash(npm ls:*)",
+      "Bash(npm info:*)",
+      "Bash(npx electron-rebuild:*)"
     ]
   }
 }

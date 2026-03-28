@@ -879,4 +879,145 @@ Persistent banners that appear at the top of the content area when conditions ar
 └───────────────────────────────────────────────────────────────┘
 ```
 
-All wireframes created in `04-wireframes.md`. The document covers every FR-6 and FR-7 widget with ASCII layouts, hover states, expanded row states, and contextual banners. Each widget includes the specific metric it displays and how to interpret the data.
+---
+
+## 11. Empty & First-Run States
+
+### 11.1 First Run — No Data (Today View)
+
+Shown on first launch before any JSONL scan completes or log watcher connects.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  TODAY — Thursday, March 27 2026                                │
+├────────────────┬───────────────┬───────────────┬────────────────┤
+│                │               │               │                │
+│   SESSIONS     │  COWORK       │  CODE COST    │  ACTIVE TIME   │
+│                │  TURNS        │               │                │
+│      —         │      —        │      —        │      —         │
+│                │               │               │                │
+│  no data yet   │  no data yet  │  no data yet  │  no data yet   │
+│                │               │               │                │
+├────────────────┴───────────────┴───────────────┴────────────────┤
+│                                                                 │
+│                                                                 │
+│               ┌──────────────────────────────┐                  │
+│               │                              │                  │
+│               │   No sessions recorded yet   │                  │
+│               │                              │                  │
+│               │   The app is scanning for    │                  │
+│               │   Claude Code data and       │                  │
+│               │   connecting to the log      │                  │
+│               │   watcher. Data will appear  │                  │
+│               │   here automatically.        │                  │
+│               │                              │                  │
+│               └──────────────────────────────┘                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 11.2 Partial Data — Code Only (Today View)
+
+When JSONL data has been imported but the log watcher has no Cowork data yet (e.g. user only uses Claude Code).
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  TODAY — Thursday, March 27 2026                                │
+├────────────────┬───────────────┬───────────────┬────────────────┤
+│                │               │               │                │
+│   SESSIONS     │  COWORK       │  CODE COST    │  ACTIVE TIME   │
+│                │  TURNS        │               │                │
+│      2         │      —        │    $3.18      │      —         │
+│                │               │               │                │
+│  0 cowork      │  no cowork    │  ▲ vs         │  log watcher   │
+│  2 code        │  data yet     │  yesterday    │  not connected │
+│                │               │               │                │
+├────────────────┴───────────────┴───────────────┴────────────────┤
+│                                                                 │
+│  ┌──────────────────────────────────────────────────────────┐   │
+│  │ ⓘ  Cowork tracking unavailable. Log file not found or    │   │
+│  │    Claude Desktop not running. Active time and turn data  │   │
+│  │    require a connected log watcher.     [Go to Settings]  │   │
+│  └──────────────────────────────────────────────────────────┘   │
+│                                                                 │
+│  SESSION TIMELINE                                               │
+│  8am      10am      12pm       2pm       4pm       6pm    now  │
+│  ├─────────┼─────────┼──────────┼─────────┼─────────┼──────┤   │
+│  │         │  ██CD████████      │         │         │      │   │
+│  │         │         │     ██CD██████     │         │      │   │
+│  │         │         │          │         │         │      │   │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### 11.3 Empty List States
+
+Generic pattern for Cowork sessions, Code sessions, and Chat history when no data exists for that source.
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  COWORK SESSIONS                          [search...] [sort ▾]  │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│                                                                 │
+│               ┌──────────────────────────────┐                  │
+│               │                              │                  │
+│               │   No Cowork sessions found   │                  │
+│               │                              │                  │
+│               │   Cowork sessions will       │                  │
+│               │   appear here when the log   │                  │
+│               │   watcher detects activity   │                  │
+│               │   in Claude Desktop.         │                  │
+│               │                              │                  │
+│               └──────────────────────────────┘                  │
+│                                                                 │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CLAUDE CODE                              [7d ▾] [search...]    │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│               ┌──────────────────────────────┐                  │
+│               │                              │                  │
+│               │   No Code sessions found     │                  │
+│               │                              │                  │
+│               │   Scanning ~/.claude/        │                  │
+│               │   projects/ for JSONL data.  │                  │
+│               │   Sessions will appear       │                  │
+│               │   after the first scan       │                  │
+│               │   completes.                 │                  │
+│               │                              │                  │
+│               └──────────────────────────────┘                  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│  CHAT HISTORY                                     [week ▾]      │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│               ┌──────────────────────────────┐                  │
+│               │                              │                  │
+│               │   No chat data imported      │                  │
+│               │                              │                  │
+│               │   To see chat history,       │                  │
+│               │   export your data from      │                  │
+│               │   claude.ai > Settings >     │                  │
+│               │   Privacy > Export data,     │                  │
+│               │   then drop the ZIP below.   │                  │
+│               │                              │                  │
+│               └──────────────────────────────┘                  │
+│                                                                 │
+│  ┌ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┐  │
+│  ╎       Drop claude.ai export ZIP here                     ╎  │
+│  ╎                or click to browse                        ╎  │
+│  └ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ─ ┘  │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+All wireframes created in `04-wireframes.md`. The document covers every FR-6 and FR-7 widget with ASCII layouts, hover states, expanded row states, contextual banners, and empty/first-run states. Each widget includes the specific metric it displays and how to interpret the data.

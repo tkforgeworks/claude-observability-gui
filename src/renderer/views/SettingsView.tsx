@@ -1,0 +1,165 @@
+/**
+ * Settings view — tabbed layout.
+ * Tabs: General, Remote Sync, Dashboard, Data
+ * @see §8 "Settings Panel" in 04-wireframes.md
+ */
+
+import React from 'react';
+
+type SettingsTab = 'general' | 'remoteSync' | 'dashboard' | 'data';
+
+const viewStyles: React.CSSProperties = {
+  padding: 24,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 0,
+  height: '100%',
+};
+
+const headerStyles: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+  color: '#ccccdd',
+  letterSpacing: '0.5px',
+  textTransform: 'uppercase',
+  marginBottom: 20,
+};
+
+const tabBarStyles: React.CSSProperties = {
+  display: 'flex',
+  gap: 0,
+  borderBottom: '1px solid #2a2a4a',
+  marginBottom: 24,
+};
+
+const tabButtonStyles = (active: boolean): React.CSSProperties => ({
+  padding: '8px 20px',
+  backgroundColor: 'transparent',
+  border: 'none',
+  borderBottom: active ? '2px solid #6666cc' : '2px solid transparent',
+  color: active ? '#ffffff' : '#8888aa',
+  fontSize: 14,
+  cursor: 'pointer',
+  fontWeight: active ? 600 : 400,
+  marginBottom: -1,
+});
+
+const placeholderStyles: React.CSSProperties = {
+  padding: 24,
+  color: '#666688',
+  fontSize: 14,
+  fontStyle: 'italic',
+};
+
+const TABS: { id: SettingsTab; label: string }[] = [
+  { id: 'general',     label: 'General' },
+  { id: 'remoteSync',  label: 'Remote Sync' },
+  { id: 'dashboard',   label: 'Dashboard' },
+  { id: 'data',        label: 'Data' },
+];
+
+export default function SettingsView(): React.JSX.Element {
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>('general');
+
+  return (
+    <div style={viewStyles}>
+      <h1 style={headerStyles}>Settings</h1>
+
+      <div style={tabBarStyles} role="tablist">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            role="tab"
+            aria-selected={activeTab === id}
+            style={tabButtonStyles(activeTab === id)}
+            onClick={() => setActiveTab(id)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      <div role="tabpanel">
+        {activeTab === 'general'    && <GeneralTab />}
+        {activeTab === 'remoteSync' && <RemoteSyncTab />}
+        {activeTab === 'dashboard'  && <DashboardTab />}
+        {activeTab === 'data'       && <DataTab />}
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Tab panel stubs — each becomes its own component when implemented
+// ---------------------------------------------------------------------------
+
+function GeneralTab(): React.JSX.Element {
+  // TODO: implement per wireframe §8.1
+  // Fields: Log File Path (with Browse button + auto-discovery status)
+  //         Claude Code Data Path (with Browse button + last scan info)
+  //         cleanupPeriodDays warning banner
+  //         Behaviour checkboxes: minimize to tray, launch on startup, notifications
+  return (
+    <div style={placeholderStyles}>
+      {/* TODO: Log file path input + auto-discovery status indicator */}
+      {/* TODO: Claude Code data path input + last scan timestamp */}
+      {/* TODO: cleanupPeriodDays warning if set to 30 or less */}
+      {/* TODO: Behavior checkboxes (minimize to tray, launch on startup, notifications) */}
+      General settings — not yet implemented
+    </div>
+  );
+}
+
+function RemoteSyncTab(): React.JSX.Element {
+  // TODO: implement per wireframe §8.2
+  // Fields: Sync enabled toggle, connection profiles list,
+  //         URL/Bucket/Org/Token fields for active profile,
+  //         Test Connection button, Save button,
+  //         Sync status panel with pending row counts, Sync Now button
+  return (
+    <div style={placeholderStyles}>
+      {/* TODO: Sync enabled/disabled toggle */}
+      {/* TODO: Connection profiles list with add/edit */}
+      {/* TODO: Active profile config form (URL, bucket, org, token with safeStorage notice) */}
+      {/* TODO: Test Connection and Save buttons */}
+      {/* TODO: Sync status panel with pending counts and Sync Now */}
+      Remote sync settings — not yet implemented
+    </div>
+  );
+}
+
+function DashboardTab(): React.JSX.Element {
+  // TODO: implement per wireframe §8.3
+  // Drag-to-reorder list of views with visibility toggles and per-view defaults
+  // Separate list for trend widgets
+  // Reset to Defaults and Open JSON File buttons
+  return (
+    <div style={placeholderStyles}>
+      {/* TODO: Drag-to-reorder views list with visibility toggles */}
+      {/* TODO: Per-view default config (landing, sort, time range) */}
+      {/* TODO: Trends widgets reorder/toggle list */}
+      {/* TODO: Reset to Defaults + Open JSON File buttons */}
+      Dashboard layout settings — not yet implemented
+    </div>
+  );
+}
+
+function DataTab(): React.JSX.Element {
+  // TODO: implement per wireframe §8.4
+  // Database stats (path, size, mode, table row counts)
+  // Backup Database and Open Folder buttons
+  // Chat Import drop zone (same as ChatHistoryView)
+  // Log Watcher Status panel
+  // Recalculate Costs button (calls window.api.costs.recalculate())
+  return (
+    <div style={placeholderStyles}>
+      {/* TODO: Database info (path, size, WAL mode) */}
+      {/* TODO: Table row counts table */}
+      {/* TODO: Backup Database and Open Folder buttons */}
+      {/* TODO: Chat import drop zone */}
+      {/* TODO: Log watcher status */}
+      {/* TODO: Recalculate Costs action button */}
+      Data management — not yet implemented
+    </div>
+  );
+}

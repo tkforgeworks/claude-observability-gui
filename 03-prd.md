@@ -41,7 +41,7 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-1.4** The app must parse SkillsPlugin window focus entries to approximate app active time at ~10-minute resolution.
 
-**FR-1.5** The app must handle log file rotation gracefully — detecting when the file is replaced and re-opening the new file from the beginning.
+**FR-1.5** The app must handle log file rotation gracefully — detecting when the file is replaced and re-opening the new file from the beginning. The log watcher must use `chokidar` (not raw `fs.watch`) for cross-platform reliability, particularly for file replacement detection on Windows/NTFS.
 
 **FR-1.6** All parsed events must be deduplicated before SQLite insert using `(event_type, session_id, timestamp)` as the composite key.
 
@@ -59,11 +59,15 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-2.1** The app must scan `~/.claude/projects/` recursively for JSONL files on startup and every 5 minutes while running.
 
-**FR-2.2** The app must parse JSONL records and extract session-level data: session ID, project path, model name, input/output/cache tokens, estimated cost, and timestamps.
+**FR-2.2** The app must parse JSONL records and extract session-level data by aggregating `assistant` records: session ID (from `sessionId`), project path (from `cwd`), model name (from `message.model`), input tokens, output tokens, cache creation tokens, cache read tokens, and timestamps. Only the final streaming chunk per `requestId` (where `stop_reason` is set) must be used for token counts to avoid double-counting.
 
-**FR-2.3** The app must upsert records using `session_id` as the unique key so re-scans do not create duplicates.
+**FR-2.3** The app must compute `cost_usd` per session from aggregated token counts and the model pricing table defined in the architecture guide (§2.4). If a session uses an unrecognised model, the cost must be recorded as `null` and a warning surfaced in the UI.
 
-**FR-2.4** On first run, the app must check `~/.claude/settings.json` for the `cleanupPeriodDays` value. If it is 30 or less (the default), the app must display a persistent notice with instructions to increase it to preserve history beyond the default 30-day window.
+**FR-2.4** The app must include tokens from subagent JSONL files (`{sessionId}/subagents/`) in the parent session totals.
+
+**FR-2.5** The app must upsert records using `session_id` as the unique key so re-scans do not create duplicates.
+
+**FR-2.6** On first run, the app must check `~/.claude/settings.json` for the `cleanupPeriodDays` value. If it is 30 or less (the default), the app must display a persistent notice with instructions to increase it to preserve history beyond the default 30-day window.
 
 ---
 
@@ -87,11 +91,13 @@ This is a single-user personal tool. The user is a solo developer using Claude D
 
 **FR-4.2** WAL (Write-Ahead Logging) mode must be enabled on database creation.
 
-**FR-4.3** The app must run schema migrations automatically on version upgrade using a versioned migration system. No manual steps should be required from the user after an update.
+**FR-4.3** The app must run schema migrations automatically on version upgrade using a `meta` table that tracks a `schema_version` integer. Migrations are numbered SQL scripts executed sequentially in a transaction on startup. If a migration fails, the transaction is rolled back and an error is surfaced. The migration runner and the initial schema (migration v1) must be included in the v0.1 scaffold so that all subsequent schema changes are handled automatically. No manual steps should be required from the user after an update.
 
 **FR-4.4** The settings panel must expose a manual database backup function that copies `usage.db` to a user-selected location.
 
 **FR-4.5** The database path must be displayed in the settings panel so the user can locate it independently.
+
+**FR-4.6** The settings panel must expose a "Recalculate costs" action that recomputes `cost_usd` for all rows in `code_sessions` from their stored token counts and the current pricing table. This action must also run automatically when the pricing table is updated. The `cost_usd` column is a materialized derivation that can be refreshed, not a permanent fact.
 
 ---
 

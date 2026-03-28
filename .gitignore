@@ -1,0 +1,31 @@
+node_modules/
+dist/
+out/
+release/
+
+# SQLite databases
+*.db
+*.db-shm
+*.db-wal
+
+# Electron build artifacts
+.webpack/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor directories
+.vscode/
+.idea/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+
+# TypeScript cache
+*.tsbuildinfo

@@ -85,17 +85,43 @@ C:\Users\<user>\AppData\Local\Packages\Claude_pzs8sxrjxfjjc\LocalCache\Roaming\C
 C:\Users\<user>\.claude\projects\
 ```
 
-**Available fields per session record:**
-- Session ID
-- Project directory path
-- Model name (e.g. `claude-opus-4-6`, `claude-sonnet-4-6`)
-- Input tokens
-- Output tokens
-- Cache creation tokens
-- Cache read tokens
-- Estimated cost (USD)
-- Session start timestamp
-- Session end timestamp
+**JSONL file structure:** Each JSONL file represents one session. The filename is `{sessionId}.jsonl`. Subagent sessions are stored in `{sessionId}/subagents/agent-{agentId}.jsonl`. Each line is a JSON record discriminated by a `type` field.
+
+**Record types:**
+
+| `type` | Purpose | Token data? |
+|---|---|---|
+| `assistant` | Model response (text, thinking, tool_use) | Yes — `message.usage` |
+| `user` | User message or tool result | No (but agent `toolUseResult.usage` on subagent returns) |
+| `system` | Metadata — currently only `turn_duration` | No |
+| `progress` | Subagent activity wrapper (contains inner assistant/user messages) | Yes — on inner `data.message.message.usage` |
+| `file-history-snapshot` | File state tracking for undo | No |
+
+**Token usage fields** (on `assistant` records at `message.usage`):
+
+| Field | Type | Description |
+|---|---|---|
+| `input_tokens` | number | Non-cached input tokens |
+| `output_tokens` | number | Output tokens generated |
+| `cache_creation_input_tokens` | number | Tokens written to prompt cache |
+| `cache_read_input_tokens` | number | Tokens read from prompt cache |
+
+Multiple assistant records may share the same `requestId` (streaming chunks). The final chunk has `stop_reason` set and carries the authoritative usage totals for that API call.
+
+**Other useful fields per record:**
+
+| Field | Location | Description |
+|---|---|---|
+| `sessionId` | root | Session UUID (matches filename) |
+| `message.model` | `assistant` records | Model ID, e.g. `claude-opus-4-6` |
+| `timestamp` | root | ISO 8601 UTC |
+| `cwd` | root | Working directory (= project path) |
+| `slug` | root (after first turn) | Human-readable session name |
+| `version` | root | Claude Code CLI version |
+
+**Session-level aggregation:** The importer must scan all `assistant` records in a file, keeping only the final chunk per unique `requestId` (where `stop_reason` is set), then sum `input_tokens`, `output_tokens`, `cache_creation_input_tokens`, and `cache_read_input_tokens` across those final chunks to produce session totals. The model is taken from the first assistant record (sessions use a single model). Session start is the earliest `timestamp`; session end is the latest.
+
+**Subagent token handling:** Subagent JSONL files in `{sessionId}/subagents/` contain their own assistant records with independent usage. The importer must include subagent token usage in the parent session totals to avoid undercounting.
 
 **Retention warning:** Claude Code deletes JSONL files older than 30 days by default. The app should check `~/.claude/settings.json` for `cleanupPeriodDays` on first run and display a persistent warning if it is set to 30 or less, with instructions to increase it.
 
@@ -120,6 +146,44 @@ C:\Users\<user>\.claude\projects\
 
 ---
 
+### 2.4 Cost Calculation
+
+The JSONL files do not contain a cost field. The importer must compute `cost_usd` from token counts and model pricing.
+
+**Formula per session:**
+
+```
+cost_usd = (input_tokens × input_rate)
+         + (output_tokens × output_rate)
+         + (cache_creation_input_tokens × cache_write_rate)
+         + (cache_read_input_tokens × cache_read_rate)
+```
+
+All rates are per-token (divide the per-million-token price by 1,000,000).
+
+**Pricing table (USD per million tokens, as of March 2026):**
+
+| Model | Input | Output | Cache Write (5min) | Cache Read |
+|---|---|---|---|---|
+| `claude-opus-4-6` | $5.00 | $25.00 | $6.25 | $0.50 |
+| `claude-sonnet-4-6` | $3.00 | $15.00 | $3.75 | $0.30 |
+| `claude-haiku-4-5-20251001` | $1.00 | $5.00 | $1.25 | $0.10 |
+
+**Cache write tier note:** The JSONL `message.usage.cache_creation` object distinguishes `ephemeral_5m_input_tokens` and `ephemeral_1h_input_tokens`. The 1-hour cache write rate is 2× input price (vs 1.25× for 5-minute). For accuracy, the importer should check both fields when present and apply the correct multiplier. If only the top-level `cache_creation_input_tokens` is available, the 5-minute rate is the safe default (Claude Code sessions are typically short-lived).
+
+**Maintenance:** This pricing table is a configuration constant, not hardcoded in business logic. The table is stored as a JSON map keyed by model ID so that unrecognised models fall back to a warning rather than silently producing $0.00 costs.
+
+**Cost recomputation:** The `cost_usd` column in `code_sessions` is a **materialized derivation**, not a permanent fact. It is computed at import time for query performance, but can be invalidated and refreshed when pricing changes. A `recalculateCosts()` function must be available that:
+
+1. Reads the current pricing table
+2. Iterates all rows in `code_sessions`
+3. Recomputes `cost_usd` from the stored `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, and `model` columns
+4. Updates each row in a single transaction
+
+This function is exposed in the Settings panel as a "Recalculate costs" action, and is also triggered automatically when the pricing table is updated. This design means historical cost data is always correctable — a pricing table update retroactively fixes all past session costs rather than only affecting future imports.
+
+---
+
 ## 3. Storage Tier — SQLite Schema
 
 SQLite is the primary and authoritative store. All application data originates here. InfluxDB contains a derived copy only.
@@ -127,6 +191,29 @@ SQLite is the primary and authoritative store. All application data originates h
 **Database path:** `%APPDATA%\ClaudeUsageMonitor\usage.db` (standard Electron userData path)
 
 **WAL mode** must be enabled on database creation to prevent corruption on crash.
+
+### Schema Migration System
+
+The database uses a version-tracked migration system to handle schema changes across app updates. No ORM or external migration library is used — migrations are plain SQL strings executed sequentially by a lightweight runner in the main process.
+
+**How it works:**
+
+1. A `meta` table is created on first run:
+   ```sql
+   CREATE TABLE IF NOT EXISTS meta (
+     key   TEXT PRIMARY KEY,
+     value TEXT NOT NULL
+   );
+   INSERT OR IGNORE INTO meta (key, value) VALUES ('schema_version', '0');
+   ```
+
+2. Migrations are defined as an ordered array of `{ version: number, sql: string }` objects in the codebase (e.g. `src/main/db/migrations.ts`). Each migration's SQL may contain multiple statements separated by semicolons.
+
+3. On startup, the runner reads the current `schema_version` from `meta`, then executes all migrations with a version greater than the current value, in order, inside a transaction. After each migration succeeds, `schema_version` is updated.
+
+4. If a migration fails, the transaction is rolled back and the app surfaces an error. No partial migrations are persisted.
+
+**Migration v1** (the initial schema) creates all six tables defined below. Every subsequent schema change — adding columns, creating indexes, altering defaults — is a new numbered migration. The v0.1 scaffold must include the migration runner and the v1 migration so that v0.2's first schema change is handled automatically.
 
 ---
 
@@ -182,10 +269,11 @@ One row per Claude Code session, sourced from JSONL files.
 | session_id | TEXT UNIQUE NOT NULL | From JSONL |
 | project_path | TEXT | Directory path |
 | model | TEXT | e.g. `claude-opus-4-6` |
-| input_tokens | INTEGER | |
+| input_tokens | INTEGER | Non-cached input tokens |
 | output_tokens | INTEGER | |
-| cache_tokens | INTEGER | Creation + read combined |
-| cost_usd | REAL | Estimated |
+| cache_creation_tokens | INTEGER | Tokens written to prompt cache |
+| cache_read_tokens | INTEGER | Tokens read from prompt cache |
+| cost_usd | REAL | Computed on import using token counts × model pricing (see §2.4) |
 | started_at | TEXT | |
 | ended_at | TEXT | |
 | synced_to_influx | INTEGER DEFAULT 0 | |
@@ -242,7 +330,7 @@ The Grafana/InfluxDB instance is the existing tkforgeworks homelab deployment.
 |---|---|---|---|
 | `cowork_session` | `session_id`, `title` | `turn_count`, `duration_seconds` | `started_at` |
 | `cowork_turn` | `session_id` | `duration_seconds` | `started_at` |
-| `code_session` | `project_path`, `model` | `input_tokens`, `output_tokens`, `cache_tokens`, `cost_usd` | `started_at` |
+| `code_session` | `project_path`, `model` | `input_tokens`, `output_tokens`, `cache_creation_tokens`, `cache_read_tokens`, `cost_usd` | `started_at` |
 | `app_session` | — | `duration_seconds` | `launched_at` |
 | `chat_conversation` | — | `message_count` | `created_at` |
 
@@ -262,11 +350,11 @@ The Grafana/InfluxDB instance is the existing tkforgeworks homelab deployment.
 
 ```
 Electron Main Process
-├── Log Watcher (Node.js fs.watch)
+├── Log Watcher (chokidar)
 ├── JSONL Importer (scheduled, every 5 min)
 ├── SQLite connection (better-sqlite3)
 ├── InfluxDB sync worker (scheduled, every 60 sec)
-└── IPC bridge → Renderer
+└── IPC API (typed channels) → Renderer
 
 Electron Renderer Process
 └── React app
@@ -278,6 +366,47 @@ Electron Renderer Process
     └── Settings panel
 ```
 
+### IPC Contract
+
+The renderer communicates with the main process exclusively through named, typed IPC channels. The renderer never issues raw SQL or accesses SQLite directly. All query logic lives in the main process behind handler functions.
+
+**Channel naming convention:** `{domain}:{action}` — e.g. `codeSessions:getAll`, `coworkSessions:getByDate`, `settings:get`.
+
+**Channel categories:**
+
+| Category | Example Channels | Direction |
+|---|---|---|
+| Query | `codeSessions:getAll`, `codeSessions:getByDateRange`, `coworkSessions:getSummaryToday` | renderer → main → renderer |
+| Mutation | `settings:update`, `dashboard:save`, `chatImport:start` | renderer → main → renderer |
+| Push | `logWatcher:newEvent`, `jsonlImporter:scanComplete`, `sync:statusChanged` | main → renderer |
+
+**Type safety:** Channel request/response types are defined in a shared TypeScript module (e.g. `src/shared/ipc-types.ts`) imported by both the main process handlers and the renderer's preload script. This provides compile-time verification that the renderer sends the correct payload shape and receives the expected response type.
+
+**Preload script:** The preload script exposes a `window.api` object via `contextBridge.exposeInMainWorld()`. Each method on `window.api` maps to one IPC channel. The renderer never calls `ipcRenderer.invoke()` directly — it calls typed methods on `window.api`.
+
+```
+// Conceptual shape of window.api (defined in preload)
+window.api = {
+  codeSessions: {
+    getAll(range: DateRange): Promise<CodeSession[]>,
+    getByProject(project: string, range: DateRange): Promise<CodeSession[]>,
+  },
+  coworkSessions: {
+    getSummaryToday(): Promise<TodaySummary>,
+    getAll(range: DateRange): Promise<CoworkSession[]>,
+  },
+  settings: {
+    get(): Promise<AppSettings>,
+    update(partial: Partial<AppSettings>): Promise<void>,
+  },
+  // Push events via callback registration
+  onLogWatcherEvent(callback: (event: LogEvent) => void): void,
+  onImportComplete(callback: (summary: ImportSummary) => void): void,
+}
+```
+
+This contract is defined in v0.1 and extended as new views are added in subsequent phases. New channels are added alongside the features that need them.
+
 ### Technology Choices
 
 | Component | Technology | Reason |
@@ -286,7 +415,7 @@ Electron Renderer Process
 | UI | React + TypeScript | Standard Electron UI approach |
 | Charting | Recharts | Lightweight, React-native, no canvas deps |
 | Local DB | better-sqlite3 | Synchronous SQLite, best for Electron main process |
-| Log tailing | Node.js fs.watch + readline | No additional dependencies |
+| Log tailing | chokidar + readline | Cross-platform file watching with reliable rotation detection on Windows (fs.watch has known issues with file replacement on NTFS) |
 | InfluxDB client | @influxdata/influxdb-client-js | Official client |
 | Credential storage | Electron safeStorage | Built-in, DPAPI-backed, no native module needed (replaces deprecated keytar) |
 | Packaging | electron-builder | Standard, supports Windows NSIS installer |

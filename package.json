@@ -1,0 +1,88 @@
+{
+  "name": "claude-usage-monitor",
+  "version": "0.1.0",
+  "description": "Claude AI usage tracking desktop application",
+  "main": "dist/main/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
+    "dev:main": "tsc -p tsconfig.main.json --watch",
+    "dev:renderer": "webpack serve --config webpack.renderer.config.js",
+    "build": "npm run build:main && npm run build:renderer",
+    "build:main": "tsc -p tsconfig.main.json",
+    "build:renderer": "webpack --config webpack.renderer.config.js",
+    "compile": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
+    "pack": "electron-builder --dir",
+    "dist": "electron-builder"
+  },
+  "keywords": [
+    "claude",
+    "ai",
+    "usage",
+    "monitoring",
+    "electron"
+  ],
+  "author": "Tim Klimpel / tkforgeworks",
+  "license": "MIT",
+  "dependencies": {
+    "better-sqlite3": "^12.8.0",
+    "chokidar": "^3.6.0",
+    "electron-store": "^8.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-router-dom": "^6.26.2",
+    "recharts": "^2.12.7"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^20.17.6",
+    "@types/react": "^18.3.11",
+    "@types/react-dom": "^18.3.1",
+    "concurrently": "^9.1.0",
+    "css-loader": "^7.1.2",
+    "electron": "^41.1.0",
+    "electron-builder": "^26.8.1",
+    "html-webpack-plugin": "^5.6.6",
+    "style-loader": "^4.0.0",
+    "ts-loader": "^9.5.1",
+    "typescript": "^5.6.3",
+    "webpack": "^5.95.0",
+    "webpack-cli": "^5.1.4",
+    "webpack-dev-server": "^5.1.0"
+  },
+  "build": {
+    "appId": "com.tkforgeworks.claude-usage-monitor",
+    "productName": "Claude Usage Monitor",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true
+    },
+    "extraResources": [
+      {
+        "from": "assets",
+        "to": "assets"
+      }
+    ]
+  }
+}

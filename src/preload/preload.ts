@@ -1,0 +1,140 @@
+/**
+ * Electron preload script — contextBridge exposure.
+ * Exposes window.api to the renderer process using contextBridge.
+ * The renderer NEVER calls ipcRenderer.invoke() directly — it uses window.api.
+ *
+ * @see §5 "Preload script" in architecture doc
+ * @see src/shared/ipc-types.ts for ElectronApi type definition
+ */
+
+import { contextBridge, ipcRenderer } from 'electron';
+import type {
+  ElectronApi,
+  DateRange,
+  AppSettings,
+  DashboardConfig,
+  LogEvent,
+  ImportSummary,
+  SyncStatus,
+} from '../shared/ipc-types';
+
+const api: ElectronApi = {
+  // -------------------------------------------------------------------------
+  // codeSessions
+  // -------------------------------------------------------------------------
+  codeSessions: {
+    getAll(range: DateRange) {
+      return ipcRenderer.invoke('codeSessions:getAll', range);
+    },
+    getByDateRange(range: DateRange) {
+      return ipcRenderer.invoke('codeSessions:getByDateRange', range);
+    },
+    getByProject(project: string, range: DateRange) {
+      return ipcRenderer.invoke('codeSessions:getByProject', project, range);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // coworkSessions
+  // -------------------------------------------------------------------------
+  coworkSessions: {
+    getSummaryToday() {
+      return ipcRenderer.invoke('coworkSessions:getSummaryToday');
+    },
+    getAll(range: DateRange) {
+      return ipcRenderer.invoke('coworkSessions:getAll', range);
+    },
+    getTurns(sessionId: string) {
+      return ipcRenderer.invoke('coworkSessions:getTurns', sessionId);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // settings
+  // -------------------------------------------------------------------------
+  settings: {
+    get(): Promise<AppSettings> {
+      return ipcRenderer.invoke('settings:get');
+    },
+    update(partial: Partial<AppSettings>): Promise<void> {
+      return ipcRenderer.invoke('settings:update', partial);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // dashboard
+  // -------------------------------------------------------------------------
+  dashboard: {
+    get(): Promise<DashboardConfig> {
+      return ipcRenderer.invoke('dashboard:get');
+    },
+    save(config: DashboardConfig): Promise<void> {
+      return ipcRenderer.invoke('dashboard:save', config);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // chatImport
+  // -------------------------------------------------------------------------
+  chatImport: {
+    start(filePath: string): Promise<ImportSummary> {
+      return ipcRenderer.invoke('chatImport:start', filePath);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // sync
+  // -------------------------------------------------------------------------
+  sync: {
+    getStatus(): Promise<SyncStatus> {
+      return ipcRenderer.invoke('sync:getStatus');
+    },
+    triggerNow(): Promise<void> {
+      return ipcRenderer.invoke('sync:triggerNow');
+    },
+    setToken(profileId: string, token: string): Promise<void> {
+      return ipcRenderer.invoke('sync:setToken', profileId, token);
+    },
+    testConnection(profileId: string): Promise<boolean> {
+      return ipcRenderer.invoke('sync:testConnection', profileId);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // costs
+  // -------------------------------------------------------------------------
+  costs: {
+    recalculate(): Promise<void> {
+      return ipcRenderer.invoke('costs:recalculate');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // Push event subscriptions (main → renderer)
+  // Returns an unsubscribe function for cleanup.
+  // -------------------------------------------------------------------------
+  onLogWatcherEvent(callback: (event: LogEvent) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, data: LogEvent) =>
+      callback(data);
+    ipcRenderer.on('logWatcher:newEvent', handler);
+    return () => ipcRenderer.removeListener('logWatcher:newEvent', handler);
+  },
+
+  onImportComplete(callback: (summary: ImportSummary) => void): () => void {
+    const handler = (
+      _event: Electron.IpcRendererEvent,
+      data: ImportSummary
+    ) => callback(data);
+    ipcRenderer.on('jsonlImporter:scanComplete', handler);
+    return () => ipcRenderer.removeListener('jsonlImporter:scanComplete', handler);
+  },
+
+  onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, data: SyncStatus) =>
+      callback(data);
+    ipcRenderer.on('sync:statusChanged', handler);
+    return () => ipcRenderer.removeListener('sync:statusChanged', handler);
+  },
+};
+
+contextBridge.exposeInMainWorld('api', api);
