@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__claude_ai_Atlassian__getConfluenceSpaces",
+      "mcp__claude_ai_Atlassian__getVisibleJiraProjects",
+      "mcp__claude_ai_Atlassian__getIssueLinkTypes",
+      "mcp__claude_ai_Atlassian__getAccessibleAtlassianResources",
+      "mcp__claude_ai_Atlassian__createJiraIssue"
+    ]
+  }
+}
