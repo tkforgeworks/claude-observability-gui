@@ -104,6 +104,7 @@ export class JsonlImporter {
 
     // Discover all JSONL files grouped by session
     const sessionGroups = this.discoverFiles(projectsDir);
+    console.log(`[jsonlImporter] Session scan starting - ${new Date(Date.now())}`);
     console.log(`[jsonlImporter] Found ${sessionGroups.size} session(s) to process`);
 
     const upsert = this.db.prepare(`
@@ -209,6 +210,7 @@ export class JsonlImporter {
     console.log(
       `[jsonlImporter] Scan complete: ${newRecords} new, ${updatedRecords} updated, ${skippedRecords} skipped, ${errorCount} errors (${summary.scanDurationMs}ms)`
     );
+    console.log(`[jsonlImporter] Session scan complete - ${new Date(Date.now())}`);
 
     return summary;
   }
@@ -302,12 +304,12 @@ export class JsonlImporter {
       try {
         const parsed = JSON.parse(line) as JsonlRecord;
         if (!parsed.type) {
-          console.warn(`[jsonlImporter] ${filePath}:${lineNum} — missing 'type' field, skipping`);
+          console.warn(`[jsonlImporter] ${filePath}:${lineNum} - missing 'type' field, skipping`);
           continue;
         }
         records.push(parsed);
       } catch {
-        console.warn(`[jsonlImporter] ${filePath}:${lineNum} — malformed JSON, skipping`);
+        console.warn(`[jsonlImporter] ${filePath}:${lineNum} - malformed JSON, skipping`);
       }
     }
 

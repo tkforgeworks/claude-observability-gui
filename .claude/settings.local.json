@@ -31,7 +31,8 @@
       "mcp__claude_ai_Atlassian__transitionJiraIssue",
       "Bash(python3 -m json.tool --no-ensure-ascii)",
       "Bash(python -m json.tool)",
-      "Bash(node:*)"
+      "Bash(node:*)",
+      "Bash(npx webpack:*)"
     ]
   }
 }
