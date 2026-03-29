@@ -198,6 +198,9 @@ export interface ElectronApi {
     get(): Promise<ConfigPaths>;
     openFolder(folderPath: string): Promise<void>;
   };
+  dev: {
+    clearDatabase(): Promise<void>;
+  };
   codeSessions: {
     getAll(range: DateRange): Promise<CodeSession[]>;
     getByDateRange(range: DateRange): Promise<CodeSession[]>;

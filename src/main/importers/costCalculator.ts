@@ -22,25 +22,33 @@ export interface CostResult {
 /**
  * Computes cost_usd for a single session from its token counts and model ID.
  *
- * If the model is not in the pricing table, logs a warning and returns
- * costUsd: 0 with modelRecognised: false rather than silently producing $0.
- *
- * Formula:
- *   cost = (input_tokens × input_rate)
- *         + (output_tokens × output_rate)
- *         + (cache_creation_tokens × cache_write_rate)
- *         + (cache_read_tokens × cache_read_rate)
- *
- * @see §2.4 "Cache write tier note" for 1-hour vs 5-minute distinction
+ * If the model is not in the pricing table, returns
+ * costUsd: 0 with modelRecognised: false.
  */
 export function calculateCost(model: string, tokens: TokenCounts): CostResult {
-  // TODO: implement
-  // 1. Look up pricing = getPricing(model)
-  // 2. If null, log warning and return { costUsd: 0, modelRecognised: false }
-  // 3. Apply formula: divide each per-million rate by 1_000_000 then multiply by token count
-  // 4. If cacheCreation1hTokens present, apply cacheWrite1hPerMillion for that portion
-  // 5. Sum all terms and return { costUsd, modelRecognised: true }
-  throw new Error('calculateCost not yet implemented');
+  const pricing = getPricing(model);
+  if (!pricing) {
+    console.warn(`[costCalculator] Unrecognised model: ${model}`);
+    return { costUsd: 0, modelRecognised: false };
+  }
+
+  const inputCost = (tokens.inputTokens / 1_000_000) * pricing.inputPerMillion;
+  const outputCost = (tokens.outputTokens / 1_000_000) * pricing.outputPerMillion;
+  const cacheReadCost = (tokens.cacheReadTokens / 1_000_000) * pricing.cacheReadPerMillion;
+
+  let cacheWriteCost: number;
+  if (tokens.cacheCreation1hTokens && pricing.cacheWrite1hPerMillion) {
+    // Split: 1h tokens at the 1h rate, remaining at the 5m rate
+    const fiveMinTokens = tokens.cacheCreationTokens - tokens.cacheCreation1hTokens;
+    cacheWriteCost =
+      (fiveMinTokens / 1_000_000) * pricing.cacheWritePerMillion +
+      (tokens.cacheCreation1hTokens / 1_000_000) * pricing.cacheWrite1hPerMillion;
+  } else {
+    cacheWriteCost = (tokens.cacheCreationTokens / 1_000_000) * pricing.cacheWritePerMillion;
+  }
+
+  const costUsd = inputCost + outputCost + cacheReadCost + cacheWriteCost;
+  return { costUsd, modelRecognised: true };
 }
 
 /**
@@ -54,8 +62,17 @@ export function recalculateCost(
   cacheCreationTokens: number | null,
   cacheReadTokens: number | null
 ): number | null {
-  // TODO: implement
-  // Guard against nulls — return null if model is null or all token counts are null
-  // Call calculateCost with coerced values and return costUsd
-  throw new Error('recalculateCost not yet implemented');
+  if (!model) return null;
+  if (inputTokens == null && outputTokens == null && cacheCreationTokens == null && cacheReadTokens == null) {
+    return null;
+  }
+
+  const result = calculateCost(model, {
+    inputTokens: inputTokens ?? 0,
+    outputTokens: outputTokens ?? 0,
+    cacheCreationTokens: cacheCreationTokens ?? 0,
+    cacheReadTokens: cacheReadTokens ?? 0,
+  });
+
+  return result.modelRecognised ? result.costUsd : null;
 }

@@ -14,9 +14,11 @@ import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles } from './config/configStore';
 import { createTray, destroyTray } from './tray';
+import { JsonlImporter } from './importers/jsonlImporter';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
+let importerInterval: ReturnType<typeof setInterval> | null = null;
 
 // ---------------------------------------------------------------------------
 // Window creation
@@ -91,10 +93,12 @@ app.whenReady().then(() => {
   // const logWatcher = new LogWatcher(db);
   // logWatcher.start();
 
-  // TODO (v0.2): Start JSONL importer scan cycle (every 5 minutes)
-  // const importer = new JsonlImporter(db);
-  // importer.scan().catch(console.error);
-  // setInterval(() => importer.scan().catch(console.error), 5 * 60 * 1000);
+  // Start JSONL importer: scan on startup, then every 5 minutes
+  const importer = new JsonlImporter(db);
+  importer.scan().catch(err => console.error('[main] Initial JSONL scan failed:', err));
+  importerInterval = setInterval(() => {
+    importer.scan().catch(err => console.error('[main] JSONL scan failed:', err));
+  }, 5 * 60 * 1000);
 
   // TODO (v0.4): Start InfluxDB sync service
   // const influxSync = new InfluxSync(db);
@@ -115,6 +119,7 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  if (importerInterval) clearInterval(importerInterval);
   unregisterIpcHandlers();
   destroyTray();
   closeDatabase();

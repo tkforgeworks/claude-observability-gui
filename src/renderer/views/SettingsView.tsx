@@ -221,7 +221,38 @@ function DashboardTab(): React.JSX.Element {
   );
 }
 
+const dangerButtonStyles: React.CSSProperties = {
+  padding: '8px 16px',
+  backgroundColor: '#4a1a1a',
+  border: '1px solid #6a2a2a',
+  borderRadius: 4,
+  color: '#ff6666',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
 function DataTab(): React.JSX.Element {
+  const [clearing, setClearing] = useState(false);
+  const [cleared, setCleared] = useState(false);
+
+  const handleClearDatabase = async () => {
+    const confirmed = window.confirm(
+      'This will permanently delete ALL data from the database (code sessions, cowork sessions, etc.). ' +
+      'The schema and config files will be preserved.\n\nAre you sure?'
+    );
+    if (!confirmed) return;
+
+    setClearing(true);
+    try {
+      await window.api.dev.clearDatabase();
+      setCleared(true);
+      setTimeout(() => setCleared(false), 3000);
+    } finally {
+      setClearing(false);
+    }
+  };
+
   // TODO: implement per wireframe §8.4
   // Database stats (path, size, mode, table row counts)
   // Backup Database and Open Folder buttons
@@ -229,14 +260,33 @@ function DataTab(): React.JSX.Element {
   // Log Watcher Status panel
   // Recalculate Costs button (calls window.api.costs.recalculate())
   return (
-    <div style={placeholderStyles}>
-      {/* TODO: Database info (path, size, WAL mode) */}
-      {/* TODO: Table row counts table */}
-      {/* TODO: Backup Database and Open Folder buttons */}
-      {/* TODO: Chat import drop zone */}
-      {/* TODO: Log watcher status */}
-      {/* TODO: Recalculate Costs action button */}
-      Data management — not yet implemented
+    <div style={{ padding: 4 }}>
+      <div style={placeholderStyles}>
+        {/* TODO: Database info (path, size, WAL mode) */}
+        {/* TODO: Table row counts table */}
+        {/* TODO: Backup Database and Open Folder buttons */}
+        {/* TODO: Chat import drop zone */}
+        {/* TODO: Log watcher status */}
+        {/* TODO: Recalculate Costs action button */}
+        Data management — not yet implemented
+      </div>
+
+      <div style={{ marginTop: 32, padding: '16px', borderTop: '1px solid #3a2a2a' }}>
+        <h3 style={{ fontSize: 14, color: '#ff6666', marginBottom: 8 }}>
+          Danger Zone
+        </h3>
+        <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+          Clear all data from the database. Schema and config files are preserved.
+          Data will be re-imported on next scan cycle.
+        </p>
+        <button
+          style={dangerButtonStyles}
+          onClick={handleClearDatabase}
+          disabled={clearing}
+        >
+          {clearing ? 'Clearing...' : cleared ? 'Database Cleared' : 'Clear Database'}
+        </button>
+      </div>
     </div>
   );
 }

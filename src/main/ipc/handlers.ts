@@ -42,6 +42,21 @@ import { getDatabasePath } from '../db/database';
  */
 export function registerIpcHandlers(db: Database.Database): void {
   // -------------------------------------------------------------------------
+  // dev channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('dev:clearDatabase', () => {
+    const tables = ['code_sessions', 'cowork_sessions', 'cowork_turns', 'app_sessions', 'chat_conversations', 'app_focus_events'];
+    const clear = db.transaction(() => {
+      for (const table of tables) {
+        db.exec(`DELETE FROM ${table}`);
+      }
+    });
+    clear();
+    console.log('[ipc] dev:clearDatabase — all data tables cleared');
+  });
+
+  // -------------------------------------------------------------------------
   // codeSessions channels
   // -------------------------------------------------------------------------
 
@@ -182,6 +197,7 @@ export function registerIpcHandlers(db: Database.Database): void {
  */
 export function unregisterIpcHandlers(): void {
   const channels = [
+    'dev:clearDatabase',
     'configPaths:get',
     'configPaths:openFolder',
     'codeSessions:getAll',

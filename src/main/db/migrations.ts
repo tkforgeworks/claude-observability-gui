@@ -111,8 +111,10 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_app_sessions_unsynced        ON app_sessions (synced_to_influx) WHERE synced_to_influx = 0;
     `,
   },
-  // TODO: add subsequent migrations here as numbered entries, e.g.:
-  // { version: 2, sql: `ALTER TABLE code_sessions ADD COLUMN slug TEXT;` },
+  {
+    version: 2,
+    sql: `ALTER TABLE code_sessions ADD COLUMN slug TEXT;`,
+  },
 ];
 
 /**
