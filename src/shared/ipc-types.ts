@@ -137,6 +137,15 @@ export interface DashboardConfig {
 }
 
 // ---------------------------------------------------------------------------
+// Cleanup Warning
+// ---------------------------------------------------------------------------
+
+export interface CleanupWarning {
+  cleanupPeriodDays: number | null;
+  warningNeeded: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Import / Sync
 // ---------------------------------------------------------------------------
 
@@ -206,6 +215,7 @@ export interface ElectronApi {
     getAll(range: DateRange): Promise<CodeSession[]>;
     getByDateRange(range: DateRange): Promise<CodeSession[]>;
     getByProject(project: string, range: DateRange): Promise<CodeSession[]>;
+    getCleanupWarning(): Promise<CleanupWarning>;
   };
   coworkSessions: {
     getSummaryToday(): Promise<TodaySummary>;
@@ -234,6 +244,7 @@ export interface ElectronApi {
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
+  onScanStarted(callback: () => void): () => void;
   onImportComplete(callback: (summary: ImportSummary) => void): () => void;
   onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void;
 }

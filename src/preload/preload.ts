@@ -12,6 +12,7 @@ import type {
   ElectronApi,
   DateRange,
   AppSettings,
+  CleanupWarning,
   ConfigPaths,
   DashboardConfig,
   LogEvent,
@@ -53,6 +54,9 @@ const api: ElectronApi = {
     },
     getByProject(project: string, range: DateRange) {
       return ipcRenderer.invoke('codeSessions:getByProject', project, range);
+    },
+    getCleanupWarning(): Promise<CleanupWarning> {
+      return ipcRenderer.invoke('codeSessions:getCleanupWarning');
     },
   },
 
@@ -140,6 +144,12 @@ const api: ElectronApi = {
       callback(data);
     ipcRenderer.on('logWatcher:newEvent', handler);
     return () => ipcRenderer.removeListener('logWatcher:newEvent', handler);
+  },
+
+  onScanStarted(callback: () => void): () => void {
+    const handler = () => callback();
+    ipcRenderer.on('jsonlImporter:scanStarted', handler);
+    return () => ipcRenderer.removeListener('jsonlImporter:scanStarted', handler);
   },
 
   onImportComplete(callback: (summary: ImportSummary) => void): () => void {

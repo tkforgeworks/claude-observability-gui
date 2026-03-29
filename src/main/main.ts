@@ -95,10 +95,19 @@ app.whenReady().then(() => {
 
   // Start JSONL importer: scan on startup, then every 5 minutes
   const importer = new JsonlImporter(db);
-  importer.scan().catch(err => console.error('[main] Initial JSONL scan failed:', err));
-  importerInterval = setInterval(() => {
-    importer.scan().catch(err => console.error('[main] JSONL scan failed:', err));
-  }, 5 * 60 * 1000);
+
+  const runScan = async () => {
+    win.webContents.send('jsonlImporter:scanStarted');
+    try {
+      const summary = await importer.scan();
+      win.webContents.send('jsonlImporter:scanComplete', summary);
+    } catch (err) {
+      console.error('[main] JSONL scan failed:', err);
+    }
+  };
+
+  runScan();
+  importerInterval = setInterval(runScan, 5 * 60 * 1000);
 
   // TODO (v0.4): Start InfluxDB sync service
   // const influxSync = new InfluxSync(db);

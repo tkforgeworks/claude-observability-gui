@@ -3,8 +3,8 @@
  * @see §4 "Claude Code Sessions List" in 04-wireframes.md
  */
 
-import React, { useEffect, useState, useMemo } from 'react';
-import type { CodeSession } from '../../shared/ipc-types';
+import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import type { CodeSession, CleanupWarning, ImportSummary } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
 
 // ---------------------------------------------------------------------------
@@ -111,6 +111,28 @@ const summaryValueStyles: React.CSSProperties = {
   fontFamily: 'monospace',
 };
 
+const scanStatusStyles = (fading: boolean): React.CSSProperties => ({
+  fontSize: 12,
+  color: fading ? '#66cc88' : '#8888aa',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  transition: 'opacity 0.5s ease',
+  opacity: fading ? 0 : 1,
+});
+
+const cleanupWarningStyles: React.CSSProperties = {
+  padding: '10px 16px',
+  backgroundColor: '#3a2a10',
+  borderRadius: 6,
+  border: '1px solid #5a4a20',
+  fontSize: 13,
+  color: '#ddbb44',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+};
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -163,25 +185,64 @@ const RANGE_OPTIONS = [
   { label: 'All', days: 3650 },
 ];
 
+type ScanStatus = 'idle' | 'scanning' | 'complete';
+
 export default function CodeSessionsView(): React.JSX.Element {
   const [sessions, setSessions] = useState<CodeSession[]>([]);
   const [loading, setLoading] = useState(true);
   const [rangeDays, setRangeDays] = useState(30);
   const [sortKey, setSortKey] = useState<SortKey>('started_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [scanStatus, setScanStatus] = useState<ScanStatus>('idle');
+  const [lastScanSummary, setLastScanSummary] = useState<ImportSummary | null>(null);
+  const [scanFading, setScanFading] = useState(false);
+  const [cleanupWarning, setCleanupWarning] = useState<CleanupWarning | null>(null);
 
-  useEffect(() => {
-    setLoading(true);
+  const fetchSessions = useCallback(() => {
     const from = daysAgo(rangeDays);
     const to = new Date().toISOString();
-    window.api.codeSessions.getByDateRange({ from, to })
+    return window.api.codeSessions.getByDateRange({ from, to })
       .then(setSessions)
       .catch(err => {
         console.error('[CodeSessionsView] fetch failed:', err);
         setSessions([]);
-      })
-      .finally(() => setLoading(false));
+      });
   }, [rangeDays]);
+
+  useEffect(() => {
+    setLoading(true);
+    fetchSessions().finally(() => setLoading(false));
+  }, [fetchSessions]);
+
+  // Check cleanup warning on mount
+  useEffect(() => {
+    window.api.codeSessions.getCleanupWarning?.()
+      ?.then(setCleanupWarning)
+      ?.catch((err: unknown) => console.error('[CodeSessionsView] cleanup warning check failed:', err));
+  }, []);
+
+  // Subscribe to scan events
+  useEffect(() => {
+    const unsubStarted = window.api.onScanStarted?.(() => {
+      setScanStatus('scanning');
+      setScanFading(false);
+    });
+    const unsubComplete = window.api.onImportComplete?.((summary) => {
+      setScanStatus('complete');
+      setLastScanSummary(summary);
+      setScanFading(false);
+      // Auto-refresh the table if there were changes
+      if (summary.newRecords > 0 || summary.updatedRecords > 0) {
+        fetchSessions();
+      }
+      // Fade out after 5 seconds
+      setTimeout(() => {
+        setScanFading(true);
+        setTimeout(() => setScanStatus('idle'), 500);
+      }, 5000);
+    });
+    return () => { unsubStarted?.(); unsubComplete?.(); };
+  }, [fetchSessions]);
 
   const sorted = useMemo(() => {
     const copy = [...sessions];
@@ -258,10 +319,33 @@ export default function CodeSessionsView(): React.JSX.Element {
     );
   }
 
+  const renderScanStatus = () => {
+    if (scanStatus === 'idle') return null;
+    if (scanStatus === 'scanning') {
+      return <span style={scanStatusStyles(false)}>⟳ Scanning JSONL files...</span>;
+    }
+    if (scanStatus === 'complete' && lastScanSummary) {
+      const { newRecords, updatedRecords, skippedRecords } = lastScanSummary;
+      const parts: string[] = [];
+      if (newRecords > 0) parts.push(`${newRecords} new`);
+      if (updatedRecords > 0) parts.push(`${updatedRecords} updated`);
+      if (parts.length === 0) parts.push('No changes');
+      return (
+        <span style={scanStatusStyles(scanFading)}>
+          Scan complete: {parts.join(', ')} ({lastScanSummary.scanDurationMs}ms)
+        </span>
+      );
+    }
+    return null;
+  };
+
   return (
     <div style={viewStyles}>
       <div style={headerRowStyles}>
-        <h1 style={headerStyles}>Claude Code</h1>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+          <h1 style={headerStyles}>Claude Code</h1>
+          {renderScanStatus()}
+        </div>
         <div style={{ display: 'flex', gap: 4 }}>
           {RANGE_OPTIONS.map(r => (
             <button key={r.days} style={rangeButtonStyles(rangeDays === r.days)} onClick={() => setRangeDays(r.days)}>
@@ -270,6 +354,18 @@ export default function CodeSessionsView(): React.JSX.Element {
           ))}
         </div>
       </div>
+
+      {cleanupWarning?.warningNeeded && (
+        <div style={cleanupWarningStyles}>
+          <span>⚠</span>
+          <span>
+            Claude Code <code style={{ color: '#eedd88' }}>cleanupPeriodDays</code> is set
+            to <strong>{cleanupWarning.cleanupPeriodDays}</strong> days.
+            JSONL files older than this are automatically deleted, which limits historical data availability.
+            Consider increasing this value in <code style={{ color: '#eedd88' }}>~/.claude/settings.json</code>.
+          </span>
+        </div>
+      )}
 
       <div style={summaryBarStyles}>
         <span><span style={summaryValueStyles}>{totals.count}</span> sessions</span>

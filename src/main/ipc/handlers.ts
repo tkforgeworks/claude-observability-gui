@@ -12,6 +12,7 @@ import type Database from 'better-sqlite3';
 import type {
   DateRange,
   AppSettings,
+  CleanupWarning,
   DashboardConfig,
   SyncStatus,
   ImportSummary,
@@ -35,6 +36,9 @@ import {
   getDashboardPath,
 } from '../config/configStore';
 import { getDatabasePath } from '../db/database';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 /**
  * Registers all IPC invoke handlers (renderer → main → renderer).
@@ -75,6 +79,25 @@ export function registerIpcHandlers(db: Database.Database): void {
       return queryCodeSessionsByProject(db, project, range);
     }
   );
+
+  ipcMain.handle('codeSessions:getCleanupWarning', (): CleanupWarning => {
+    try {
+      const settingsPath = path.join(os.homedir(), '.claude', 'settings.json');
+      if (!fs.existsSync(settingsPath)) {
+        return { cleanupPeriodDays: null, warningNeeded: false };
+      }
+      const raw = fs.readFileSync(settingsPath, 'utf-8');
+      const parsed = JSON.parse(raw);
+      const days = parsed.cleanupPeriodDays ?? null;
+      return {
+        cleanupPeriodDays: typeof days === 'number' ? days : null,
+        warningNeeded: typeof days === 'number' && days <= 30,
+      };
+    } catch (err) {
+      console.error('[ipc] Failed to read Claude settings for cleanupPeriodDays:', err);
+      return { cleanupPeriodDays: null, warningNeeded: false };
+    }
+  });
 
   // -------------------------------------------------------------------------
   // coworkSessions channels
@@ -203,6 +226,7 @@ export function unregisterIpcHandlers(): void {
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',
+    'codeSessions:getCleanupWarning',
     'coworkSessions:getSummaryToday',
     'coworkSessions:getAll',
     'coworkSessions:getTurns',
