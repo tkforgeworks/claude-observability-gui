@@ -89,16 +89,11 @@ export class LogWatcher extends EventEmitter {
       return;
     }
 
-    // Seek to end of file — only tail new content
-    try {
-      const stat = fs.statSync(this.logFilePath);
-      this.fileOffset = stat.size;
-      console.log(`[logWatcher] Starting at offset ${this.fileOffset} (${this.logFilePath})`);
-    } catch (err) {
-      console.error('[logWatcher] Failed to stat log file:', err);
-      this.emit('error', err instanceof Error ? err : new Error(String(err)));
-      return;
-    }
+    // Backfill: read entire file from the beginning to catch events that
+    // occurred while the monitor was closed (FR-1.10). DB-level dedup
+    // prevents duplicate rows on subsequent restarts. Done synchronously
+    // so the offset is correct before chokidar starts.
+    this.backfill(this.logFilePath);
 
     // Start chokidar watcher — use polling because fs.watch does not
     // receive change notifications for files inside MSIX package directories
@@ -132,6 +127,44 @@ export class LogWatcher extends EventEmitter {
     this.isWatching = true;
     console.log(`[logWatcher] Connected — tailing ${this.logFilePath}`);
     this.emit('connected', this.logFilePath);
+  }
+
+  /**
+   * Synchronously reads the entire log file and processes all lines.
+   * Called once on startup before chokidar begins watching. Uses
+   * readFileSync to ensure the offset is set correctly before tail mode.
+   */
+  private backfill(filePath: string): void {
+    try {
+      const stat = fs.statSync(filePath);
+      console.log(`[logWatcher] Starting backfill of ${filePath} (${stat.size} bytes)`);
+
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const lines = content.split(/\r?\n/);
+      let matched = 0;
+      let persisted = 0;
+
+      for (const line of lines) {
+        if (!line.trim()) continue;
+        const event = parseLogEvent(line);
+        if (event) {
+          matched++;
+          if (this.handleEvent(event) === 'new') persisted++;
+          this.emit('event', event);
+        }
+      }
+
+      this.fileOffset = stat.size;
+      console.log(`[logWatcher] Backfill complete: ${matched} events parsed, ${persisted} persisted to DB`);
+    } catch (err) {
+      console.error('[logWatcher] Backfill failed:', err);
+      // Fall back to tail-only mode
+      try {
+        this.fileOffset = fs.statSync(filePath).size;
+      } catch {
+        this.fileOffset = 0;
+      }
+    }
   }
 
   /**
@@ -212,39 +245,36 @@ export class LogWatcher extends EventEmitter {
   }
 
   /**
-   * Persists a parsed event to SQLite.
+   * Persists a parsed event to SQLite. Returns 'new' if a row was written,
+   * 'deduped' if the row already existed, or 'skipped' for event types
+   * with no DB action (e.g. cowork_turn_completed).
    */
-  private handleEvent(event: LogEvent): void {
+  private handleEvent(event: LogEvent): 'new' | 'deduped' | 'skipped' {
     try {
       switch (event.type) {
         case 'app_launch':
-          insertAppLaunch(this.db, event.timestamp);
-          break;
+          return insertAppLaunch(this.db, event.timestamp) ? 'new' : 'deduped';
         case 'app_quit':
-          closeAppSession(this.db, event.timestamp);
-          break;
+          return closeAppSession(this.db, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_session_created':
-          upsertCoworkSession(this.db, event.sessionId!, event.timestamp);
-          break;
+          return upsertCoworkSession(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_session_cli_mapped':
-          updateCoworkSessionCliId(
+          return updateCoworkSessionCliId(
             this.db,
             event.sessionId!,
             event.data!.cliSessionId as string
-          );
-          break;
+          ) ? 'new' : 'deduped';
         case 'cowork_turn_started':
-          insertCoworkTurn(this.db, event.sessionId!, event.timestamp);
-          break;
+          return insertCoworkTurn(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_turn_ended':
-          completeCoworkTurn(this.db, event.sessionId!, event.timestamp);
-          break;
+          return completeCoworkTurn(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
         // cowork_turn_completed ([Result] Turn succeeded) is logged but
         // we use turn_ended (running → idle) for timing since it fires after cleanup
       }
     } catch (err) {
       console.error(`[logWatcher] Failed to persist ${event.type}:`, err);
     }
+    return 'skipped';
   }
 
   /**

@@ -53,7 +53,8 @@ export function registerIpcHandlers(db: Database.Database): void {
   // -------------------------------------------------------------------------
 
   ipcMain.handle('dev:clearDatabase', () => {
-    const tables = ['code_sessions', 'cowork_sessions', 'cowork_turns', 'app_sessions', 'chat_conversations', 'app_focus_events'];
+    // Delete children before parents to respect FK constraints
+    const tables = ['cowork_turns', 'app_focus_events', 'cowork_sessions', 'code_sessions', 'app_sessions', 'chat_conversations'];
     const clear = db.transaction(() => {
       for (const table of tables) {
         db.exec(`DELETE FROM ${table}`);

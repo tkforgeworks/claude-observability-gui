@@ -154,8 +154,8 @@ export function queryCoworkTurns(
 export function insertAppLaunch(
   db: Database.Database,
   launchedAt: string
-): void {
-  db.prepare(`
+): boolean {
+  const result = db.prepare(`
     INSERT INTO app_sessions (launched_at)
     SELECT ?
     WHERE NOT EXISTS (
@@ -163,6 +163,7 @@ export function insertAppLaunch(
       WHERE ABS(julianday(launched_at) - julianday(?)) * 86400 < 5
     )
   `).run(launchedAt, launchedAt);
+  return result.changes > 0;
 }
 
 /**
@@ -173,8 +174,8 @@ export function insertAppLaunch(
 export function closeAppSession(
   db: Database.Database,
   quitAt: string
-): void {
-  db.prepare(`
+): boolean {
+  const result = db.prepare(`
     UPDATE app_sessions
     SET quit_at = ?,
         duration_seconds = CAST(
@@ -187,6 +188,7 @@ export function closeAppSession(
       LIMIT 1
     )
   `).run(quitAt, quitAt);
+  return result.changes > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,11 +204,12 @@ export function upsertCoworkSession(
   sessionId: string,
   startedAt: string,
   projectPath?: string
-): void {
-  db.prepare(`
+): boolean {
+  const result = db.prepare(`
     INSERT OR IGNORE INTO cowork_sessions (session_id, started_at)
     VALUES (?, ?)
   `).run(sessionId, startedAt);
+  return result.changes > 0;
 }
 
 /**
@@ -216,10 +219,12 @@ export function updateCoworkSessionCliId(
   db: Database.Database,
   sessionId: string,
   cliSessionId: string
-): void {
-  db.prepare(`
-    UPDATE cowork_sessions SET cli_session_id = ? WHERE session_id = ?
-  `).run(cliSessionId, sessionId);
+): boolean {
+  const result = db.prepare(`
+    UPDATE cowork_sessions SET cli_session_id = ?
+    WHERE session_id = ? AND (cli_session_id IS NULL OR cli_session_id != ?)
+  `).run(cliSessionId, sessionId, cliSessionId);
+  return result.changes > 0;
 }
 
 /**
@@ -233,17 +238,20 @@ export function insertCoworkTurn(
   db: Database.Database,
   sessionId: string,
   startedAt: string
-): void {
+): boolean {
   // Use a placeholder ended_at that will be overwritten on completion.
   // We need ended_at NOT NULL per schema, so use empty string as sentinel.
-  db.prepare(`
+  // Dedup on session_id + started_at so backfill doesn't create duplicates
+  // for already-completed turns.
+  const result = db.prepare(`
     INSERT INTO cowork_turns (session_id, started_at, ended_at)
     SELECT ?, ?, ''
     WHERE NOT EXISTS (
       SELECT 1 FROM cowork_turns
-      WHERE session_id = ? AND ended_at = ''
+      WHERE session_id = ? AND started_at = ?
     )
-  `).run(sessionId, startedAt, sessionId);
+  `).run(sessionId, startedAt, sessionId, startedAt);
+  return result.changes > 0;
 }
 
 /**
@@ -254,10 +262,12 @@ export function completeCoworkTurn(
   db: Database.Database,
   sessionId: string,
   endedAt: string
-): void {
+): boolean {
+  let wasNew = false;
   const complete = db.transaction(() => {
-    // Close the open turn (ended_at = '' sentinel)
-    db.prepare(`
+    // Close the open turn (ended_at = '' sentinel).
+    // Returns changes = 0 if the turn was already completed (backfill dedup).
+    const result = db.prepare(`
       UPDATE cowork_turns
       SET ended_at = ?,
           duration_seconds = CAST(
@@ -266,15 +276,20 @@ export function completeCoworkTurn(
       WHERE session_id = ? AND ended_at = ''
     `).run(endedAt, endedAt, sessionId);
 
-    // Increment session turn_count
-    db.prepare(`
-      UPDATE cowork_sessions
-      SET turn_count = turn_count + 1,
-          ended_at = ?
-      WHERE session_id = ?
-    `).run(endedAt, sessionId);
+    wasNew = result.changes > 0;
+
+    // Only increment turn_count if we actually closed a turn
+    if (wasNew) {
+      db.prepare(`
+        UPDATE cowork_sessions
+        SET turn_count = turn_count + 1,
+            ended_at = ?
+        WHERE session_id = ?
+      `).run(endedAt, sessionId);
+    }
   });
   complete();
+  return wasNew;
 }
 
 // ---------------------------------------------------------------------------
