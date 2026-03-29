@@ -13,6 +13,7 @@ import type {
   CoworkSession,
   CoworkTurn,
   TodaySummary,
+  TimelineEntry,
   DateRange,
 } from '../../shared/ipc-types';
 
@@ -118,6 +119,60 @@ export function queryTodaySummary(db: Database.Database): TodaySummary {
     activeTimeSeconds,
     lastFocusedAt,
   };
+}
+
+/**
+ * Returns timeline entries for the last 24 hours — both code and cowork
+ * sessions with turn timestamps for cowork. Used by the Today view timeline.
+ */
+export function queryTodayTimeline(db: Database.Database): TimelineEntry[] {
+  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+  // Code sessions active in the last 24h:
+  // started in window, OR ended in window, OR still open but started in window
+  const codeRows = db.prepare<[string, string, string], { session_id: string; project_path: string | null; started_at: string; ended_at: string | null }>(`
+    SELECT session_id, project_path, started_at, ended_at
+    FROM code_sessions
+    WHERE started_at >= ?
+       OR (ended_at IS NOT NULL AND ended_at >= ?)
+       OR (ended_at IS NULL AND started_at >= ?)
+  `).all(cutoff, cutoff, cutoff);
+
+  const codeEntries: TimelineEntry[] = codeRows.map(r => ({
+    type: 'code',
+    sessionId: r.session_id,
+    projectPath: r.project_path,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    turnTimestamps: [],
+  }));
+
+  // Cowork sessions active in the last 24h
+  const coworkRows = db.prepare<[string, string, string], { session_id: string; started_at: string; ended_at: string | null }>(`
+    SELECT session_id, started_at, ended_at
+    FROM cowork_sessions
+    WHERE started_at >= ?
+       OR (ended_at IS NOT NULL AND ended_at >= ?)
+       OR (ended_at IS NULL AND started_at >= ?)
+  `).all(cutoff, cutoff, cutoff);
+
+  // Batch-fetch turns for all cowork sessions
+  const turnStmt = db.prepare<[string], { started_at: string }>(`
+    SELECT started_at FROM cowork_turns WHERE session_id = ? AND ended_at != '' ORDER BY started_at
+  `);
+
+  const coworkEntries: TimelineEntry[] = coworkRows.map(r => ({
+    type: 'cowork',
+    sessionId: r.session_id,
+    projectPath: null,
+    startedAt: r.started_at,
+    endedAt: r.ended_at,
+    turnTimestamps: turnStmt.all(r.session_id).map(t => t.started_at),
+  }));
+
+  return [...codeEntries, ...coworkEntries].sort(
+    (a, b) => new Date(a.startedAt).getTime() - new Date(b.startedAt).getTime()
+  );
 }
 
 /**
@@ -290,6 +345,36 @@ export function completeCoworkTurn(
   });
   complete();
   return wasNew;
+}
+
+/**
+ * Closes all open cowork sessions and their open turns at the given timestamp.
+ * Called when an app_quit event fires — any session still running at quit time
+ * was abandoned without a proper lifecycle close.
+ */
+export function closeAllOpenCoworkSessions(
+  db: Database.Database,
+  closedAt: string
+): void {
+  const close = db.transaction(() => {
+    // Close open turns (ended_at = '' sentinel)
+    db.prepare(`
+      UPDATE cowork_turns
+      SET ended_at = ?,
+          duration_seconds = CAST(
+            (julianday(?) - julianday(started_at)) * 86400 AS INTEGER
+          )
+      WHERE ended_at = ''
+    `).run(closedAt, closedAt);
+
+    // Close open cowork sessions
+    db.prepare(`
+      UPDATE cowork_sessions
+      SET ended_at = ?
+      WHERE ended_at IS NULL
+    `).run(closedAt);
+  });
+  close();
 }
 
 // ---------------------------------------------------------------------------

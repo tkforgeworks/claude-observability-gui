@@ -56,6 +56,15 @@ export interface CoworkTurn {
   duration_seconds: number | null;
 }
 
+export interface TimelineEntry {
+  type: 'code' | 'cowork';
+  sessionId: string;
+  projectPath: string | null;
+  startedAt: string;
+  endedAt: string | null;
+  turnTimestamps: string[]; // started_at of each turn (cowork only)
+}
+
 export interface TodaySummary {
   sessionCount: number;
   coworkSessionCount: number;
@@ -239,6 +248,7 @@ export interface ElectronApi {
   };
   coworkSessions: {
     getSummaryToday(): Promise<TodaySummary>;
+    getTimeline(): Promise<TimelineEntry[]>;
     getAll(range: DateRange): Promise<CoworkSession[]>;
     getTurns(sessionId: string): Promise<CoworkTurn[]>;
   };

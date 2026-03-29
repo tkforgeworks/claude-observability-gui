@@ -23,6 +23,7 @@ import { writeUnmatchedLine } from './unmatchedLogWriter';
 import {
   insertAppLaunch,
   closeAppSession,
+  closeAllOpenCoworkSessions,
   upsertCoworkSession,
   updateCoworkSessionCliId,
   insertCoworkTurn,
@@ -255,6 +256,7 @@ export class LogWatcher extends EventEmitter {
         case 'app_launch':
           return insertAppLaunch(this.db, event.timestamp) ? 'new' : 'deduped';
         case 'app_quit':
+          closeAllOpenCoworkSessions(this.db, event.timestamp);
           return closeAppSession(this.db, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_session_created':
           return upsertCoworkSession(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';

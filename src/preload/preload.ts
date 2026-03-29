@@ -86,6 +86,9 @@ const api: ElectronApi = {
     getSummaryToday() {
       return ipcRenderer.invoke('coworkSessions:getSummaryToday');
     },
+    getTimeline() {
+      return ipcRenderer.invoke('coworkSessions:getTimeline');
+    },
     getAll(range: DateRange) {
       return ipcRenderer.invoke('coworkSessions:getAll', range);
     },

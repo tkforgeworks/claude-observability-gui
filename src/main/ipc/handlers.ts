@@ -23,6 +23,7 @@ import {
   queryCodeSessions,
   queryCodeSessionsByProject,
   queryTodaySummary,
+  queryTodayTimeline,
   queryCoworkSessions,
   queryCoworkTurns,
   queryTableCounts,
@@ -109,6 +110,10 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('coworkSessions:getSummaryToday', () => {
     return queryTodaySummary(db);
+  });
+
+  ipcMain.handle('coworkSessions:getTimeline', () => {
+    return queryTodayTimeline(db);
   });
 
   ipcMain.handle('coworkSessions:getAll', (_event, range: DateRange) => {
@@ -250,6 +255,7 @@ export function unregisterIpcHandlers(): void {
     'codeSessions:getByProject',
     'codeSessions:getCleanupWarning',
     'coworkSessions:getSummaryToday',
+    'coworkSessions:getTimeline',
     'coworkSessions:getAll',
     'coworkSessions:getTurns',
     'settings:get',

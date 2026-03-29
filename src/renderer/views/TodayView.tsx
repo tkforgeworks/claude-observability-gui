@@ -6,9 +6,10 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { TodaySummary } from '../../shared/ipc-types';
+import type { TodaySummary, TimelineEntry } from '../../shared/ipc-types';
 import MetricCard from '../components/common/MetricCard';
 import EmptyState from '../components/common/EmptyState';
+import SessionTimeline from '../components/common/SessionTimeline';
 
 const viewStyles: React.CSSProperties = {
   padding: 24,
@@ -64,38 +65,41 @@ function formatDuration(seconds: number | null): string {
 
 export default function TodayView(): React.JSX.Element {
   const [summary, setSummary] = useState<TodaySummary | null>(null);
+  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const fetchSummary = useCallback(() => {
-    return window.api.coworkSessions.getSummaryToday()
-      .then(setSummary)
-      .catch(err => {
-        console.error('[TodayView] fetch failed:', err);
-        setSummary(null);
-      });
+  const fetchData = useCallback(() => {
+    return Promise.all([
+      window.api.coworkSessions.getSummaryToday().then(setSummary),
+      window.api.coworkSessions.getTimeline().then(setTimeline),
+    ]).catch(err => {
+      console.error('[TodayView] fetch failed:', err);
+      setSummary(null);
+      setTimeline([]);
+    });
   }, []);
 
   useEffect(() => {
-    fetchSummary().finally(() => setLoading(false));
-  }, [fetchSummary]);
+    fetchData().finally(() => setLoading(false));
+  }, [fetchData]);
 
   // Auto-refresh when importer completes a scan
   useEffect(() => {
     const unsub = window.api.onImportComplete?.((s) => {
       if (s.newRecords > 0 || s.updatedRecords > 0) {
-        fetchSummary();
+        fetchData();
       }
     });
     return () => { unsub?.(); };
-  }, [fetchSummary]);
+  }, [fetchData]);
 
   // Auto-refresh when log watcher persists a new event
   useEffect(() => {
     const unsub = window.api.onLogWatcherEvent?.(() => {
-      fetchSummary();
+      fetchData();
     });
     return () => { unsub?.(); };
-  }, [fetchSummary]);
+  }, [fetchData]);
 
   const hasAnyData = summary && summary.sessionCount > 0;
   const hasCodeData = summary && summary.codeSessionCount > 0;
@@ -138,26 +142,20 @@ export default function TodayView(): React.JSX.Element {
         <MetricCard value={activeValue} label="Active Time" secondaryStat={activeSecondary} />
       </div>
 
-      <div style={sectionStyles}>
-        {loading ? (
+      {loading ? (
+        <div style={sectionStyles}>
           <span style={{ color: '#8888aa' }}>Loading...</span>
-        ) : !hasAnyData ? (
+        </div>
+      ) : !hasAnyData ? (
+        <div style={sectionStyles}>
           <EmptyState
             title="No sessions recorded yet"
             message="The app is scanning for Claude Code data and connecting to the log watcher. Data will appear here automatically."
           />
-        ) : hasCodeData && !hasCoworkData ? (
-          <EmptyState
-            title="Code sessions found"
-            message="Claude Code session data is being tracked. Cowork session data will appear here once the log watcher connects to Claude Desktop."
-          />
-        ) : (
-          <EmptyState
-            title="Timeline coming soon"
-            message="The session timeline will show your activity throughout the day in a future update."
-          />
-        )}
-      </div>
+        </div>
+      ) : (
+        <SessionTimeline entries={timeline} />
+      )}
     </div>
   );
 }
