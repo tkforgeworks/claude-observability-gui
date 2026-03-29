@@ -32,7 +32,10 @@
       "Bash(python3 -m json.tool --no-ensure-ascii)",
       "Bash(python -m json.tool)",
       "Bash(node:*)",
-      "Bash(npx webpack:*)"
+      "Bash(npx webpack:*)",
+      "Bash(npm test:*)",
+      "Bash(find /c/Code/claude-observability-gui -maxdepth 3 -name .cursorrules -o -name copilot-instructions.md -o -name .claude* -type f)",
+      "Bash(ls:*)"
     ]
   }
 }

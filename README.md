@@ -1,42 +1,41 @@
 # Claude Usage Monitor
 
-An Electron desktop application for tracking and visualizing Claude AI usage across Desktop, Claude Code, and Cowork sessions.
+A desktop application for tracking and analyzing Claude AI usage across Claude Code and Claude Desktop (Cowork). Built with Electron, React, and SQLite.
 
 ## Current Status
 
-**Phase: Scaffolding complete, pre-implementation.**
-
-The app builds and launches with a working navigation shell but no live data yet.
+**v0.1.0 — Foundation** is complete. The app provides a working local dashboard for monitoring Claude Code session data with automatic JSONL import, cost tracking, and a dark-themed UI.
 
 ### What works
 
-- Electron app launches with a dark-themed sidebar + content area layout
-- SQLite database is created at `%APPDATA%/claude-usage-monitor/ClaudeUsageMonitor/usage.db`
-- Schema migrations run automatically on startup (v1 schema with all tables)
-- IPC handlers are registered and wired between renderer and main process
-- Navigation across 7 views: Today, Cowork Sessions, Code Sessions, Chat History, Trends, Heatmap, Settings
-- Minimize-to-tray on window close (restore via tray icon or File > Exit to quit)
+- **Today Dashboard** — Rolling 24-hour summary with four metric cards (Sessions, Cowork Turns, Code Cost, Active Time). Three display states: no data, partial data (code only), and full data. Auto-refreshes on JSONL scan completion.
+- **Claude Code Sessions** — Sortable table of all sessions parsed from `~/.claude/projects/` JSONL files. Columns: Project, Model, Input/Output/Cache Write/Cache Read tokens, Cost, Date. Summary bar with aggregate totals. Date range filter (7d / 30d / 90d / All). Cleanup warning banner when `cleanupPeriodDays` is 30 or fewer. Live scan status indicator.
+- **JSONL Importer** — Scans `~/.claude/projects/` on startup and every 5 minutes, parsing session JSONL files into SQLite. Emits scan events to the renderer for real-time UI updates.
+- **Cost Engine** — Per-session cost calculation using a tiered pricing table covering all Claude models (Opus, Sonnet, Haiku across 3.x, 4.x families) with separate cache write/read pricing. Unit tested.
+- **Settings Panel** — Tabbed layout (General, Remote Sync, Dashboard, Data). Config file path display with one-click folder access. Database clear (dev tool).
+- **Application Shell** — Dark-themed UI with fixed sidebar navigation. System tray with minimize-to-tray on close. Seven navigation views.
+- **SQLite with WAL mode** — Local data store with automatic schema migrations on startup.
+- **IPC Contract** — Fully typed channels between renderer, preload, and main process via contextBridge.
 
-### What's stubbed / not yet implemented
+### Placeholder views (future versions)
 
-- **Data importers** — JSONL importer and log watcher are scaffolded but not started
-- **Views** — All 7 views render placeholder content; no real data queries yet
-- **Settings** — Returns hardcoded defaults, no persistence
-- **Dashboard config** — Returns defaults, no save/load
-- **Chat import** — Handler throws "not yet implemented"
-- **InfluxDB sync** — Scaffolded but not started
-- **Cost calculation** — Query function exists but no data to calculate against
+| View | Target Version | Purpose |
+|------|---------------|---------|
+| Cowork Sessions | v0.2 | Claude Desktop session tracking via log watcher |
+| Chat History | v0.3 | Conversation import and browsing |
+| Trends | v0.3 | Usage analytics and charts |
+| Heatmap | v0.3 | Activity visualization |
 
-### Database tables (all empty)
+### Database tables
 
-| Table | Purpose |
-|---|---|
-| `app_sessions` | Claude Desktop app launches |
-| `cowork_sessions` | Cowork session tracking |
-| `cowork_turns` | Individual turns within Cowork sessions |
-| `code_sessions` | Claude Code sessions from JSONL files |
-| `chat_conversations` | Desktop chat history from claude.ai export |
-| `app_focus_events` | Window focus heartbeats |
+| Table | Status | Purpose |
+|-------|--------|---------|
+| `code_sessions` | Active | Claude Code sessions from JSONL files |
+| `cowork_sessions` | Schema ready | Cowork session tracking |
+| `cowork_turns` | Schema ready | Individual turns within Cowork sessions |
+| `app_sessions` | Schema ready | Claude Desktop app launches |
+| `chat_conversations` | Schema ready | Desktop chat history from claude.ai export |
+| `app_focus_events` | Schema ready | Window focus heartbeats |
 
 ## Development
 
@@ -55,33 +54,35 @@ npx electron-rebuild
 ### Scripts
 
 | Command | Description |
-|---|---|
+|---------|-------------|
 | `npm run build` | Build main + renderer |
 | `npm run build:main` | Compile main process TypeScript |
 | `npm run build:renderer` | Bundle renderer with webpack |
 | `npm run dev` | Run main and renderer in watch mode |
 | `npm start` | Launch the built Electron app |
 | `npm run compile` | Type-check only (no emit) |
+| `npm test` | Run unit tests (Jest + ts-jest) |
 | `npm run dist` | Package for distribution via electron-builder |
 
 ### Project Structure
 
 ```
 src/
-  main/           # Electron main process
-    config/       # Default settings, dashboard, pricing
-    db/           # SQLite database, migrations, queries
-    importers/    # JSONL importer, cost calculator (stubbed)
-    ipc/          # IPC handler registration
-    services/     # InfluxDB sync, log watcher (stubbed)
-    main.ts       # App entry point
-    tray.ts       # System tray setup
-  preload/        # Context bridge (preload.ts)
-  renderer/       # React UI
-    components/   # Shared UI components
-    views/        # Route-level view components
-    hooks/        # Custom React hooks
-  shared/         # Types shared between main and renderer
+  main/              # Electron main process
+    config/          # Settings, dashboard config, pricing table
+    db/              # SQLite database, migrations, queries
+    importers/       # JSONL parser and cost calculator
+    ipc/             # IPC handler registration
+    services/        # Log watcher, InfluxDB sync (stubs)
+    tray.ts          # System tray
+    main.ts          # Entry point
+  preload/           # contextBridge API exposure
+  renderer/          # React UI
+    components/      # Shared components (MetricCard, EmptyState, etc.)
+    views/           # Page-level views
+    App.tsx          # Router and layout shell
+  shared/            # Types shared across all processes
+    ipc-types.ts     # IPC channel types, ElectronApi interface
 ```
 
 ## Tech Stack
@@ -91,4 +92,22 @@ src/
 - **UI:** React 18, React Router, Recharts
 - **Database:** better-sqlite3 (WAL mode)
 - **Bundling:** webpack (renderer), tsc (main process)
-- **Packaging:** electron-builder
+- **Packaging:** electron-builder (NSIS installer for Windows)
+- **Testing:** Jest + ts-jest
+
+## Roadmap
+
+| Version | Epic | Focus |
+|---------|------|-------|
+| **v0.1.0** | Foundation | JSONL import, Code sessions table, Today dashboard, cost engine |
+| v0.2.0 | Live Cowork Tracking | Claude Desktop log watcher, cowork session/turn tracking |
+| v0.3.0 | Analytics | Trends charts, heatmap, chat history import |
+| v0.4.0 | Remote Sync | InfluxDB push, multi-device aggregation |
+
+## License
+
+MIT
+
+## Author
+
+Tim Klimpel / [tkforgeworks](https://github.com/tkforgeworks)
