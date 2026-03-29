@@ -24,6 +24,7 @@ export interface CodeSession {
   session_id: string;
   project_path: string | null;
   model: string | null;
+  slug: string | null;
   input_tokens: number | null;
   output_tokens: number | null;
   cache_creation_tokens: number | null;

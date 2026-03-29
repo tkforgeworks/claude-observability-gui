@@ -28,8 +28,14 @@ export function queryCodeSessions(
   db: Database.Database,
   range: DateRange
 ): CodeSession[] {
-  // TODO: implement — SELECT from code_sessions WHERE started_at BETWEEN range.from AND range.to ORDER BY started_at DESC
-  throw new UnsupportedOperationError('queryCodeSessions');
+  const stmt = db.prepare(`
+    SELECT id, session_id, project_path, model, slug, input_tokens, output_tokens,
+           cache_creation_tokens, cache_read_tokens, cost_usd, started_at, ended_at
+    FROM code_sessions
+    WHERE started_at >= ? AND started_at <= ?
+    ORDER BY started_at DESC
+  `);
+  return stmt.all(range.from, range.to) as CodeSession[];
 }
 
 /**
