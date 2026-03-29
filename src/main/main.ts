@@ -16,10 +16,12 @@ import { ensureConfigFiles } from './config/configStore';
 import { createTray, destroyTray } from './tray';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath } from './services/logPathDiscovery';
+import { LogWatcher } from './services/logWatcher';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let importerInterval: ReturnType<typeof setInterval> | null = null;
+let logWatcher: LogWatcher | null = null;
 
 // ---------------------------------------------------------------------------
 // Window creation
@@ -93,9 +95,9 @@ app.whenReady().then(() => {
   // Discover Claude Desktop log path (MSIX auto-discovery)
   discoverLogPath();
 
-  // TODO (v0.2): Start LogWatcher using discovered path
-  // const logWatcher = new LogWatcher(db);
-  // logWatcher.start();
+  // Start LogWatcher — tails Claude Desktop main.log for new lines
+  logWatcher = new LogWatcher(db);
+  logWatcher.start();
 
   // Start JSONL importer: scan on startup, then every 5 minutes
   const importer = new JsonlImporter(db);
@@ -133,6 +135,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   if (importerInterval) clearInterval(importerInterval);
+  if (logWatcher) logWatcher.stop();
   unregisterIpcHandlers();
   destroyTray();
   closeDatabase();

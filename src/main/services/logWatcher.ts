@@ -1,34 +1,44 @@
 /**
  * Log Watcher service — Tier 1 collection.
  * Tails the Claude Desktop main.log file using chokidar for file watching
- * and readline for line-by-line parsing. Not implemented until v0.2.
+ * and fs.createReadStream + readline for line-by-line reading.
+ *
+ * Lines are emitted as 'line' events on the EventEmitter. Parsing into
+ * typed LogEvent objects is handled by a separate module (CGUI-14+).
  *
  * @see §2.1 of architecture doc for full specification
+ * @see CGUI-13
  */
 
 import { EventEmitter } from 'events';
+import fs from 'fs';
+import readline from 'readline';
+import chokidar from 'chokidar';
 import type Database from 'better-sqlite3';
 import type { LogEvent } from '../../shared/ipc-types';
+import { getLogPathStatus } from './logPathDiscovery';
 
 /** Events emitted by LogWatcher */
 export interface LogWatcherEvents {
+  line: (line: string) => void;
   event: (logEvent: LogEvent) => void;
   error: (err: Error) => void;
-  connected: () => void;
-  disconnected: () => void;
+  connected: (path: string) => void;
+  disconnected: (reason: string) => void;
 }
 
 /**
- * LogWatcher monitors the Claude Desktop main.log file and emits typed
- * LogEvent objects as new lines are written. Deduplicates events using
- * (event_type, session_id, timestamp) composite key before database insertion.
- *
- * Not implemented until v0.2 — constructor and methods are stubs.
+ * LogWatcher monitors the Claude Desktop main.log file and emits raw lines
+ * as new content is written. Uses chokidar to detect file changes and log
+ * rotation, then reads new bytes from the last known offset.
  */
 export class LogWatcher extends EventEmitter {
   private readonly db: Database.Database;
   private logFilePath: string | null = null;
+  private watcher: chokidar.FSWatcher | null = null;
   private isWatching: boolean = false;
+  private fileOffset: number = 0;
+  private reading: boolean = false;
 
   constructor(db: Database.Database) {
     super();
@@ -36,50 +46,166 @@ export class LogWatcher extends EventEmitter {
   }
 
   /**
-   * Starts watching the log file. Auto-discovers the path via glob
-   * (Claude_* package pattern) if logFilePath is null.
-   *
-   * @see §2.1 "Log file path" and OQ-2 in architecture doc
+   * Starts watching the log file. Uses the path from logPathDiscovery
+   * (CGUI-12) unless an explicit path is provided.
    */
   async start(logFilePath?: string): Promise<void> {
-    // TODO: implement (v0.2)
-    // 1. If logFilePath provided, use it. Otherwise auto-discover via:
-    //    glob('%LOCALAPPDATA%/Packages/Claude_*/LocalCache/Roaming/Claude/logs/main.log')
-    // 2. Verify path exists — if not, emit 'disconnected' and return
-    // 3. Start chokidar watcher on the file
-    // 4. On initial attach: do a full-file backfill (FR-1.10) via readline
-    //    to catch events from when the app was not running
-    // 5. On chokidar 'change': read new lines from last known position (tail mode)
-    // 6. On chokidar 'unlink'/'add' (file rotation): re-open new file from start
-    // 7. Set isWatching = true and emit 'connected'
-    console.log('[logWatcher] start() called — not implemented until v0.2');
+    if (this.isWatching) {
+      console.log('[logWatcher] Already watching, ignoring start()');
+      return;
+    }
+
+    // Resolve the log file path
+    if (logFilePath) {
+      this.logFilePath = logFilePath;
+    } else {
+      const status = getLogPathStatus();
+      if (!status.valid || !status.path) {
+        const reason = status.source === 'not-found'
+          ? 'Claude Desktop log not found — is Claude Desktop installed?'
+          : `Log path invalid: ${status.path}`;
+        console.warn(`[logWatcher] ${reason}`);
+        this.emit('disconnected', reason);
+        return;
+      }
+      this.logFilePath = status.path;
+    }
+
+    // Verify the file exists
+    if (!fs.existsSync(this.logFilePath)) {
+      const reason = `Log file does not exist: ${this.logFilePath}`;
+      console.warn(`[logWatcher] ${reason}`);
+      this.emit('disconnected', reason);
+      return;
+    }
+
+    // Seek to end of file — only tail new content
+    try {
+      const stat = fs.statSync(this.logFilePath);
+      this.fileOffset = stat.size;
+      console.log(`[logWatcher] Starting at offset ${this.fileOffset} (${this.logFilePath})`);
+    } catch (err) {
+      console.error('[logWatcher] Failed to stat log file:', err);
+      this.emit('error', err instanceof Error ? err : new Error(String(err)));
+      return;
+    }
+
+    // Start chokidar watcher — use polling because fs.watch does not
+    // receive change notifications for files inside MSIX package directories
+    this.watcher = chokidar.watch(this.logFilePath, {
+      persistent: true,
+      usePolling: true,
+      interval: 1000,
+    });
+
+    this.watcher.on('change', (filePath) => {
+      this.readNewLines(filePath);
+    });
+
+    this.watcher.on('unlink', () => {
+      // File was deleted — likely log rotation
+      console.log('[logWatcher] Log file removed (rotation detected), waiting for new file...');
+    });
+
+    this.watcher.on('add', (filePath) => {
+      // New file appeared at the same path — rotation complete
+      console.log('[logWatcher] New log file detected after rotation, resetting offset to 0');
+      this.fileOffset = 0;
+      this.readNewLines(filePath);
+    });
+
+    this.watcher.on('error', (err) => {
+      console.error('[logWatcher] Chokidar error:', err);
+      this.emit('error', err);
+    });
+
+    this.isWatching = true;
+    console.log(`[logWatcher] Connected — tailing ${this.logFilePath}`);
+    this.emit('connected', this.logFilePath);
   }
 
   /**
-   * Stops the file watcher and cleans up readline/chokidar instances.
+   * Reads new bytes from the log file starting at the last known offset,
+   * splits into lines, and emits each via the 'line' event.
+   */
+  private readNewLines(filePath: string): void {
+    if (this.reading) return; // Prevent overlapping reads
+    this.reading = true;
+
+    let currentSize: number;
+    try {
+      const stat = fs.statSync(filePath);
+      currentSize = stat.size;
+    } catch {
+      this.reading = false;
+      return; // File may have been deleted during rotation
+    }
+
+    // File was truncated or rotated — reset to beginning
+    if (currentSize < this.fileOffset) {
+      console.log(`[logWatcher] File size shrank (${this.fileOffset} → ${currentSize}), resetting offset`);
+      this.fileOffset = 0;
+    }
+
+    // Nothing new to read
+    if (currentSize === this.fileOffset) {
+      this.reading = false;
+      return;
+    }
+
+    const stream = fs.createReadStream(filePath, {
+      start: this.fileOffset,
+      end: currentSize - 1,
+      encoding: 'utf-8',
+    });
+
+    const rl = readline.createInterface({
+      input: stream,
+      crlfDelay: Infinity,
+    });
+
+    rl.on('line', (line: string) => {
+      if (line.trim()) {
+        console.log(`[logWatcher] ${line}`);
+        this.emit('line', line);
+      }
+    });
+
+    rl.on('close', () => {
+      this.fileOffset = currentSize;
+      this.reading = false;
+    });
+
+    rl.on('error', (err) => {
+      console.error('[logWatcher] Readline error:', err);
+      this.reading = false;
+    });
+  }
+
+  /**
+   * Stops the file watcher and cleans up.
    */
   async stop(): Promise<void> {
-    // TODO: implement (v0.2)
+    if (this.watcher) {
+      await this.watcher.close();
+      this.watcher = null;
+    }
     this.isWatching = false;
-    console.log('[logWatcher] stop() called — not implemented until v0.2');
+    this.fileOffset = 0;
+    this.logFilePath = null;
+    console.log('[logWatcher] Stopped');
+    this.emit('disconnected', 'stopped');
   }
 
   /**
    * Parses a single log line and returns a typed LogEvent or null if the
    * line does not match any known pattern.
+   * Not implemented yet — returns null for all lines (CGUI-14+).
    *
    * @see §2.1 "Captured event patterns" table in architecture doc
    */
   parseLine(line: string): LogEvent | null {
-    // TODO: implement (v0.2)
-    // Match against patterns defined in §2.1:
-    // - 'Starting app {' → app_launch
-    // - 'beforeQuit: handler fired' → app_quit
-    // - 'LocalAgentModeSessions.start:' → cowork_session_created
-    // - 'Lifecycle: ... initializing → running' → cowork_turn_started
-    // - '[Result] Turn succeeded for session X' → cowork_turn_completed
-    // - 'Lifecycle: ... running → idle' → cowork_turn_ended
-    // - '[SkillsPlugin] Window focused' → app_focus
+    // TODO: implement (CGUI-14+)
     return null;
   }
 
