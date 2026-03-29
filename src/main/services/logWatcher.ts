@@ -20,7 +20,14 @@ import type { LogEvent } from '../../shared/ipc-types';
 import { getLogPathStatus } from './logPathDiscovery';
 import { parseLogEvent, isStructuredLine } from './logLineParser';
 import { writeUnmatchedLine } from './unmatchedLogWriter';
-import { insertAppLaunch, closeAppSession } from '../db/queries';
+import {
+  insertAppLaunch,
+  closeAppSession,
+  upsertCoworkSession,
+  updateCoworkSessionCliId,
+  insertCoworkTurn,
+  completeCoworkTurn,
+} from '../db/queries';
 
 /** Events emitted by LogWatcher */
 export interface LogWatcherEvents {
@@ -216,7 +223,24 @@ export class LogWatcher extends EventEmitter {
         case 'app_quit':
           closeAppSession(this.db, event.timestamp);
           break;
-        // Other event types will be handled in subsequent tickets
+        case 'cowork_session_created':
+          upsertCoworkSession(this.db, event.sessionId!, event.timestamp);
+          break;
+        case 'cowork_session_cli_mapped':
+          updateCoworkSessionCliId(
+            this.db,
+            event.sessionId!,
+            event.data!.cliSessionId as string
+          );
+          break;
+        case 'cowork_turn_started':
+          insertCoworkTurn(this.db, event.sessionId!, event.timestamp);
+          break;
+        case 'cowork_turn_ended':
+          completeCoworkTurn(this.db, event.sessionId!, event.timestamp);
+          break;
+        // cowork_turn_completed ([Result] Turn succeeded) is logged but
+        // we use turn_ended (running → idle) for timing since it fires after cleanup
       }
     } catch (err) {
       console.error(`[logWatcher] Failed to persist ${event.type}:`, err);

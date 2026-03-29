@@ -189,6 +189,98 @@ export function closeAppSession(
   `).run(quitAt, quitAt);
 }
 
+// ---------------------------------------------------------------------------
+// Cowork Sessions (log watcher persistence)
+// ---------------------------------------------------------------------------
+
+/**
+ * Creates a cowork session if it doesn't already exist.
+ * Uses INSERT OR IGNORE since session_id has a UNIQUE constraint.
+ */
+export function upsertCoworkSession(
+  db: Database.Database,
+  sessionId: string,
+  startedAt: string,
+  projectPath?: string
+): void {
+  db.prepare(`
+    INSERT OR IGNORE INTO cowork_sessions (session_id, started_at)
+    VALUES (?, ?)
+  `).run(sessionId, startedAt);
+}
+
+/**
+ * Sets the CLI session ID on an existing cowork session.
+ */
+export function updateCoworkSessionCliId(
+  db: Database.Database,
+  sessionId: string,
+  cliSessionId: string
+): void {
+  db.prepare(`
+    UPDATE cowork_sessions SET cli_session_id = ? WHERE session_id = ?
+  `).run(cliSessionId, sessionId);
+}
+
+/**
+ * Records the start of a new cowork turn. The turn stays "open" (ended_at
+ * will be updated by completeCoworkTurn when the turn finishes).
+ *
+ * Dedup: skip if an open turn already exists for this session (started_at
+ * set but ended_at placeholder not yet overwritten).
+ */
+export function insertCoworkTurn(
+  db: Database.Database,
+  sessionId: string,
+  startedAt: string
+): void {
+  // Use a placeholder ended_at that will be overwritten on completion.
+  // We need ended_at NOT NULL per schema, so use empty string as sentinel.
+  db.prepare(`
+    INSERT INTO cowork_turns (session_id, started_at, ended_at)
+    SELECT ?, ?, ''
+    WHERE NOT EXISTS (
+      SELECT 1 FROM cowork_turns
+      WHERE session_id = ? AND ended_at = ''
+    )
+  `).run(sessionId, startedAt, sessionId);
+}
+
+/**
+ * Completes the most recent open turn for a session — sets ended_at,
+ * computes duration_seconds, and increments the session's turn_count.
+ */
+export function completeCoworkTurn(
+  db: Database.Database,
+  sessionId: string,
+  endedAt: string
+): void {
+  const complete = db.transaction(() => {
+    // Close the open turn (ended_at = '' sentinel)
+    db.prepare(`
+      UPDATE cowork_turns
+      SET ended_at = ?,
+          duration_seconds = CAST(
+            (julianday(?) - julianday(started_at)) * 86400 AS INTEGER
+          )
+      WHERE session_id = ? AND ended_at = ''
+    `).run(endedAt, endedAt, sessionId);
+
+    // Increment session turn_count
+    db.prepare(`
+      UPDATE cowork_sessions
+      SET turn_count = turn_count + 1,
+          ended_at = ?
+      WHERE session_id = ?
+    `).run(endedAt, sessionId);
+  });
+  complete();
+}
+
+// ---------------------------------------------------------------------------
+// Table counts
+// ---------------------------------------------------------------------------
+
 /**
  * Returns row counts for each data table (for Settings > Data display).
  */

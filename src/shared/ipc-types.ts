@@ -203,8 +203,10 @@ export interface LogEvent {
     | 'app_launch'
     | 'app_quit'
     | 'cowork_session_created'
+    | 'cowork_session_cli_mapped'
     | 'cowork_turn_started'
     | 'cowork_turn_completed'
+    | 'cowork_turn_ended'
     | 'app_focus';
   timestamp: string;
   sessionId?: string;
