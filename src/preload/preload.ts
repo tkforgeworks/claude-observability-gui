@@ -12,6 +12,7 @@ import type {
   ElectronApi,
   DateRange,
   AppSettings,
+  ConfigPaths,
   DashboardConfig,
   LogEvent,
   ImportSummary,
@@ -19,6 +20,18 @@ import type {
 } from '../shared/ipc-types';
 
 const api: ElectronApi = {
+  // -------------------------------------------------------------------------
+  // configPaths
+  // -------------------------------------------------------------------------
+  configPaths: {
+    get(): Promise<ConfigPaths> {
+      return ipcRenderer.invoke('configPaths:get');
+    },
+    openFolder(folderPath: string): Promise<void> {
+      return ipcRenderer.invoke('configPaths:openFolder', folderPath);
+    },
+  },
+
   // -------------------------------------------------------------------------
   // codeSessions
   // -------------------------------------------------------------------------

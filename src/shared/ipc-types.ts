@@ -162,6 +162,17 @@ export interface SyncStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Config Paths (for Settings view display)
+// ---------------------------------------------------------------------------
+
+export interface ConfigPaths {
+  settingsPath: string;
+  dashboardPath: string;
+  databasePath: string;
+  userDataPath: string;
+}
+
+// ---------------------------------------------------------------------------
 // Push events (main → renderer)
 // ---------------------------------------------------------------------------
 
@@ -183,6 +194,10 @@ export interface LogEvent {
 // ---------------------------------------------------------------------------
 
 export interface ElectronApi {
+  configPaths: {
+    get(): Promise<ConfigPaths>;
+    openFolder(folderPath: string): Promise<void>;
+  };
   codeSessions: {
     getAll(range: DateRange): Promise<CodeSession[]>;
     getByDateRange(range: DateRange): Promise<CodeSession[]>;

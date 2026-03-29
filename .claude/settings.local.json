@@ -24,7 +24,11 @@
       "Bash(npm audit:*)",
       "Bash(npm ls:*)",
       "Bash(npm info:*)",
-      "Bash(npx electron-rebuild:*)"
+      "Bash(npx electron-rebuild:*)",
+      "mcp__claude_ai_Atlassian__getJiraIssue",
+      "mcp__claude_ai_Atlassian__addCommentToJiraIssue",
+      "mcp__claude_ai_Atlassian__getTransitionsForJiraIssue",
+      "mcp__claude_ai_Atlassian__transitionJiraIssue"
     ]
   }
 }

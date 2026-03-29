@@ -4,7 +4,8 @@
  * @see §8 "Settings Panel" in 04-wireframes.md
  */
 
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import type { ConfigPaths } from '../../shared/ipc-types';
 
 type SettingsTab = 'general' | 'remoteSync' | 'dashboard' | 'data';
 
@@ -93,19 +94,95 @@ export default function SettingsView(): React.JSX.Element {
 // Tab panel stubs — each becomes its own component when implemented
 // ---------------------------------------------------------------------------
 
+const pathRowStyles: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  padding: '12px 0',
+  borderBottom: '1px solid #2a2a4a',
+};
+
+const pathLabelStyles: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 600,
+  color: '#8888aa',
+  textTransform: 'uppercase',
+  letterSpacing: '0.5px',
+};
+
+const pathValueStyles: React.CSSProperties = {
+  fontSize: 13,
+  color: '#ccccdd',
+  fontFamily: 'monospace',
+  wordBreak: 'break-all',
+};
+
 function GeneralTab(): React.JSX.Element {
+  const [paths, setPaths] = useState<ConfigPaths | null>(null);
+
+  useEffect(() => {
+    window.api.configPaths.get().then(setPaths);
+  }, []);
+
   // TODO: implement per wireframe §8.1
   // Fields: Log File Path (with Browse button + auto-discovery status)
   //         Claude Code Data Path (with Browse button + last scan info)
   //         cleanupPeriodDays warning banner
   //         Behaviour checkboxes: minimize to tray, launch on startup, notifications
   return (
-    <div style={placeholderStyles}>
-      {/* TODO: Log file path input + auto-discovery status indicator */}
-      {/* TODO: Claude Code data path input + last scan timestamp */}
-      {/* TODO: cleanupPeriodDays warning if set to 30 or less */}
-      {/* TODO: Behavior checkboxes (minimize to tray, launch on startup, notifications) */}
-      General settings — not yet implemented
+    <div style={{ padding: 4 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+          Configuration Files
+        </h3>
+        {paths ? (
+          <>
+            <div style={pathRowStyles}>
+              <span style={pathLabelStyles}>Settings File</span>
+              <span style={pathValueStyles}>{paths.settingsPath}</span>
+            </div>
+            <div style={pathRowStyles}>
+              <span style={pathLabelStyles}>Dashboard Config</span>
+              <span style={pathValueStyles}>{paths.dashboardPath}</span>
+            </div>
+            <div style={pathRowStyles}>
+              <span style={pathLabelStyles}>Database</span>
+              <span style={pathValueStyles}>{paths.databasePath}</span>
+            </div>
+            <div style={{ ...pathRowStyles, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                <span style={pathLabelStyles}>Config Directory</span>
+                <span style={pathValueStyles}>{paths.userDataPath}</span>
+              </div>
+              <button
+                style={{
+                  padding: '6px 14px',
+                  backgroundColor: '#2a2a4a',
+                  border: '1px solid #3a3a5a',
+                  borderRadius: 4,
+                  color: '#ccccdd',
+                  fontSize: 13,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+                onClick={() => window.api.configPaths.openFolder(paths.userDataPath)}
+              >
+                Open Folder
+              </button>
+            </div>
+          </>
+        ) : (
+          <span style={placeholderStyles}>Loading paths...</span>
+        )}
+      </div>
+
+      <div style={placeholderStyles}>
+        {/* TODO: Log file path input + auto-discovery status indicator */}
+        {/* TODO: Claude Code data path input + last scan timestamp */}
+        {/* TODO: cleanupPeriodDays warning if set to 30 or less */}
+        {/* TODO: Behavior checkboxes (minimize to tray, launch on startup, notifications) */}
+        Remaining general settings — not yet implemented
+      </div>
     </div>
   );
 }

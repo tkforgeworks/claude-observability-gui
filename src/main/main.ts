@@ -12,6 +12,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'path';
 import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
+import { ensureConfigFiles } from './config/configStore';
 import { createTray, destroyTray } from './tray';
 
 let mainWindow: BrowserWindow | null = null;
@@ -71,6 +72,9 @@ function createMainWindow(): BrowserWindow {
 // ---------------------------------------------------------------------------
 
 app.whenReady().then(() => {
+  // Create config files with defaults if they don't exist
+  ensureConfigFiles();
+
   // Initialise database — must happen before IPC handlers are registered
   const db = initDatabase();
 

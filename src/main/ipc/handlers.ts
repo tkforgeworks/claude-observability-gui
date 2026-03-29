@@ -7,7 +7,7 @@
  * @see src/shared/ipc-types.ts for request/response shapes
  */
 
-import { ipcMain } from 'electron';
+import { ipcMain, shell } from 'electron';
 import type Database from 'better-sqlite3';
 import type {
   DateRange,
@@ -15,6 +15,7 @@ import type {
   DashboardConfig,
   SyncStatus,
   ImportSummary,
+  ConfigPaths,
 } from '../../shared/ipc-types';
 import {
   queryCodeSessions,
@@ -25,8 +26,15 @@ import {
   recalculateAllCosts,
   queryUnsyncedCounts,
 } from '../db/queries';
-import { DEFAULT_SETTINGS } from '../config/defaultSettings';
-import { DEFAULT_DASHBOARD } from '../config/defaultDashboard';
+import {
+  loadSettings,
+  updateSettings,
+  loadDashboard,
+  saveDashboard,
+  getSettingsPath,
+  getDashboardPath,
+} from '../config/configStore';
+import { getDatabasePath } from '../db/database';
 
 /**
  * Registers all IPC invoke handlers (renderer → main → renderer).
@@ -70,19 +78,34 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // -------------------------------------------------------------------------
+  // configPaths channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('configPaths:get', (): ConfigPaths => {
+    const { app: electronApp } = require('electron');
+    return {
+      settingsPath: getSettingsPath(),
+      dashboardPath: getDashboardPath(),
+      databasePath: getDatabasePath(),
+      userDataPath: electronApp.getPath('userData'),
+    };
+  });
+
+  ipcMain.handle('configPaths:openFolder', (_event, folderPath: string) => {
+    shell.openPath(folderPath);
+  });
+
+  // -------------------------------------------------------------------------
   // settings channels
   // -------------------------------------------------------------------------
 
   ipcMain.handle('settings:get', (): AppSettings => {
-    // TODO: implement — read from %APPDATA%\ClaudeUsageMonitor\settings.json
-    // Fall back to DEFAULT_SETTINGS if file does not exist
-    return DEFAULT_SETTINGS;
+    return loadSettings();
   });
 
   ipcMain.handle('settings:update', (_event, partial: Partial<AppSettings>) => {
-    // TODO: implement — deep-merge partial into current settings and persist to settings.json
-    // safeStorage encryption must be applied to any token fields before writing
-    console.log('[ipc] settings:update received', partial);
+    // TODO: safeStorage encryption for token fields before writing
+    return updateSettings(partial);
   });
 
   // -------------------------------------------------------------------------
@@ -90,13 +113,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // -------------------------------------------------------------------------
 
   ipcMain.handle('dashboard:get', (): DashboardConfig => {
-    // TODO: implement — read from %APPDATA%\ClaudeUsageMonitor\dashboard.json
-    return DEFAULT_DASHBOARD;
+    return loadDashboard();
   });
 
   ipcMain.handle('dashboard:save', (_event, config: DashboardConfig) => {
-    // TODO: implement — write config to dashboard.json
-    console.log('[ipc] dashboard:save received');
+    saveDashboard(config);
   });
 
   // -------------------------------------------------------------------------
@@ -161,6 +182,8 @@ export function registerIpcHandlers(db: Database.Database): void {
  */
 export function unregisterIpcHandlers(): void {
   const channels = [
+    'configPaths:get',
+    'configPaths:openFolder',
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',
