@@ -1,10 +1,12 @@
 /**
  * Today view — default landing screen.
- * Shows four headline metric cards in empty/no-data state.
- * @see §1 "Today View" and §11.1 "First Run — No Data" in 04-wireframes.md
+ * Shows four headline metric cards with real data from TodaySummary.
+ * Handles three states: no data, partial data (code but no cowork), full data.
+ * @see §1 "Today View" and §11.1/§11.2 in 04-wireframes.md
  */
 
-import React from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
+import type { TodaySummary } from '../../shared/ipc-types';
 import MetricCard from '../components/common/MetricCard';
 import EmptyState from '../components/common/EmptyState';
 
@@ -46,44 +48,107 @@ function getTodayLabel(): string {
   });
 }
 
+function formatCost(n: number | null): string {
+  if (n == null || n === 0) return '—';
+  if (n < 0.01) return `$${n.toFixed(4)}`;
+  return `$${n.toFixed(2)}`;
+}
+
+function formatDuration(seconds: number | null): string {
+  if (seconds == null || seconds === 0) return '—';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  if (h > 0) return `~${h}h ${m}m`;
+  return `~${m}m`;
+}
+
 export default function TodayView(): React.JSX.Element {
-  // TODO: replace with useApi(() => window.api.coworkSessions.getSummaryToday())
-  // once the query layer is implemented. Show real values when data is available.
+  const [summary, setSummary] = useState<TodaySummary | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchSummary = useCallback(() => {
+    return window.api.coworkSessions.getSummaryToday()
+      .then(setSummary)
+      .catch(err => {
+        console.error('[TodayView] fetch failed:', err);
+        setSummary(null);
+      });
+  }, []);
+
+  useEffect(() => {
+    fetchSummary().finally(() => setLoading(false));
+  }, [fetchSummary]);
+
+  // Auto-refresh when importer completes a scan
+  useEffect(() => {
+    const unsub = window.api.onImportComplete?.((s) => {
+      if (s.newRecords > 0 || s.updatedRecords > 0) {
+        fetchSummary();
+      }
+    });
+    return () => { unsub?.(); };
+  }, [fetchSummary]);
+
+  const hasAnyData = summary && summary.sessionCount > 0;
+  const hasCodeData = summary && summary.codeSessionCount > 0;
+  const hasCoworkData = summary && summary.coworkSessionCount > 0;
+
+  // Session count card
+  const sessionValue = hasAnyData ? String(summary.sessionCount) : '—';
+  const sessionSecondary = hasAnyData
+    ? `${summary.codeSessionCount} code` + (hasCoworkData ? ` · ${summary.coworkSessionCount} cowork` : '')
+    : 'no data yet';
+
+  // Cowork turns card — partial state aware
+  const turnsValue = hasCoworkData ? String(summary.coworkTurnCount) : '—';
+  const turnsSecondary = hasCoworkData
+    ? (summary.avgTurnDurationSeconds != null
+      ? `avg ${formatDuration(summary.avgTurnDurationSeconds)}`
+      : '')
+    : (hasCodeData ? 'no cowork data yet' : 'no data yet');
+
+  // Cost card
+  const costValue = hasCodeData ? formatCost(summary.codeCostUsd) : '—';
+  const costSecondary = hasCodeData
+    ? `${summary.codeSessionCount} session${summary.codeSessionCount !== 1 ? 's' : ''}`
+    : 'no data yet';
+
+  // Active time card — partial state aware
+  const activeValue = summary?.activeTimeSeconds ? formatDuration(summary.activeTimeSeconds) : '—';
+  const activeSecondary = summary?.lastFocusedAt
+    ? `last seen ${new Date(summary.lastFocusedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+    : (hasCodeData ? 'no cowork data yet' : 'no data yet');
 
   return (
     <div style={viewStyles}>
-      <h1 style={headerStyles}>Today — {getTodayLabel()}</h1>
+      <h1 style={headerStyles}>Last 24 Hours — {getTodayLabel()}</h1>
 
-      {/* Metric cards — empty state per §11.1 wireframe */}
       <div style={metricsRowStyles}>
-        <MetricCard
-          value="—"
-          label="Sessions"
-          secondaryStat="no data yet"
-        />
-        <MetricCard
-          value="—"
-          label="Cowork Turns"
-          secondaryStat="no data yet"
-        />
-        <MetricCard
-          value="—"
-          label="Code Cost Today"
-          secondaryStat="no data yet"
-        />
-        <MetricCard
-          value="—"
-          label="Active Time"
-          secondaryStat="no data yet"
-        />
+        <MetricCard value={sessionValue} label="Sessions" secondaryStat={sessionSecondary} />
+        <MetricCard value={turnsValue} label="Cowork Turns" secondaryStat={turnsSecondary} />
+        <MetricCard value={costValue} label="Code Cost Today" secondaryStat={costSecondary} />
+        <MetricCard value={activeValue} label="Active Time" secondaryStat={activeSecondary} />
       </div>
 
-      {/* Timeline area — empty state */}
       <div style={sectionStyles}>
-        <EmptyState
-          title="No sessions recorded yet"
-          message="The app is scanning for Claude Code data and connecting to the log watcher. Data will appear here automatically."
-        />
+        {loading ? (
+          <span style={{ color: '#8888aa' }}>Loading...</span>
+        ) : !hasAnyData ? (
+          <EmptyState
+            title="No sessions recorded yet"
+            message="The app is scanning for Claude Code data and connecting to the log watcher. Data will appear here automatically."
+          />
+        ) : hasCodeData && !hasCoworkData ? (
+          <EmptyState
+            title="Code sessions found"
+            message="Claude Code session data is being tracked. Cowork session data will appear here once the log watcher connects to Claude Desktop."
+          />
+        ) : (
+          <EmptyState
+            title="Timeline coming soon"
+            message="The session timeline will show your activity throughout the day in a future update."
+          />
+        )}
       </div>
     </div>
   );
