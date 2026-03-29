@@ -146,6 +146,18 @@ export interface CleanupWarning {
 }
 
 // ---------------------------------------------------------------------------
+// Log Path Discovery
+// ---------------------------------------------------------------------------
+
+export type LogPathSource = 'auto-discovered' | 'settings-override' | 'not-found';
+
+export interface LogPathStatus {
+  path: string | null;
+  source: LogPathSource;
+  valid: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Import / Sync
 // ---------------------------------------------------------------------------
 
@@ -207,6 +219,9 @@ export interface ElectronApi {
   configPaths: {
     get(): Promise<ConfigPaths>;
     openFolder(folderPath: string): Promise<void>;
+  };
+  logPath: {
+    getStatus(): Promise<LogPathStatus>;
   };
   dev: {
     clearDatabase(): Promise<void>;

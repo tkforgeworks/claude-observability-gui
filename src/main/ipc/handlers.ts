@@ -17,6 +17,7 @@ import type {
   SyncStatus,
   ImportSummary,
   ConfigPaths,
+  LogPathStatus,
 } from '../../shared/ipc-types';
 import {
   queryCodeSessions,
@@ -36,6 +37,7 @@ import {
   getDashboardPath,
 } from '../config/configStore';
 import { getDatabasePath } from '../db/database';
+import { getLogPathStatus } from '../services/logPathDiscovery';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -134,6 +136,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // -------------------------------------------------------------------------
+  // logPath channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('logPath:getStatus', (): LogPathStatus => {
+    return getLogPathStatus();
+  });
+
+  // -------------------------------------------------------------------------
   // settings channels
   // -------------------------------------------------------------------------
 
@@ -223,6 +233,7 @@ export function unregisterIpcHandlers(): void {
     'dev:clearDatabase',
     'configPaths:get',
     'configPaths:openFolder',
+    'logPath:getStatus',
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',

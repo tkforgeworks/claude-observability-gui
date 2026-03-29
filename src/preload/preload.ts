@@ -16,6 +16,7 @@ import type {
   ConfigPaths,
   DashboardConfig,
   LogEvent,
+  LogPathStatus,
   ImportSummary,
   SyncStatus,
 } from '../shared/ipc-types';
@@ -30,6 +31,15 @@ const api: ElectronApi = {
     },
     openFolder(folderPath: string): Promise<void> {
       return ipcRenderer.invoke('configPaths:openFolder', folderPath);
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // logPath
+  // -------------------------------------------------------------------------
+  logPath: {
+    getStatus(): Promise<LogPathStatus> {
+      return ipcRenderer.invoke('logPath:getStatus');
     },
   },
 

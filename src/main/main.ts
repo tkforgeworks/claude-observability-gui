@@ -15,6 +15,7 @@ import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles } from './config/configStore';
 import { createTray, destroyTray } from './tray';
 import { JsonlImporter } from './importers/jsonlImporter';
+import { discoverLogPath } from './services/logPathDiscovery';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
@@ -89,7 +90,10 @@ app.whenReady().then(() => {
   // Create system tray icon
   createTray(win);
 
-  // TODO (v0.2): Start LogWatcher
+  // Discover Claude Desktop log path (MSIX auto-discovery)
+  discoverLogPath();
+
+  // TODO (v0.2): Start LogWatcher using discovered path
   // const logWatcher = new LogWatcher(db);
   // logWatcher.start();
 

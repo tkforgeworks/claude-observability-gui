@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import type { ConfigPaths } from '../../shared/ipc-types';
+import type { ConfigPaths, LogPathStatus } from '../../shared/ipc-types';
 
 type SettingsTab = 'general' | 'remoteSync' | 'dashboard' | 'data';
 
@@ -117,6 +117,81 @@ const pathValueStyles: React.CSSProperties = {
   wordBreak: 'break-all',
 };
 
+const statusBadgeStyles = (color: string): React.CSSProperties => ({
+  display: 'inline-block',
+  padding: '2px 10px',
+  borderRadius: 12,
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: '0.3px',
+  textTransform: 'uppercase',
+  backgroundColor: color === 'green' ? '#1a3a1a' : color === 'amber' ? '#3a3a1a' : '#3a1a1a',
+  color: color === 'green' ? '#44cc44' : color === 'amber' ? '#ccaa44' : '#cc4444',
+  border: `1px solid ${color === 'green' ? '#2a4a2a' : color === 'amber' ? '#4a4a2a' : '#4a2a2a'}`,
+});
+
+const warningBannerStyles: React.CSSProperties = {
+  padding: '10px 14px',
+  backgroundColor: '#3a2a1a',
+  border: '1px solid #4a3a2a',
+  borderRadius: 6,
+  color: '#ccaa44',
+  fontSize: 13,
+  marginTop: 8,
+};
+
+function LogPathSection(): React.JSX.Element {
+  const [status, setStatus] = useState<LogPathStatus | null>(null);
+
+  useEffect(() => {
+    window.api.logPath.getStatus().then(setStatus);
+  }, []);
+
+  if (!status) {
+    return <span style={placeholderStyles}>Checking log path...</span>;
+  }
+
+  const badgeColor = status.valid ? 'green' : status.source === 'not-found' ? 'amber' : 'red';
+  const badgeLabel = status.valid
+    ? 'Connected'
+    : status.source === 'not-found'
+      ? 'Not Found'
+      : 'Invalid Path';
+  const sourceLabel = status.source === 'auto-discovered'
+    ? 'Auto-discovered (MSIX)'
+    : status.source === 'settings-override'
+      ? 'Settings override'
+      : 'No path found';
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        Claude Desktop Log
+      </h3>
+      <div style={pathRowStyles}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <span style={pathLabelStyles}>Log File Path</span>
+          <span style={statusBadgeStyles(badgeColor)}>{badgeLabel}</span>
+        </div>
+        {status.path ? (
+          <span style={pathValueStyles}>{status.path}</span>
+        ) : (
+          <span style={{ ...pathValueStyles, color: '#666688', fontStyle: 'italic' }}>
+            Claude Desktop not detected — install it or set a path override in settings.json
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: '#666688' }}>{sourceLabel}</span>
+      </div>
+      {status.source === 'settings-override' && !status.valid && (
+        <div style={warningBannerStyles}>
+          The log file path override in settings does not point to a valid file.
+          Remove the override to re-enable auto-discovery, or correct the path.
+        </div>
+      )}
+    </div>
+  );
+}
+
 function GeneralTab(): React.JSX.Element {
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
 
@@ -124,13 +199,10 @@ function GeneralTab(): React.JSX.Element {
     window.api.configPaths.get().then(setPaths);
   }, []);
 
-  // TODO: implement per wireframe §8.1
-  // Fields: Log File Path (with Browse button + auto-discovery status)
-  //         Claude Code Data Path (with Browse button + last scan info)
-  //         cleanupPeriodDays warning banner
-  //         Behaviour checkboxes: minimize to tray, launch on startup, notifications
   return (
     <div style={{ padding: 4 }}>
+      <LogPathSection />
+
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
           Configuration Files
@@ -177,7 +249,6 @@ function GeneralTab(): React.JSX.Element {
       </div>
 
       <div style={placeholderStyles}>
-        {/* TODO: Log file path input + auto-discovery status indicator */}
         {/* TODO: Claude Code data path input + last scan timestamp */}
         {/* TODO: cleanupPeriodDays warning if set to 30 or less */}
         {/* TODO: Behavior checkboxes (minimize to tray, launch on startup, notifications) */}
