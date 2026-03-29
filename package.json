@@ -13,7 +13,8 @@
     "build:renderer": "webpack --config webpack.renderer.config.js",
     "compile": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "electron-builder",
+    "test": "jest"
   },
   "keywords": [
     "claude",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.13",
+    "@types/jest": "^30.0.0",
     "@types/node": "^20.17.6",
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.1",
@@ -43,7 +45,9 @@
     "electron": "^41.1.0",
     "electron-builder": "^26.8.1",
     "html-webpack-plugin": "^5.6.6",
+    "jest": "^30.3.0",
     "style-loader": "^4.0.0",
+    "ts-jest": "^29.4.6",
     "ts-loader": "^9.5.1",
     "typescript": "^5.6.3",
     "webpack": "^5.95.0",
