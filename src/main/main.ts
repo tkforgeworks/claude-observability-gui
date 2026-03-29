@@ -97,6 +97,9 @@ app.whenReady().then(() => {
 
   // Start LogWatcher — tails Claude Desktop main.log for new lines
   logWatcher = new LogWatcher(db);
+  logWatcher.on('event', (event) => {
+    win.webContents.send('logWatcher:newEvent', event);
+  });
   logWatcher.start();
 
   // Start JSONL importer: scan on startup, then every 5 minutes

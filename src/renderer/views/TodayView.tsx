@@ -89,6 +89,14 @@ export default function TodayView(): React.JSX.Element {
     return () => { unsub?.(); };
   }, [fetchSummary]);
 
+  // Auto-refresh when log watcher persists a new event
+  useEffect(() => {
+    const unsub = window.api.onLogWatcherEvent?.(() => {
+      fetchSummary();
+    });
+    return () => { unsub?.(); };
+  }, [fetchSummary]);
+
   const hasAnyData = summary && summary.sessionCount > 0;
   const hasCodeData = summary && summary.codeSessionCount > 0;
   const hasCoworkData = summary && summary.coworkSessionCount > 0;
