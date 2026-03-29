@@ -25,6 +25,7 @@ import {
   queryTodaySummary,
   queryCoworkSessions,
   queryCoworkTurns,
+  queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
 } from '../db/queries';
@@ -144,6 +145,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // -------------------------------------------------------------------------
+  // data channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('data:getTableCounts', (): Record<string, number> => {
+    return queryTableCounts(db);
+  });
+
+  // -------------------------------------------------------------------------
   // settings channels
   // -------------------------------------------------------------------------
 
@@ -234,6 +243,7 @@ export function unregisterIpcHandlers(): void {
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
+    'data:getTableCounts',
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',

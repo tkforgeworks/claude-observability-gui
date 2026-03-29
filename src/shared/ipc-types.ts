@@ -223,6 +223,9 @@ export interface ElectronApi {
   logPath: {
     getStatus(): Promise<LogPathStatus>;
   };
+  data: {
+    getTableCounts(): Promise<Record<string, number>>;
+  };
   dev: {
     clearDatabase(): Promise<void>;
   };

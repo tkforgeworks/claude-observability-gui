@@ -143,6 +143,73 @@ export function queryCoworkTurns(
 }
 
 // ---------------------------------------------------------------------------
+// App Sessions
+// ---------------------------------------------------------------------------
+
+/**
+ * Inserts an app launch record. Deduplicates using a 5-second window —
+ * Claude Desktop emits `Starting app {` twice within ~1 second on startup,
+ * so we skip the insert if a launch already exists within 5 seconds.
+ */
+export function insertAppLaunch(
+  db: Database.Database,
+  launchedAt: string
+): void {
+  db.prepare(`
+    INSERT INTO app_sessions (launched_at)
+    SELECT ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM app_sessions
+      WHERE ABS(julianday(launched_at) - julianday(?)) * 86400 < 5
+    )
+  `).run(launchedAt, launchedAt);
+}
+
+/**
+ * Closes the most recent open app session (quit_at IS NULL) by setting
+ * quit_at and computing duration_seconds. If no open session exists, this
+ * is a no-op (the monitor may have missed the launch event).
+ */
+export function closeAppSession(
+  db: Database.Database,
+  quitAt: string
+): void {
+  db.prepare(`
+    UPDATE app_sessions
+    SET quit_at = ?,
+        duration_seconds = CAST(
+          (julianday(?) - julianday(launched_at)) * 86400 AS INTEGER
+        )
+    WHERE id = (
+      SELECT id FROM app_sessions
+      WHERE quit_at IS NULL
+      ORDER BY launched_at DESC
+      LIMIT 1
+    )
+  `).run(quitAt, quitAt);
+}
+
+/**
+ * Returns row counts for each data table (for Settings > Data display).
+ */
+export function queryTableCounts(db: Database.Database): Record<string, number> {
+  const tables = [
+    'app_sessions',
+    'code_sessions',
+    'cowork_sessions',
+    'cowork_turns',
+    'chat_conversations',
+    'app_focus_events',
+  ];
+  const counts: Record<string, number> = {};
+  for (const table of tables) {
+    const row = db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as { cnt: number };
+    counts[table] = row.cnt;
+  }
+  return counts;
+}
+
+// ---------------------------------------------------------------------------
 // Cost recalculation
 // ---------------------------------------------------------------------------
 

@@ -303,10 +303,33 @@ const dangerButtonStyles: React.CSSProperties = {
   cursor: 'pointer',
 };
 
+const tableCountRowStyles: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'space-between',
+  padding: '6px 0',
+  borderBottom: '1px solid #2a2a4a',
+  fontSize: 13,
+};
+
+const TABLE_LABELS: Record<string, string> = {
+  app_sessions: 'App Sessions',
+  code_sessions: 'Code Sessions',
+  cowork_sessions: 'Cowork Sessions',
+  cowork_turns: 'Cowork Turns',
+  chat_conversations: 'Chat Conversations',
+  app_focus_events: 'Focus Events',
+};
+
 function DataTab(): React.JSX.Element {
   const [clearing, setClearing] = useState(false);
   const [cleared, setCleared] = useState(false);
+  const [tableCounts, setTableCounts] = useState<Record<string, number> | null>(null);
 
+  useEffect(() => {
+    window.api.data.getTableCounts().then(setTableCounts);
+  }, []);
+
+  // Refresh counts after clearing the database
   const handleClearDatabase = async () => {
     const confirmed = window.confirm(
       'This will permanently delete ALL data from the database (code sessions, cowork sessions, etc.). ' +
@@ -319,27 +342,49 @@ function DataTab(): React.JSX.Element {
       await window.api.dev.clearDatabase();
       setCleared(true);
       setTimeout(() => setCleared(false), 3000);
+      // Refresh counts
+      const counts = await window.api.data.getTableCounts();
+      setTableCounts(counts);
     } finally {
       setClearing(false);
     }
   };
 
   // TODO: implement per wireframe §8.4
-  // Database stats (path, size, mode, table row counts)
+  // Database stats (path, size, mode)
   // Backup Database and Open Folder buttons
   // Chat Import drop zone (same as ChatHistoryView)
   // Log Watcher Status panel
   // Recalculate Costs button (calls window.api.costs.recalculate())
   return (
     <div style={{ padding: 4 }}>
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+          Table Row Counts
+        </h3>
+        {tableCounts ? (
+          <div>
+            {Object.entries(TABLE_LABELS).map(([key, label]) => (
+              <div key={key} style={tableCountRowStyles}>
+                <span style={{ color: '#8888aa' }}>{label}</span>
+                <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>
+                  {(tableCounts[key] ?? 0).toLocaleString()}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <span style={placeholderStyles}>Loading...</span>
+        )}
+      </div>
+
       <div style={placeholderStyles}>
         {/* TODO: Database info (path, size, WAL mode) */}
-        {/* TODO: Table row counts table */}
         {/* TODO: Backup Database and Open Folder buttons */}
         {/* TODO: Chat import drop zone */}
         {/* TODO: Log watcher status */}
         {/* TODO: Recalculate Costs action button */}
-        Data management — not yet implemented
+        Remaining data management — not yet implemented
       </div>
 
       <div style={{ marginTop: 32, padding: '16px', borderTop: '1px solid #3a2a2a' }}>

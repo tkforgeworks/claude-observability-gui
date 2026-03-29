@@ -3,11 +3,12 @@
  * Tails the Claude Desktop main.log file using chokidar for file watching
  * and fs.createReadStream + readline for line-by-line reading.
  *
- * Lines are emitted as 'line' events on the EventEmitter. Parsing into
- * typed LogEvent objects is handled by a separate module (CGUI-14+).
+ * Each line is parsed via logLineParser. Matched events are emitted as typed
+ * LogEvent objects and persisted to SQLite. Unmatched structured lines are
+ * written to a rotating debug log file.
  *
  * @see §2.1 of architecture doc for full specification
- * @see CGUI-13
+ * @see CGUI-13 (tailing), CGUI-14 (parsing)
  */
 
 import { EventEmitter } from 'events';
@@ -17,10 +18,12 @@ import chokidar from 'chokidar';
 import type Database from 'better-sqlite3';
 import type { LogEvent } from '../../shared/ipc-types';
 import { getLogPathStatus } from './logPathDiscovery';
+import { parseLogEvent, isStructuredLine } from './logLineParser';
+import { writeUnmatchedLine } from './unmatchedLogWriter';
+import { insertAppLaunch, closeAppSession } from '../db/queries';
 
 /** Events emitted by LogWatcher */
 export interface LogWatcherEvents {
-  line: (line: string) => void;
   event: (logEvent: LogEvent) => void;
   error: (err: Error) => void;
   connected: (path: string) => void;
@@ -28,9 +31,9 @@ export interface LogWatcherEvents {
 }
 
 /**
- * LogWatcher monitors the Claude Desktop main.log file and emits raw lines
- * as new content is written. Uses chokidar to detect file changes and log
- * rotation, then reads new bytes from the last known offset.
+ * LogWatcher monitors the Claude Desktop main.log file and emits typed
+ * LogEvent objects as new lines are written. Persists app lifecycle events
+ * to SQLite. Unmatched lines go to a rotating debug log.
  */
 export class LogWatcher extends EventEmitter {
   private readonly db: Database.Database;
@@ -126,7 +129,7 @@ export class LogWatcher extends EventEmitter {
 
   /**
    * Reads new bytes from the log file starting at the last known offset,
-   * splits into lines, and emits each via the 'line' event.
+   * splits into lines, parses each, and routes to the appropriate handler.
    */
   private readNewLines(filePath: string): void {
     if (this.reading) return; // Prevent overlapping reads
@@ -165,10 +168,8 @@ export class LogWatcher extends EventEmitter {
     });
 
     rl.on('line', (line: string) => {
-      if (line.trim()) {
-        console.log(`[logWatcher] ${line}`);
-        this.emit('line', line);
-      }
+      if (!line.trim()) return;
+      this.processLine(line);
     });
 
     rl.on('close', () => {
@@ -180,6 +181,46 @@ export class LogWatcher extends EventEmitter {
       console.error('[logWatcher] Readline error:', err);
       this.reading = false;
     });
+  }
+
+  /**
+   * Processes a single line: parse, persist if matched, or write to
+   * unmatched log if it's a structured line that didn't match.
+   */
+  private processLine(line: string): void {
+    const event = parseLogEvent(line);
+
+    if (event) {
+      console.log(`[logWatcher:parsed] ${event.type} @ ${event.timestamp}`);
+      this.handleEvent(event);
+      this.emit('event', event);
+      return;
+    }
+
+    // Only log structured lines (with timestamp prefix) to unmatched file.
+    // Multi-line continuations (JSON bodies etc.) are silently dropped.
+    if (isStructuredLine(line)) {
+      writeUnmatchedLine(line);
+    }
+  }
+
+  /**
+   * Persists a parsed event to SQLite.
+   */
+  private handleEvent(event: LogEvent): void {
+    try {
+      switch (event.type) {
+        case 'app_launch':
+          insertAppLaunch(this.db, event.timestamp);
+          break;
+        case 'app_quit':
+          closeAppSession(this.db, event.timestamp);
+          break;
+        // Other event types will be handled in subsequent tickets
+      }
+    } catch (err) {
+      console.error(`[logWatcher] Failed to persist ${event.type}:`, err);
+    }
   }
 
   /**
@@ -195,18 +236,6 @@ export class LogWatcher extends EventEmitter {
     this.logFilePath = null;
     console.log('[logWatcher] Stopped');
     this.emit('disconnected', 'stopped');
-  }
-
-  /**
-   * Parses a single log line and returns a typed LogEvent or null if the
-   * line does not match any known pattern.
-   * Not implemented yet — returns null for all lines (CGUI-14+).
-   *
-   * @see §2.1 "Captured event patterns" table in architecture doc
-   */
-  parseLine(line: string): LogEvent | null {
-    // TODO: implement (CGUI-14+)
-    return null;
   }
 
   /**
