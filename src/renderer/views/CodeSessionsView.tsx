@@ -6,6 +6,8 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { CodeSession, CleanupWarning, ImportSummary } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import CostByProjectChart from '../components/common/CostByProjectChart';
+import ModelDistributionChart from '../components/common/ModelDistributionChart';
 
 // ---------------------------------------------------------------------------
 // Styles
@@ -366,6 +368,11 @@ export default function CodeSessionsView(): React.JSX.Element {
           </span>
         </div>
       )}
+
+      <div style={{ display: 'flex', gap: 16 }}>
+        <CostByProjectChart sessions={sessions} />
+        <ModelDistributionChart sessions={sessions} />
+      </div>
 
       <div style={summaryBarStyles}>
         <span><span style={summaryValueStyles}>{totals.count}</span> sessions</span>
