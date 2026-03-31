@@ -12,6 +12,7 @@ import type {
   CodeSession,
   CoworkSession,
   CoworkTurn,
+  DailyActivity,
   TodaySummary,
   TimelineEntry,
   DateRange,
@@ -375,6 +376,56 @@ export function closeAllOpenCoworkSessions(
     `).run(closedAt);
   });
   close();
+}
+
+// ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns daily session counts for the last 7 days (rolling window ending today).
+ * Queries code_sessions and cowork_sessions independently, then merges by date
+ * to avoid JOIN pitfalls between unrelated tables.
+ */
+export function queryWeeklyActivity(db: Database.Database): DailyActivity[] {
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  const codeDays = db.prepare<[string, string], { date: string; cnt: number; cost: number | null }>(`
+    SELECT DATE(started_at) as date, COUNT(*) as cnt, SUM(cost_usd) as cost
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, '-6 days')
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+  `).all(today, today);
+
+  const coworkDays = db.prepare<[string, string], { date: string; cnt: number; turns: number | null }>(`
+    SELECT DATE(started_at) as date, COUNT(*) as cnt, SUM(turn_count) as turns
+    FROM cowork_sessions
+    WHERE DATE(started_at) >= DATE(?, '-6 days')
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+  `).all(today, today);
+
+  // Build a map for all 7 days, filling gaps with zeros
+  const codeMap = new Map(codeDays.map(r => [r.date, r]));
+  const coworkMap = new Map(coworkDays.map(r => [r.date, r]));
+
+  const result: DailyActivity[] = [];
+  for (let i = 6; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const code = codeMap.get(dateStr);
+    const cowork = coworkMap.get(dateStr);
+    result.push({
+      date: dateStr,
+      codeCount: code?.cnt ?? 0,
+      coworkCount: cowork?.cnt ?? 0,
+      codeCost: code?.cost ?? 0,
+      coworkTurns: cowork?.turns ?? 0,
+    });
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -6,10 +6,11 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { TodaySummary, TimelineEntry, LogHealthStatus } from '../../shared/ipc-types';
+import type { TodaySummary, TimelineEntry, DailyActivity, LogHealthStatus } from '../../shared/ipc-types';
 import MetricCard from '../components/common/MetricCard';
 import EmptyState from '../components/common/EmptyState';
 import StatusBanner from '../components/common/StatusBanner';
+import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 
 const viewStyles: React.CSSProperties = {
@@ -67,6 +68,7 @@ function formatDuration(seconds: number | null): string {
 export default function TodayView(): React.JSX.Element {
   const [summary, setSummary] = useState<TodaySummary | null>(null);
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
+  const [weeklyActivity, setWeeklyActivity] = useState<DailyActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [logHealthWarning, setLogHealthWarning] = useState(false);
 
@@ -74,10 +76,12 @@ export default function TodayView(): React.JSX.Element {
     return Promise.all([
       window.api.coworkSessions.getSummaryToday().then(setSummary),
       window.api.coworkSessions.getTimeline().then(setTimeline),
+      window.api.analytics.getWeeklyActivity().then(setWeeklyActivity),
     ]).catch(err => {
       console.error('[TodayView] fetch failed:', err);
       setSummary(null);
       setTimeline([]);
+      setWeeklyActivity([]);
     });
   }, []);
 
@@ -159,6 +163,10 @@ export default function TodayView(): React.JSX.Element {
         <MetricCard value={costValue} label="Code Cost Today" secondaryStat={costSecondary} />
         <MetricCard value={activeValue} label="Active Time" secondaryStat={activeSecondary} />
       </div>
+
+      {weeklyActivity.some(d => d.codeCount > 0 || d.coworkCount > 0) && (
+        <WeeklyActivityChart data={weeklyActivity} />
+      )}
 
       {loading ? (
         <div style={sectionStyles}>

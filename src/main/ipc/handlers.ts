@@ -26,6 +26,7 @@ import {
   queryTodayTimeline,
   queryCoworkSessions,
   queryCoworkTurns,
+  queryWeeklyActivity,
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -237,6 +238,14 @@ export function registerIpcHandlers(db: Database.Database): void {
     // TODO: implement — call recalculateAllCosts(db), then emit scan complete event
     recalculateAllCosts(db);
   });
+
+  // -------------------------------------------------------------------------
+  // analytics channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('analytics:getWeeklyActivity', () => {
+    return queryWeeklyActivity(db);
+  });
 }
 
 /**
@@ -268,6 +277,7 @@ export function unregisterIpcHandlers(): void {
     'sync:setToken',
     'sync:testConnection',
     'costs:recalculate',
+    'analytics:getWeeklyActivity',
   ];
 
   for (const channel of channels) {

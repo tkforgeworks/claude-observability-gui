@@ -204,6 +204,18 @@ export interface ConfigPaths {
 }
 
 // ---------------------------------------------------------------------------
+// Analytics
+// ---------------------------------------------------------------------------
+
+export interface DailyActivity {
+  date: string;          // YYYY-MM-DD
+  codeCount: number;
+  coworkCount: number;
+  codeCost: number;      // sum of cost_usd for code sessions
+  coworkTurns: number;   // sum of turns for cowork sessions
+}
+
+// ---------------------------------------------------------------------------
 // Log Health Status
 // ---------------------------------------------------------------------------
 
@@ -281,6 +293,9 @@ export interface ElectronApi {
   };
   costs: {
     recalculate(): Promise<void>;
+  };
+  analytics: {
+    getWeeklyActivity(): Promise<DailyActivity[]>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;

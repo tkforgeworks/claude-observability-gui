@@ -10,6 +10,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronApi,
+  DailyActivity,
   DateRange,
   AppSettings,
   CleanupWarning,
@@ -155,6 +156,15 @@ const api: ElectronApi = {
   costs: {
     recalculate(): Promise<void> {
       return ipcRenderer.invoke('costs:recalculate');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // analytics
+  // -------------------------------------------------------------------------
+  analytics: {
+    getWeeklyActivity(): Promise<DailyActivity[]> {
+      return ipcRenderer.invoke('analytics:getWeeklyActivity');
     },
   },
 
