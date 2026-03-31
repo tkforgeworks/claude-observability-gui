@@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronApi,
   DailyActivity,
+  HeatmapDay,
   DateRange,
   AppSettings,
   CleanupWarning,
@@ -165,6 +166,9 @@ const api: ElectronApi = {
   analytics: {
     getWeeklyActivity(): Promise<DailyActivity[]> {
       return ipcRenderer.invoke('analytics:getWeeklyActivity');
+    },
+    getHeatmapData(days: number): Promise<HeatmapDay[]> {
+      return ipcRenderer.invoke('analytics:getHeatmapData', days);
     },
   },
 

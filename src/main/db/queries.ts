@@ -13,6 +13,7 @@ import type {
   CoworkSession,
   CoworkTurn,
   DailyActivity,
+  HeatmapDay,
   TodaySummary,
   TimelineEntry,
   DateRange,
@@ -438,6 +439,65 @@ export function queryWeeklyActivity(db: Database.Database): DailyActivity[] {
       coworkCount: cowork?.cnt ?? 0,
       codeCost: code?.cost ?? 0,
       coworkTurns: cowork?.turns ?? 0,
+    });
+  }
+  return result;
+}
+
+/**
+ * Returns daily heatmap data for the last `days` days (default 365),
+ * with cowork session counts and code token breakdowns.
+ * Used by the Usage Heatmap view (CGUI-23).
+ */
+export function queryHeatmapData(
+  db: Database.Database,
+  days: number = 365
+): HeatmapDay[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  const codeDays = db.prepare<[string, string], {
+    date: string; cnt: number;
+    input_tok: number | null; output_tok: number | null;
+    cache_read_tok: number | null; cache_create_tok: number | null;
+  }>(`
+    SELECT DATE(started_at) as date, COUNT(*) as cnt,
+           SUM(COALESCE(input_tokens, 0)) as input_tok,
+           SUM(COALESCE(output_tokens, 0)) as output_tok,
+           SUM(COALESCE(cache_read_tokens, 0)) as cache_read_tok,
+           SUM(COALESCE(cache_creation_tokens, 0)) as cache_create_tok
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+  `).all(today, today);
+
+  const coworkDays = db.prepare<[string, string], { date: string; cnt: number }>(`
+    SELECT DATE(started_at) as date, COUNT(*) as cnt
+    FROM cowork_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+  `).all(today, today);
+
+  const codeMap = new Map(codeDays.map(r => [r.date, r]));
+  const coworkMap = new Map(coworkDays.map(r => [r.date, r]));
+
+  const result: HeatmapDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const code = codeMap.get(dateStr);
+    const cowork = coworkMap.get(dateStr);
+    result.push({
+      date: dateStr,
+      coworkCount: cowork?.cnt ?? 0,
+      codeCount: code?.cnt ?? 0,
+      inputTokens: code?.input_tok ?? 0,
+      outputTokens: code?.output_tok ?? 0,
+      cacheReadTokens: code?.cache_read_tok ?? 0,
+      cacheCreationTokens: code?.cache_create_tok ?? 0,
     });
   }
   return result;

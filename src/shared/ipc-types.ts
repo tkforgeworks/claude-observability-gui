@@ -218,6 +218,20 @@ export interface DailyActivity {
 }
 
 // ---------------------------------------------------------------------------
+// Heatmap
+// ---------------------------------------------------------------------------
+
+export interface HeatmapDay {
+  date: string;          // YYYY-MM-DD
+  coworkCount: number;
+  codeCount: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheCreationTokens: number;
+}
+
+// ---------------------------------------------------------------------------
 // Log Health Status
 // ---------------------------------------------------------------------------
 
@@ -298,6 +312,7 @@ export interface ElectronApi {
   };
   analytics: {
     getWeeklyActivity(): Promise<DailyActivity[]>;
+    getHeatmapData(days: number): Promise<HeatmapDay[]>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
