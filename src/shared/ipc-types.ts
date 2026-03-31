@@ -43,9 +43,11 @@ export interface CoworkSession {
   session_id: string;
   cli_session_id: string | null;
   title: string | null;
+  project_path: string | null;
   started_at: string;
   ended_at: string | null;
   turn_count: number;
+  avg_turn_seconds: number | null;
 }
 
 export interface CoworkTurn {

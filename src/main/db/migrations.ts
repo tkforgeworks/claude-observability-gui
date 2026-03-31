@@ -115,6 +115,10 @@ export const MIGRATIONS: Migration[] = [
     version: 2,
     sql: `ALTER TABLE code_sessions ADD COLUMN slug TEXT;`,
   },
+  {
+    version: 3,
+    sql: `ALTER TABLE cowork_sessions ADD COLUMN project_path TEXT;`,
+  },
 ];
 
 /**

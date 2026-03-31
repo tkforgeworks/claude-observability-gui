@@ -285,7 +285,10 @@ export class LogWatcher extends EventEmitter {
           closeAllOpenCoworkSessions(this.db, event.timestamp);
           return closeAppSession(this.db, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_session_created':
-          return upsertCoworkSession(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
+          return upsertCoworkSession(
+            this.db, event.sessionId!, event.timestamp,
+            event.data?.projectPath as string | undefined
+          ) ? 'new' : 'deduped';
         case 'cowork_session_cli_mapped':
           return updateCoworkSessionCliId(
             this.db,

@@ -183,8 +183,18 @@ export function queryCoworkSessions(
   db: Database.Database,
   range: DateRange
 ): CoworkSession[] {
-  // TODO: implement — SELECT from cowork_sessions WHERE started_at BETWEEN range.from AND range.to ORDER BY started_at DESC
-  throw new UnsupportedOperationError('queryCoworkSessions');
+  const stmt = db.prepare(`
+    SELECT cs.id, cs.session_id, cs.cli_session_id, cs.title, cs.project_path,
+           cs.started_at, cs.ended_at, cs.turn_count,
+           (SELECT AVG(ct.duration_seconds) FROM cowork_turns ct
+            WHERE ct.session_id = cs.session_id
+              AND ct.ended_at != '' AND ct.duration_seconds IS NOT NULL
+           ) as avg_turn_seconds
+    FROM cowork_sessions cs
+    WHERE cs.started_at >= ? AND cs.started_at <= ?
+    ORDER BY cs.started_at DESC
+  `);
+  return stmt.all(range.from, range.to) as CoworkSession[];
 }
 
 /**
@@ -194,8 +204,13 @@ export function queryCoworkTurns(
   db: Database.Database,
   sessionId: string
 ): CoworkTurn[] {
-  // TODO: implement — SELECT from cowork_turns WHERE session_id = sessionId ORDER BY started_at
-  throw new UnsupportedOperationError('queryCoworkTurns');
+  const stmt = db.prepare(`
+    SELECT id, session_id, started_at, ended_at, duration_seconds
+    FROM cowork_turns
+    WHERE session_id = ? AND ended_at != ''
+    ORDER BY started_at ASC
+  `);
+  return stmt.all(sessionId) as CoworkTurn[];
 }
 
 // ---------------------------------------------------------------------------
@@ -262,9 +277,9 @@ export function upsertCoworkSession(
   projectPath?: string
 ): boolean {
   const result = db.prepare(`
-    INSERT OR IGNORE INTO cowork_sessions (session_id, started_at)
-    VALUES (?, ?)
-  `).run(sessionId, startedAt);
+    INSERT OR IGNORE INTO cowork_sessions (session_id, started_at, project_path)
+    VALUES (?, ?, ?)
+  `).run(sessionId, startedAt, projectPath ?? null);
   return result.changes > 0;
 }
 
