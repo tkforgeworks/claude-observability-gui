@@ -16,6 +16,7 @@ import type {
   ConfigPaths,
   DashboardConfig,
   LogEvent,
+  LogHealthStatus,
   LogPathStatus,
   ImportSummary,
   SyncStatus,
@@ -166,6 +167,13 @@ const api: ElectronApi = {
       callback(data);
     ipcRenderer.on('logWatcher:newEvent', handler);
     return () => ipcRenderer.removeListener('logWatcher:newEvent', handler);
+  },
+
+  onLogWatcherHealth(callback: (status: LogHealthStatus) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, data: LogHealthStatus) =>
+      callback(data);
+    ipcRenderer.on('logWatcher:healthStatus', handler);
+    return () => ipcRenderer.removeListener('logWatcher:healthStatus', handler);
   },
 
   onScanStarted(callback: () => void): () => void {

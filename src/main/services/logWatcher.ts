@@ -16,7 +16,7 @@ import fs from 'fs';
 import readline from 'readline';
 import chokidar from 'chokidar';
 import type Database from 'better-sqlite3';
-import type { LogEvent } from '../../shared/ipc-types';
+import type { LogEvent, LogHealthStatus } from '../../shared/ipc-types';
 import { getLogPathStatus } from './logPathDiscovery';
 import { parseLogEvent, isStructuredLine } from './logLineParser';
 import { writeUnmatchedLine } from './unmatchedLogWriter';
@@ -30,9 +30,16 @@ import {
   completeCoworkTurn,
 } from '../db/queries';
 
+/** How often the health check runs (ms) */
+const HEALTH_CHECK_INTERVAL_MS = 60_000;
+
+/** Time without a successful parse before warning (ms) — 5 min for testing */
+const HEALTH_STALE_THRESHOLD_MS = 5 * 60_000;
+
 /** Events emitted by LogWatcher */
 export interface LogWatcherEvents {
   event: (logEvent: LogEvent) => void;
+  healthStatus: (status: LogHealthStatus) => void;
   error: (err: Error) => void;
   connected: (path: string) => void;
   disconnected: (reason: string) => void;
@@ -50,6 +57,12 @@ export class LogWatcher extends EventEmitter {
   private isWatching: boolean = false;
   private fileOffset: number = 0;
   private reading: boolean = false;
+
+  // Health check state
+  private healthCheckTimer: ReturnType<typeof setInterval> | null = null;
+  private lastParsedAt: Date | null = null;
+  private lastCheckedFileSize: number = 0;
+  private healthy: boolean = true;
 
   constructor(db: Database.Database) {
     super();
@@ -128,6 +141,9 @@ export class LogWatcher extends EventEmitter {
     this.isWatching = true;
     console.log(`[logWatcher] Connected — tailing ${this.logFilePath}`);
     this.emit('connected', this.logFilePath);
+
+    // Start periodic health check
+    this.healthCheckTimer = setInterval(() => this.runHealthCheck(), HEALTH_CHECK_INTERVAL_MS);
   }
 
   /**
@@ -155,6 +171,10 @@ export class LogWatcher extends EventEmitter {
         }
       }
 
+      if (matched > 0) {
+        this.lastParsedAt = new Date();
+      }
+      this.lastCheckedFileSize = stat.size;
       this.fileOffset = stat.size;
       console.log(`[logWatcher] Backfill complete: ${matched} events parsed, ${persisted} persisted to DB`);
     } catch (err) {
@@ -233,8 +253,14 @@ export class LogWatcher extends EventEmitter {
 
     if (event) {
       console.log(`[logWatcher:parsed] ${event.type} @ ${event.timestamp}`);
+      this.lastParsedAt = new Date();
       this.handleEvent(event);
       this.emit('event', event);
+      // Clear warning immediately when a parse succeeds
+      if (!this.healthy) {
+        this.healthy = true;
+        this.emitHealthStatus();
+      }
       return;
     }
 
@@ -280,9 +306,59 @@ export class LogWatcher extends EventEmitter {
   }
 
   /**
+   * Checks whether the log file has grown since the last check without
+   * any successful event parses within the stale threshold window.
+   * Emits a healthStatus event when the state changes.
+   */
+  private runHealthCheck(): void {
+    if (!this.logFilePath) return;
+
+    let currentSize: number;
+    try {
+      currentSize = fs.statSync(this.logFilePath).size;
+    } catch {
+      return; // File may be temporarily unavailable during rotation
+    }
+
+    const fileGrew = currentSize > this.lastCheckedFileSize;
+    this.lastCheckedFileSize = currentSize;
+
+    if (!fileGrew) return; // No growth — nothing to warn about
+
+    const now = Date.now();
+    const msSinceLastParse = this.lastParsedAt
+      ? now - this.lastParsedAt.getTime()
+      : Infinity;
+
+    const shouldBeHealthy = msSinceLastParse < HEALTH_STALE_THRESHOLD_MS;
+
+    if (shouldBeHealthy !== this.healthy) {
+      this.healthy = shouldBeHealthy;
+      this.emitHealthStatus();
+    }
+  }
+
+  /**
+   * Emits the current health status to listeners.
+   */
+  private emitHealthStatus(): void {
+    const status: LogHealthStatus = {
+      healthy: this.healthy,
+      lastParsedAt: this.lastParsedAt?.toISOString() ?? null,
+      fileSizeBytes: this.lastCheckedFileSize,
+    };
+    console.log(`[logWatcher] Health status changed: ${this.healthy ? 'OK' : 'WARNING'}`);
+    this.emit('healthStatus', status);
+  }
+
+  /**
    * Stops the file watcher and cleans up.
    */
   async stop(): Promise<void> {
+    if (this.healthCheckTimer) {
+      clearInterval(this.healthCheckTimer);
+      this.healthCheckTimer = null;
+    }
     if (this.watcher) {
       await this.watcher.close();
       this.watcher = null;

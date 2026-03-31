@@ -100,6 +100,9 @@ app.whenReady().then(() => {
   logWatcher.on('event', (event) => {
     win.webContents.send('logWatcher:newEvent', event);
   });
+  logWatcher.on('healthStatus', (status) => {
+    win.webContents.send('logWatcher:healthStatus', status);
+  });
   logWatcher.start();
 
   // Start JSONL importer: scan on startup, then every 5 minutes

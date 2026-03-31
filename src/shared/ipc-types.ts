@@ -204,6 +204,16 @@ export interface ConfigPaths {
 }
 
 // ---------------------------------------------------------------------------
+// Log Health Status
+// ---------------------------------------------------------------------------
+
+export interface LogHealthStatus {
+  healthy: boolean;
+  lastParsedAt: string | null;  // ISO 8601 timestamp of last successful parse
+  fileSizeBytes: number;
+}
+
+// ---------------------------------------------------------------------------
 // Push events (main → renderer)
 // ---------------------------------------------------------------------------
 
@@ -274,6 +284,7 @@ export interface ElectronApi {
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
+  onLogWatcherHealth(callback: (status: LogHealthStatus) => void): () => void;
   onScanStarted(callback: () => void): () => void;
   onImportComplete(callback: (summary: ImportSummary) => void): () => void;
   onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void;
