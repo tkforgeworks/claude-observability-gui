@@ -17,6 +17,7 @@ import type {
   HeatmapDay,
   TodaySummary,
   TimelineEntry,
+  TurnDurationDay,
   DateRange,
 } from '../../shared/ipc-types';
 
@@ -596,6 +597,56 @@ function formatProjectPath(p: string | null): string {
   if (!p) return '(unknown)';
   const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
   return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
+}
+
+// ---------------------------------------------------------------------------
+// Turn Duration Trend
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns daily average Cowork turn duration for the last `days` days.
+ * Only includes completed turns (ended_at != '' and duration_seconds > 0).
+ * Days with no turns are included with zero values so the chart has no gaps.
+ */
+export function queryTurnDurationTrend(
+  db: Database.Database,
+  days: number = 30
+): TurnDurationDay[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  const rows = db.prepare<[string, string], {
+    date: string;
+    avg_dur: number;
+    cnt: number;
+  }>(`
+    SELECT DATE(started_at) as date,
+           AVG(duration_seconds) as avg_dur,
+           COUNT(*) as cnt
+    FROM cowork_turns
+    WHERE ended_at != ''
+      AND duration_seconds > 0
+      AND DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+    ORDER BY date ASC
+  `).all(today, today);
+
+  const dataMap = new Map(rows.map(r => [r.date, r]));
+
+  const result: TurnDurationDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const row = dataMap.get(dateStr);
+    result.push({
+      date: dateStr,
+      avgDurationSeconds: row ? Math.round(row.avg_dur) : 0,
+      turnCount: row?.cnt ?? 0,
+    });
+  }
+  return result;
 }
 
 // ---------------------------------------------------------------------------

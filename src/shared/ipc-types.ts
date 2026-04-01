@@ -209,6 +209,12 @@ export interface ConfigPaths {
 // Analytics
 // ---------------------------------------------------------------------------
 
+export interface TurnDurationDay {
+  date: string;            // YYYY-MM-DD
+  avgDurationSeconds: number;
+  turnCount: number;
+}
+
 export interface CacheEfficiencyData {
   project: string;           // shortened project path
   efficiencyPct: number;     // cache_read / (cache_read + input) * 100
@@ -325,6 +331,7 @@ export interface ElectronApi {
     getWeeklyActivity(): Promise<DailyActivity[]>;
     getHeatmapData(days: number): Promise<HeatmapDay[]>;
     getCacheEfficiency(days: number): Promise<CacheEfficiencyData[]>;
+    getTurnDurationTrend(days: number): Promise<TurnDurationDay[]>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;

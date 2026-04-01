@@ -6,6 +6,7 @@
 import React from 'react';
 import EmptyState from '../components/common/EmptyState';
 import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
+import TurnDurationChart from '../components/common/TurnDurationChart';
 import { useApi } from '../hooks/useApi';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
@@ -65,20 +66,27 @@ export default function TrendsView(): React.JSX.Element {
 
   const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
 
-  const { data: cacheData, loading } = useApi(
+  const { data: cacheData, loading: cacheLoading } = useApi(
     () => window.api.analytics.getCacheEfficiency(days),
     [days]
   );
 
-  // TODO: implement remaining 6 trend widgets per wireframe §7:
-  //   7.2 Turn Duration Trend — line chart with 7-day moving average
+  const { data: turnData, loading: turnLoading } = useApi(
+    () => window.api.analytics.getTurnDurationTrend(days),
+    [days]
+  );
+
+  // TODO: implement remaining 5 trend widgets per wireframe §7:
   //   7.3 Cost Velocity — headline + daily cost bar chart
   //   7.4 Session Density — sessions per hour line chart
   //   7.5 Model Migration Tracking — stacked area chart
   //   7.6 Project Activity Timeline — Gantt-style chart
   //   7.7 Usage Patterns Summary — metric card grid + hourly distribution bar
 
-  const hasData = cacheData && cacheData.length > 0;
+  const loading = cacheLoading || turnLoading;
+  const hasCacheData = cacheData && cacheData.length > 0;
+  const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
+  const hasAnyData = hasCacheData || hasTurnData;
 
   return (
     <div style={viewStyles}>
@@ -99,8 +107,11 @@ export default function TrendsView(): React.JSX.Element {
 
       {loading ? (
         <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
-      ) : hasData ? (
-        <CacheEfficiencyChart data={cacheData} />
+      ) : hasAnyData ? (
+        <>
+          {hasCacheData && <CacheEfficiencyChart data={cacheData} />}
+          {hasTurnData && <TurnDurationChart data={turnData} />}
+        </>
       ) : (
         <EmptyState
           title="No trend data available"
