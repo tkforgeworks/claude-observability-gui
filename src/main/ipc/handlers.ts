@@ -33,6 +33,8 @@ import {
   queryDailyCosts,
   querySessionDensity,
   queryModelMix,
+  queryProjectTimeline,
+  queryUsagePatterns,
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -276,6 +278,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getModelMix', (_event: unknown, days: number) => {
     return queryModelMix(db, days);
   });
+
+  ipcMain.handle('analytics:getProjectTimeline', (_event: unknown, days: number) => {
+    return queryProjectTimeline(db, days);
+  });
+
+  ipcMain.handle('analytics:getUsagePatterns', (_event: unknown, days: number) => {
+    return queryUsagePatterns(db, days);
+  });
 }
 
 /**
@@ -314,6 +324,8 @@ export function unregisterIpcHandlers(): void {
     'analytics:getDailyCosts',
     'analytics:getSessionDensity',
     'analytics:getModelMix',
+    'analytics:getProjectTimeline',
+    'analytics:getUsagePatterns',
   ];
 
   for (const channel of channels) {

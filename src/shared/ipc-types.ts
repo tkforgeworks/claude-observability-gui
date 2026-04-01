@@ -209,6 +209,24 @@ export interface ConfigPaths {
 // Analytics
 // ---------------------------------------------------------------------------
 
+export interface ProjectTimelineRow {
+  project: string;
+  activeDates: string[];     // YYYY-MM-DD dates with sessions
+}
+
+export interface UsagePatternsData {
+  hourlyDistribution: number[];  // 24 elements, index = hour, value = session count
+  dailyDistribution: number[];   // 7 elements, index = 0=Sun..6=Sat, value = session count
+  peakHour: number;              // 0-23
+  peakDay: number;               // 0=Sun..6=Sat
+  currentStreak: number;         // consecutive days ending today/yesterday
+  longestStreak: number;
+  avgSessionsPerDay: number;
+  avgCostPerDay: number;
+  totalSessions: number;
+  totalActiveDays: number;
+}
+
 export interface SessionDensityDay {
   date: string;              // YYYY-MM-DD
   sessionCount: number;      // total code + cowork sessions
@@ -354,6 +372,8 @@ export interface ElectronApi {
     getDailyCosts(days: number): Promise<DailyCostData[]>;
     getSessionDensity(days: number): Promise<SessionDensityDay[]>;
     getModelMix(days: number): Promise<{ days: ModelMixDay[]; models: string[] }>;
+    getProjectTimeline(days: number): Promise<{ rows: ProjectTimelineRow[]; dateRange: string[] }>;
+    getUsagePatterns(days: number): Promise<UsagePatternsData>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;

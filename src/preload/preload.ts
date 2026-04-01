@@ -13,7 +13,9 @@ import type {
   CacheEfficiencyData,
   DailyCostData,
   ModelMixDay,
+  ProjectTimelineRow,
   SessionDensityDay,
+  UsagePatternsData,
   TurnDurationDay,
   DailyActivity,
   HeatmapDay,
@@ -189,6 +191,12 @@ const api: ElectronApi = {
     },
     getModelMix(days: number): Promise<{ days: ModelMixDay[]; models: string[] }> {
       return ipcRenderer.invoke('analytics:getModelMix', days);
+    },
+    getProjectTimeline(days: number): Promise<{ rows: ProjectTimelineRow[]; dateRange: string[] }> {
+      return ipcRenderer.invoke('analytics:getProjectTimeline', days);
+    },
+    getUsagePatterns(days: number): Promise<UsagePatternsData> {
+      return ipcRenderer.invoke('analytics:getUsagePatterns', days);
     },
   },
 

@@ -1,5 +1,5 @@
 /**
- * Trends view — scrollable page with time range selector and widget cards.
+ * Trends view — scrollable page with time range selector and 7 widget cards.
  * @see §7 "Trends View" in 04-wireframes.md
  */
 
@@ -10,6 +10,8 @@ import TurnDurationChart from '../components/common/TurnDurationChart';
 import CostVelocityChart from '../components/common/CostVelocityChart';
 import SessionDensityChart from '../components/common/SessionDensityChart';
 import ModelMigrationChart from '../components/common/ModelMigrationChart';
+import ProjectTimelineChart from '../components/common/ProjectTimelineChart';
+import UsagePatternsCard from '../components/common/UsagePatternsCard';
 import { useApi } from '../hooks/useApi';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
@@ -94,17 +96,27 @@ export default function TrendsView(): React.JSX.Element {
     [days]
   );
 
-  // TODO: implement remaining 2 trend widgets per wireframe §7:
-  //   7.6 Project Activity Timeline — Gantt-style chart
-  //   7.7 Usage Patterns Summary — metric card grid + hourly distribution bar
+  const { data: timelineData, loading: timelineLoading } = useApi(
+    () => window.api.analytics.getProjectTimeline(days),
+    [days]
+  );
 
-  const loading = cacheLoading || turnLoading || costLoading || densityLoading || modelMixLoading;
+  const { data: patternsData, loading: patternsLoading } = useApi(
+    () => window.api.analytics.getUsagePatterns(days),
+    [days]
+  );
+
+  const loading = cacheLoading || turnLoading || costLoading
+    || densityLoading || modelMixLoading || timelineLoading || patternsLoading;
   const hasCacheData = cacheData && cacheData.length > 0;
   const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
   const hasCostData = costData && costData.some(d => d.costUsd > 0);
   const hasDensityData = densityData && densityData.some(d => d.sessionCount > 0);
   const hasModelData = modelMixData && modelMixData.models.length > 0;
-  const hasAnyData = hasCacheData || hasTurnData || hasCostData || hasDensityData || hasModelData;
+  const hasTimelineData = timelineData && timelineData.rows.length > 0;
+  const hasPatternsData = patternsData && patternsData.totalSessions > 0;
+  const hasAnyData = hasCacheData || hasTurnData || hasCostData
+    || hasDensityData || hasModelData || hasTimelineData || hasPatternsData;
 
   return (
     <div style={viewStyles}>
@@ -127,10 +139,12 @@ export default function TrendsView(): React.JSX.Element {
         <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
       ) : hasAnyData ? (
         <>
+          {hasPatternsData && <UsagePatternsCard data={patternsData} />}
           {hasCostData && <CostVelocityChart data={costData} />}
           {hasCacheData && <CacheEfficiencyChart data={cacheData} />}
           {hasTurnData && <TurnDurationChart data={turnData} />}
           {hasDensityData && <SessionDensityChart data={densityData} />}
+          {hasTimelineData && <ProjectTimelineChart rows={timelineData.rows} dateRange={timelineData.dateRange} />}
           {hasModelData && <ModelMigrationChart data={modelMixData.days} models={modelMixData.models} />}
         </>
       ) : (

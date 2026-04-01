@@ -17,10 +17,12 @@ import type {
   DailyCostData,
   HeatmapDay,
   ModelMixDay,
+  ProjectTimelineRow,
   SessionDensityDay,
   TodaySummary,
   TimelineEntry,
   TurnDurationDay,
+  UsagePatternsData,
   DateRange,
 } from '../../shared/ipc-types';
 
@@ -823,6 +825,171 @@ export function queryModelMix(
   }
 
   return { days: result, models };
+}
+
+// ---------------------------------------------------------------------------
+// Project Timeline
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns per-project active dates for the last `days` days.
+ * Each project gets a list of dates it had at least one code session.
+ * Also returns the full date range array for the renderer to lay out columns.
+ * Sorted by session count descending. Pagination handled by renderer.
+ */
+export function queryProjectTimeline(
+  db: Database.Database,
+  days: number = 30
+): { rows: ProjectTimelineRow[]; dateRange: string[] } {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  const rows = db.prepare<[string, string], {
+    project_path: string | null;
+    date: string;
+  }>(`
+    SELECT project_path, DATE(started_at) as date
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY project_path, DATE(started_at)
+    ORDER BY project_path, date
+  `).all(today, today);
+
+  // Group by project
+  const projectMap = new Map<string, Set<string>>();
+  const countMap = new Map<string, number>();
+  for (const r of rows) {
+    const key = formatProjectPath(r.project_path);
+    if (!projectMap.has(key)) projectMap.set(key, new Set());
+    projectMap.get(key)!.add(r.date);
+    countMap.set(key, (countMap.get(key) ?? 0) + 1);
+  }
+
+  // Sort by session count descending
+  const sorted = Array.from(projectMap.entries())
+    .sort((a, b) => (countMap.get(b[0]) ?? 0) - (countMap.get(a[0]) ?? 0));
+
+  const projectRows: ProjectTimelineRow[] = sorted.map(([project, dates]) => ({
+    project,
+    activeDates: Array.from(dates).sort(),
+  }));
+
+  // Full date range
+  const dateRange: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    dateRange.push(d.toISOString().slice(0, 10));
+  }
+
+  return { rows: projectRows, dateRange };
+}
+
+// ---------------------------------------------------------------------------
+// Usage Patterns
+// ---------------------------------------------------------------------------
+
+/**
+ * Computes usage pattern statistics for the last `days` days.
+ * Combines code and cowork sessions for hourly/daily distribution,
+ * streaks, and averages.
+ */
+export function queryUsagePatterns(
+  db: Database.Database,
+  days: number = 30
+): UsagePatternsData {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  // All session timestamps and costs within range
+  const sessions = db.prepare<[string, string, string, string], {
+    started_at: string;
+    cost: number;
+  }>(`
+    SELECT started_at, COALESCE(cost_usd, 0) as cost FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+    UNION ALL
+    SELECT started_at, 0 as cost FROM cowork_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+  `).all(today, today, today, today);
+
+  // Hourly distribution (0-23)
+  const hourly = new Array(24).fill(0);
+  // Daily distribution (0=Sun..6=Sat)
+  const daily = new Array(7).fill(0);
+  // Dates with activity
+  const activeDateSet = new Set<string>();
+  let totalCost = 0;
+
+  for (const s of sessions) {
+    const d = new Date(s.started_at);
+    hourly[d.getHours()]++;
+    daily[d.getDay()]++;
+    activeDateSet.add(s.started_at.slice(0, 10));
+    totalCost += s.cost;
+  }
+
+  const totalSessions = sessions.length;
+  const totalActiveDays = activeDateSet.size;
+
+  // Peak hour and day
+  const peakHour = hourly.indexOf(Math.max(...hourly));
+  const peakDay = daily.indexOf(Math.max(...daily));
+
+  // Averages
+  const avgSessionsPerDay = totalActiveDays > 0
+    ? Math.round((totalSessions / totalActiveDays) * 10) / 10
+    : 0;
+  const avgCostPerDay = totalActiveDays > 0
+    ? Math.round((totalCost / totalActiveDays) * 100) / 100
+    : 0;
+
+  // Streaks — consecutive calendar days with sessions
+  const activeDates = Array.from(activeDateSet).sort();
+  let currentStreak = 0;
+  let longestStreak = 0;
+  let streak = 0;
+
+  // Build full date list and check consecutiveness
+  const allDates: string[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    allDates.push(d.toISOString().slice(0, 10));
+  }
+
+  for (const dateStr of allDates) {
+    if (activeDateSet.has(dateStr)) {
+      streak++;
+      longestStreak = Math.max(longestStreak, streak);
+    } else {
+      streak = 0;
+    }
+  }
+
+  // Current streak: count backwards from today (or yesterday if today has no data yet)
+  currentStreak = 0;
+  for (let i = allDates.length - 1; i >= 0; i--) {
+    if (activeDateSet.has(allDates[i])) {
+      currentStreak++;
+    } else {
+      break;
+    }
+  }
+
+  return {
+    hourlyDistribution: hourly,
+    dailyDistribution: daily,
+    peakHour,
+    peakDay,
+    currentStreak,
+    longestStreak,
+    avgSessionsPerDay,
+    avgCostPerDay,
+    totalSessions,
+    totalActiveDays,
+  };
 }
 
 // ---------------------------------------------------------------------------
