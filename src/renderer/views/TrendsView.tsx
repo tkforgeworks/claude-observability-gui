@@ -7,6 +7,7 @@ import React from 'react';
 import EmptyState from '../components/common/EmptyState';
 import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
 import TurnDurationChart from '../components/common/TurnDurationChart';
+import CostVelocityChart from '../components/common/CostVelocityChart';
 import { useApi } from '../hooks/useApi';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
@@ -76,17 +77,22 @@ export default function TrendsView(): React.JSX.Element {
     [days]
   );
 
-  // TODO: implement remaining 5 trend widgets per wireframe §7:
-  //   7.3 Cost Velocity — headline + daily cost bar chart
+  const { data: costData, loading: costLoading } = useApi(
+    () => window.api.analytics.getDailyCosts(days),
+    [days]
+  );
+
+  // TODO: implement remaining 4 trend widgets per wireframe §7:
   //   7.4 Session Density — sessions per hour line chart
   //   7.5 Model Migration Tracking — stacked area chart
   //   7.6 Project Activity Timeline — Gantt-style chart
   //   7.7 Usage Patterns Summary — metric card grid + hourly distribution bar
 
-  const loading = cacheLoading || turnLoading;
+  const loading = cacheLoading || turnLoading || costLoading;
   const hasCacheData = cacheData && cacheData.length > 0;
   const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
-  const hasAnyData = hasCacheData || hasTurnData;
+  const hasCostData = costData && costData.some(d => d.costUsd > 0);
+  const hasAnyData = hasCacheData || hasTurnData || hasCostData;
 
   return (
     <div style={viewStyles}>
@@ -109,6 +115,7 @@ export default function TrendsView(): React.JSX.Element {
         <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
       ) : hasAnyData ? (
         <>
+          {hasCostData && <CostVelocityChart data={costData} />}
           {hasCacheData && <CacheEfficiencyChart data={cacheData} />}
           {hasTurnData && <TurnDurationChart data={turnData} />}
         </>

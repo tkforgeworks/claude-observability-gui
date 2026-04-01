@@ -14,6 +14,7 @@ import type {
   CoworkSession,
   CoworkTurn,
   DailyActivity,
+  DailyCostData,
   HeatmapDay,
   TodaySummary,
   TimelineEntry,
@@ -644,6 +645,55 @@ export function queryTurnDurationTrend(
       date: dateStr,
       avgDurationSeconds: row ? Math.round(row.avg_dur) : 0,
       turnCount: row?.cnt ?? 0,
+    });
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Daily Costs
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns daily cost totals for the last `days` days from code_sessions.
+ * Fetches `days + 7` extra days so the caller can compute a "prior 7d"
+ * comparison window. Days with no sessions are filled with zero.
+ */
+export function queryDailyCosts(
+  db: Database.Database,
+  days: number = 30
+): DailyCostData[] {
+  const totalDays = days + 7; // extra week for prior-period comparison
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${totalDays - 1} days'`;
+
+  const rows = db.prepare<[string, string], {
+    date: string;
+    cost: number;
+    cnt: number;
+  }>(`
+    SELECT DATE(started_at) as date,
+           SUM(COALESCE(cost_usd, 0)) as cost,
+           COUNT(*) as cnt
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at)
+    ORDER BY date ASC
+  `).all(today, today);
+
+  const dataMap = new Map(rows.map(r => [r.date, r]));
+
+  const result: DailyCostData[] = [];
+  for (let i = totalDays - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const row = dataMap.get(dateStr);
+    result.push({
+      date: dateStr,
+      costUsd: row ? Math.round(row.cost * 10000) / 10000 : 0,
+      sessionCount: row?.cnt ?? 0,
     });
   }
   return result;

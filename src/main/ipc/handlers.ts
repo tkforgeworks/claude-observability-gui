@@ -30,6 +30,7 @@ import {
   queryHeatmapData,
   queryCacheEfficiency,
   queryTurnDurationTrend,
+  queryDailyCosts,
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -261,6 +262,10 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getTurnDurationTrend', (_event: unknown, days: number) => {
     return queryTurnDurationTrend(db, days);
   });
+
+  ipcMain.handle('analytics:getDailyCosts', (_event: unknown, days: number) => {
+    return queryDailyCosts(db, days);
+  });
 }
 
 /**
@@ -296,6 +301,7 @@ export function unregisterIpcHandlers(): void {
     'analytics:getHeatmapData',
     'analytics:getCacheEfficiency',
     'analytics:getTurnDurationTrend',
+    'analytics:getDailyCosts',
   ];
 
   for (const channel of channels) {

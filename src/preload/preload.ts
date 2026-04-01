@@ -11,6 +11,7 @@ import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronApi,
   CacheEfficiencyData,
+  DailyCostData,
   TurnDurationDay,
   DailyActivity,
   HeatmapDay,
@@ -177,6 +178,9 @@ const api: ElectronApi = {
     },
     getTurnDurationTrend(days: number): Promise<TurnDurationDay[]> {
       return ipcRenderer.invoke('analytics:getTurnDurationTrend', days);
+    },
+    getDailyCosts(days: number): Promise<DailyCostData[]> {
+      return ipcRenderer.invoke('analytics:getDailyCosts', days);
     },
   },
 

@@ -209,6 +209,12 @@ export interface ConfigPaths {
 // Analytics
 // ---------------------------------------------------------------------------
 
+export interface DailyCostData {
+  date: string;            // YYYY-MM-DD
+  costUsd: number;
+  sessionCount: number;
+}
+
 export interface TurnDurationDay {
   date: string;            // YYYY-MM-DD
   avgDurationSeconds: number;
@@ -332,6 +338,7 @@ export interface ElectronApi {
     getHeatmapData(days: number): Promise<HeatmapDay[]>;
     getCacheEfficiency(days: number): Promise<CacheEfficiencyData[]>;
     getTurnDurationTrend(days: number): Promise<TurnDurationDay[]>;
+    getDailyCosts(days: number): Promise<DailyCostData[]>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
