@@ -350,6 +350,7 @@ export interface ElectronApi {
   dashboard: {
     get(): Promise<DashboardConfig>;
     save(config: DashboardConfig): Promise<void>;
+    reset(): Promise<DashboardConfig>;
   };
   chatImport: {
     start(filePath: string): Promise<ImportSummary>;

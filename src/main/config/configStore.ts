@@ -69,6 +69,11 @@ export function saveDashboard(config: DashboardConfig): void {
   writeJsonFile(getDashboardPath(), config);
 }
 
+export function resetDashboard(): DashboardConfig {
+  writeJsonFile(getDashboardPath(), DEFAULT_DASHBOARD);
+  return DEFAULT_DASHBOARD;
+}
+
 /**
  * Creates settings.json and dashboard.json with defaults if they don't exist.
  * Called once from main.ts on startup.

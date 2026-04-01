@@ -44,6 +44,7 @@ import {
   updateSettings,
   loadDashboard,
   saveDashboard,
+  resetDashboard,
   getSettingsPath,
   getDashboardPath,
 } from '../config/configStore';
@@ -192,6 +193,10 @@ export function registerIpcHandlers(db: Database.Database): void {
     saveDashboard(config);
   });
 
+  ipcMain.handle('dashboard:reset', (): DashboardConfig => {
+    return resetDashboard();
+  });
+
   // -------------------------------------------------------------------------
   // chatImport channels
   // -------------------------------------------------------------------------
@@ -311,6 +316,7 @@ export function unregisterIpcHandlers(): void {
     'settings:update',
     'dashboard:get',
     'dashboard:save',
+    'dashboard:reset',
     'chatImport:start',
     'sync:getStatus',
     'sync:triggerNow',

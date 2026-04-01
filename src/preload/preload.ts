@@ -129,6 +129,9 @@ const api: ElectronApi = {
     save(config: DashboardConfig): Promise<void> {
       return ipcRenderer.invoke('dashboard:save', config);
     },
+    reset(): Promise<DashboardConfig> {
+      return ipcRenderer.invoke('dashboard:reset');
+    },
   },
 
   // -------------------------------------------------------------------------

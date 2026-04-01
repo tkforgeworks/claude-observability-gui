@@ -6,21 +6,19 @@
 
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import type { ViewId } from '../../../shared/ipc-types';
+import { useDashboardConfig } from '../../contexts/DashboardConfigContext';
 
-interface NavItem {
-  to: string;
-  label: string;
-  icon: string;
-}
+const VIEW_META: Partial<Record<ViewId, { label: string; icon: string }>> = {
+  today:   { label: 'Today',   icon: '◉' },
+  cowork:  { label: 'Cowork',  icon: '⟳' },
+  code:    { label: 'Code',    icon: '<>' },
+  chat:    { label: 'Chat',    icon: '💬' },
+  trends:  { label: 'Trends',  icon: '⤴' },
+  heatmap: { label: 'Heatmap', icon: '▦' },
+};
 
-const NAV_ITEMS: NavItem[] = [
-  { to: '/today',  label: 'Today',   icon: '◉' },
-  { to: '/cowork', label: 'Cowork',  icon: '⟳' },
-  { to: '/code',   label: 'Code',    icon: '<>' },
-  { to: '/chat',   label: 'Chat',    icon: '💬' },
-  { to: '/trends', label: 'Trends',  icon: '⤴' },
-  { to: '/heatmap',label: 'Heatmap', icon: '▦' },
-];
+const ALL_VIEW_IDS: ViewId[] = ['today', 'cowork', 'code', 'chat', 'trends', 'heatmap'];
 
 const sidebarStyles: React.CSSProperties = {
   width: 160,
@@ -59,19 +57,30 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
 }
 
 export default function Sidebar(): React.JSX.Element {
+  const { config } = useDashboardConfig();
+
+  // While config loads, show all views to prevent sidebar flash
+  const visibleIds: ViewId[] = config
+    ? config.views.filter(v => v.visible).map(v => v.id)
+    : ALL_VIEW_IDS;
+
   return (
     <nav style={sidebarStyles} aria-label="Main navigation">
       <div style={navStyles}>
-        {NAV_ITEMS.map((item) => (
-          <NavLink
-            key={item.to}
-            to={item.to}
-            style={({ isActive }) => navLinkStyle(isActive)}
-          >
-            <span aria-hidden="true">{item.icon}</span>
-            <span>{item.label}</span>
-          </NavLink>
-        ))}
+        {visibleIds.map((id) => {
+          const meta = VIEW_META[id];
+          if (!meta) return null;
+          return (
+            <NavLink
+              key={id}
+              to={`/${id}`}
+              style={({ isActive }) => navLinkStyle(isActive)}
+            >
+              <span aria-hidden="true">{meta.icon}</span>
+              <span>{meta.label}</span>
+            </NavLink>
+          );
+        })}
       </div>
 
       {/* Settings pinned to bottom */}

@@ -15,6 +15,7 @@ import ChatHistoryView from './views/ChatHistoryView';
 import TrendsView from './views/TrendsView';
 import HeatmapView from './views/HeatmapView';
 import SettingsView from './views/SettingsView';
+import { DashboardConfigProvider, useDashboardConfig } from './contexts/DashboardConfigContext';
 
 const appStyles: React.CSSProperties = {
   display: 'flex',
@@ -25,24 +26,33 @@ const appStyles: React.CSSProperties = {
   color: '#e0e0e0',
 };
 
+function DefaultRedirect(): React.JSX.Element {
+  const { config } = useDashboardConfig();
+  const landing = config?.views.find(v => v.defaultLanding && v.visible);
+  const target = landing ? `/${landing.id}` : '/today';
+  return <Navigate to={target} replace />;
+}
+
 export default function App(): React.JSX.Element {
   return (
     <HashRouter>
-      <div style={appStyles}>
-        <Sidebar />
-        <ContentArea>
-          <Routes>
-            <Route path="/" element={<Navigate to="/today" replace />} />
-            <Route path="/today" element={<TodayView />} />
-            <Route path="/cowork" element={<CoworkSessionsView />} />
-            <Route path="/code" element={<CodeSessionsView />} />
-            <Route path="/chat" element={<ChatHistoryView />} />
-            <Route path="/trends" element={<TrendsView />} />
-            <Route path="/heatmap" element={<HeatmapView />} />
-            <Route path="/settings" element={<SettingsView />} />
-          </Routes>
-        </ContentArea>
-      </div>
+      <DashboardConfigProvider>
+        <div style={appStyles}>
+          <Sidebar />
+          <ContentArea>
+            <Routes>
+              <Route path="/" element={<DefaultRedirect />} />
+              <Route path="/today" element={<TodayView />} />
+              <Route path="/cowork" element={<CoworkSessionsView />} />
+              <Route path="/code" element={<CodeSessionsView />} />
+              <Route path="/chat" element={<ChatHistoryView />} />
+              <Route path="/trends" element={<TrendsView />} />
+              <Route path="/heatmap" element={<HeatmapView />} />
+              <Route path="/settings" element={<SettingsView />} />
+            </Routes>
+          </ContentArea>
+        </div>
+      </DashboardConfigProvider>
     </HashRouter>
   );
 }

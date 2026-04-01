@@ -26,6 +26,9 @@
   "author": "Tim Klimpel / tkforgeworks",
   "license": "MIT",
   "dependencies": {
+    "@dnd-kit/core": "^6.3.1",
+    "@dnd-kit/sortable": "^10.0.0",
+    "@dnd-kit/utilities": "^3.2.2",
     "better-sqlite3": "^12.8.0",
     "chokidar": "^3.6.0",
     "electron-store": "^8.2.0",

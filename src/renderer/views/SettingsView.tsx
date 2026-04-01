@@ -4,8 +4,26 @@
  * @see §8 "Settings Panel" in 04-wireframes.md
  */
 
-import React, { useEffect, useState } from 'react';
-import type { ConfigPaths, LogPathStatus } from '../../shared/ipc-types';
+import React, { useEffect, useState, useCallback } from 'react';
+import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId } from '../../shared/ipc-types';
+import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+} from '@dnd-kit/core';
+import type { DragEndEvent } from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type SettingsTab = 'general' | 'remoteSync' | 'dashboard' | 'data';
 
@@ -276,18 +294,309 @@ function RemoteSyncTab(): React.JSX.Element {
   );
 }
 
-function DashboardTab(): React.JSX.Element {
-  // TODO: implement per wireframe §8.3
-  // Drag-to-reorder list of views with visibility toggles and per-view defaults
-  // Separate list for trend widgets
-  // Reset to Defaults and Open JSON File buttons
+// ---------------------------------------------------------------------------
+// Dashboard tab — label maps, styles, sortable item, and main component
+// ---------------------------------------------------------------------------
+
+const VIEW_LABELS: Record<ViewId, string> = {
+  today: 'Today',
+  cowork: 'Cowork Sessions',
+  code: 'Code Sessions',
+  chat: 'Chat History',
+  trends: 'Trends',
+  heatmap: 'Heatmap',
+  settings: 'Settings',
+};
+
+const WIDGET_LABELS: Record<TrendsWidgetId, string> = {
+  cacheEfficiency: 'Cache Efficiency',
+  turnDurationTrend: 'Turn Duration Trend',
+  costVelocity: 'Cost Velocity',
+  sessionDensity: 'Session Density',
+  modelMigration: 'Model Migration',
+  projectActivityTimeline: 'Project Activity Timeline',
+  usagePatternsSummary: 'Usage Patterns Summary',
+};
+
+const sectionHeaderStyles: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+  color: '#ccccdd',
+  marginBottom: 4,
+};
+
+const sectionSubtextStyles: React.CSSProperties = {
+  fontSize: 12,
+  color: '#666688',
+  marginBottom: 12,
+};
+
+const sortableItemStyles: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  padding: '8px 12px',
+  backgroundColor: '#1a1a2e',
+  border: '1px solid #2a2a4a',
+  borderRadius: 4,
+  marginBottom: 4,
+  fontSize: 13,
+  color: '#ccccdd',
+};
+
+const dragHandleStyles: React.CSSProperties = {
+  cursor: 'grab',
+  color: '#555577',
+  fontSize: 16,
+  userSelect: 'none',
+  lineHeight: 1,
+};
+
+const toggleStyles = (on: boolean): React.CSSProperties => ({
+  width: 36,
+  height: 20,
+  borderRadius: 10,
+  backgroundColor: on ? '#4444aa' : '#2a2a3a',
+  border: '1px solid ' + (on ? '#5555bb' : '#3a3a5a'),
+  position: 'relative',
+  cursor: 'pointer',
+  flexShrink: 0,
+  transition: 'background-color 0.15s',
+});
+
+const toggleKnobStyles = (on: boolean): React.CSSProperties => ({
+  width: 14,
+  height: 14,
+  borderRadius: '50%',
+  backgroundColor: on ? '#ffffff' : '#666688',
+  position: 'absolute',
+  top: 2,
+  left: on ? 19 : 3,
+  transition: 'left 0.15s',
+});
+
+const radioStyles = (selected: boolean): React.CSSProperties => ({
+  width: 14,
+  height: 14,
+  borderRadius: '50%',
+  border: `2px solid ${selected ? '#6666cc' : '#444466'}`,
+  backgroundColor: selected ? '#6666cc' : 'transparent',
+  cursor: 'pointer',
+  flexShrink: 0,
+});
+
+const primaryButtonStyles = (disabled: boolean): React.CSSProperties => ({
+  padding: '8px 16px',
+  backgroundColor: disabled ? '#2a2a4a' : '#4444aa',
+  border: '1px solid ' + (disabled ? '#3a3a5a' : '#5555bb'),
+  borderRadius: 4,
+  color: disabled ? '#555577' : '#ffffff',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: disabled ? 'default' : 'pointer',
+});
+
+const secondaryButtonStyles: React.CSSProperties = {
+  padding: '8px 16px',
+  backgroundColor: 'transparent',
+  border: '1px solid #3a3a5a',
+  borderRadius: 4,
+  color: '#8888aa',
+  fontSize: 13,
+  cursor: 'pointer',
+};
+
+function SortableItem({
+  id,
+  children,
+}: {
+  id: string;
+  children: React.ReactNode;
+}): React.JSX.Element {
+  const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
+  const style: React.CSSProperties = {
+    ...sortableItemStyles,
+    transform: CSS.Transform.toString(transform),
+    transition,
+  };
+
   return (
-    <div style={placeholderStyles}>
-      {/* TODO: Drag-to-reorder views list with visibility toggles */}
-      {/* TODO: Per-view default config (landing, sort, time range) */}
-      {/* TODO: Trends widgets reorder/toggle list */}
-      {/* TODO: Reset to Defaults + Open JSON File buttons */}
-      Dashboard layout settings — not yet implemented
+    <div ref={setNodeRef} style={style}>
+      <span style={dragHandleStyles} {...attributes} {...listeners}>⠿</span>
+      {children}
+    </div>
+  );
+}
+
+function DashboardTab(): React.JSX.Element {
+  const { config: contextConfig, refreshConfig } = useDashboardConfig();
+  const [localConfig, setLocalConfig] = useState<DashboardConfig | null>(null);
+  const [dirty, setDirty] = useState(false);
+
+  // Clone context config into local state on first load
+  useEffect(() => {
+    if (contextConfig && !localConfig) {
+      setLocalConfig(structuredClone(contextConfig));
+    }
+  }, [contextConfig, localConfig]);
+
+  const sensors = useSensors(
+    useSensor(PointerSensor),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }),
+  );
+
+  const handleViewDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !localConfig) return;
+    setLocalConfig(prev => {
+      if (!prev) return prev;
+      const oldIndex = prev.views.findIndex(v => v.id === active.id);
+      const newIndex = prev.views.findIndex(v => v.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      return { ...prev, views: arrayMove(prev.views, oldIndex, newIndex) };
+    });
+    setDirty(true);
+  }, [localConfig]);
+
+  const handleWidgetDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id || !localConfig) return;
+    setLocalConfig(prev => {
+      if (!prev) return prev;
+      const oldIndex = prev.trendsWidgets.findIndex(w => w.id === active.id);
+      const newIndex = prev.trendsWidgets.findIndex(w => w.id === over.id);
+      if (oldIndex === -1 || newIndex === -1) return prev;
+      const reordered = arrayMove(prev.trendsWidgets, oldIndex, newIndex)
+        .map((w, i) => ({ ...w, order: i }));
+      return { ...prev, trendsWidgets: reordered };
+    });
+    setDirty(true);
+  }, [localConfig]);
+
+  const toggleViewVisibility = useCallback((viewId: ViewId) => {
+    setLocalConfig(prev => {
+      if (!prev) return prev;
+      const view = prev.views.find(v => v.id === viewId);
+      if (!view) return prev;
+      // Cannot hide the landing view
+      if (view.defaultLanding && view.visible) return prev;
+      const views = prev.views.map(v =>
+        v.id === viewId ? { ...v, visible: !v.visible } : v
+      );
+      return { ...prev, views };
+    });
+    setDirty(true);
+  }, []);
+
+  const setLandingView = useCallback((viewId: ViewId) => {
+    setLocalConfig(prev => {
+      if (!prev) return prev;
+      const views = prev.views.map(v => ({
+        ...v,
+        defaultLanding: v.id === viewId,
+        // Ensure landing view is visible
+        visible: v.id === viewId ? true : v.visible,
+      }));
+      return { ...prev, views };
+    });
+    setDirty(true);
+  }, []);
+
+  const toggleWidgetVisibility = useCallback((widgetId: TrendsWidgetId) => {
+    setLocalConfig(prev => {
+      if (!prev) return prev;
+      const widgets = prev.trendsWidgets.map(w =>
+        w.id === widgetId ? { ...w, visible: !w.visible } : w
+      );
+      return { ...prev, trendsWidgets: widgets };
+    });
+    setDirty(true);
+  }, []);
+
+  const handleSave = useCallback(async () => {
+    if (!localConfig) return;
+    await window.api.dashboard.save(localConfig);
+    refreshConfig();
+    setDirty(false);
+  }, [localConfig, refreshConfig]);
+
+  const handleReset = useCallback(async () => {
+    const confirmed = window.confirm('Reset dashboard to defaults? This will undo all view and widget customizations.');
+    if (!confirmed) return;
+    const fresh = await window.api.dashboard.reset();
+    setLocalConfig(structuredClone(fresh));
+    refreshConfig();
+    setDirty(false);
+  }, [refreshConfig]);
+
+  const handleOpenJson = useCallback(async () => {
+    const paths = await window.api.configPaths.get();
+    await window.api.configPaths.openFolder(paths.dashboardPath);
+  }, []);
+
+  if (!localConfig) {
+    return <div style={placeholderStyles}>Loading dashboard configuration...</div>;
+  }
+
+  return (
+    <div style={{ padding: 4 }}>
+      {/* Navigation Views */}
+      <h3 style={sectionHeaderStyles}>Navigation Views</h3>
+      <p style={sectionSubtextStyles}>Drag to reorder. Toggle visibility. Set the landing view.</p>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleViewDragEnd}>
+        <SortableContext items={localConfig.views.map(v => v.id)} strategy={verticalListSortingStrategy}>
+          {localConfig.views.map(v => (
+            <SortableItem key={v.id} id={v.id}>
+              <span style={{ flex: 1 }}>{VIEW_LABELS[v.id] ?? v.id}</span>
+              <span
+                title={v.defaultLanding && v.visible ? 'Cannot hide the landing view' : (v.visible ? 'Visible' : 'Hidden')}
+                style={toggleStyles(v.visible)}
+                onClick={() => toggleViewVisibility(v.id)}
+              >
+                <span style={toggleKnobStyles(v.visible)} />
+              </span>
+              <span
+                title="Landing view"
+                style={radioStyles(v.defaultLanding)}
+                onClick={() => setLandingView(v.id)}
+              />
+            </SortableItem>
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {/* Trends Widgets */}
+      <h3 style={{ ...sectionHeaderStyles, marginTop: 24 }}>Trends Widgets</h3>
+      <p style={sectionSubtextStyles}>Drag to reorder. Toggle visibility.</p>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWidgetDragEnd}>
+        <SortableContext items={localConfig.trendsWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
+          {localConfig.trendsWidgets.map(w => (
+            <SortableItem key={w.id} id={w.id}>
+              <span style={{ flex: 1 }}>{WIDGET_LABELS[w.id] ?? w.id}</span>
+              <span
+                title={w.visible ? 'Visible' : 'Hidden'}
+                style={toggleStyles(w.visible)}
+                onClick={() => toggleWidgetVisibility(w.id)}
+              >
+                <span style={toggleKnobStyles(w.visible)} />
+              </span>
+            </SortableItem>
+          ))}
+        </SortableContext>
+      </DndContext>
+
+      {/* Action buttons */}
+      <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
+        <button style={primaryButtonStyles(!dirty)} onClick={handleSave} disabled={!dirty}>
+          {dirty ? 'Save Changes' : 'Saved'}
+        </button>
+        <button style={secondaryButtonStyles} onClick={handleReset}>
+          Reset to Defaults
+        </button>
+        <button style={secondaryButtonStyles} onClick={handleOpenJson}>
+          Open JSON File
+        </button>
+      </div>
     </div>
   );
 }

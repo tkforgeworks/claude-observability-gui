@@ -13,6 +13,8 @@ import ModelMigrationChart from '../components/common/ModelMigrationChart';
 import ProjectTimelineChart from '../components/common/ProjectTimelineChart';
 import UsagePatternsCard from '../components/common/UsagePatternsCard';
 import { useApi } from '../hooks/useApi';
+import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import type { TrendsWidgetId } from '../../shared/ipc-types';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
 
@@ -73,19 +75,20 @@ function isTimeRange(value: unknown): value is TimeRange {
 }
 
 export default function TrendsView(): React.JSX.Element {
+  const { config: dashConfig, refreshConfig } = useDashboardConfig();
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
-  const [configLoaded, setConfigLoaded] = React.useState(false);
+  const [timeRangeInitialized, setTimeRangeInitialized] = React.useState(false);
 
-  // Load saved time range from dashboard config on mount
+  // Initialize time range from dashboard config when context loads
   React.useEffect(() => {
-    window.api.dashboard.get().then((config) => {
-      const trendsView = config.views?.find((v) => v.id === 'trends');
+    if (dashConfig && !timeRangeInitialized) {
+      const trendsView = dashConfig.views?.find((v) => v.id === 'trends');
       if (trendsView?.defaultTimeRange && isTimeRange(trendsView.defaultTimeRange)) {
         setTimeRange(trendsView.defaultTimeRange);
       }
-      setConfigLoaded(true);
-    }).catch(() => setConfigLoaded(true));
-  }, []);
+      setTimeRangeInitialized(true);
+    }
+  }, [dashConfig, timeRangeInitialized]);
 
   // Persist time range selection to dashboard config
   const handleTimeRangeChange = React.useCallback((range: TimeRange) => {
@@ -94,9 +97,9 @@ export default function TrendsView(): React.JSX.Element {
       const views = (config.views ?? []).map((v) =>
         v.id === 'trends' ? { ...v, defaultTimeRange: range } : v
       );
-      window.api.dashboard.save({ ...config, views });
+      window.api.dashboard.save({ ...config, views }).then(refreshConfig);
     }).catch(() => { /* persistence is best-effort */ });
-  }, []);
+  }, [refreshConfig]);
 
   const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
 
@@ -135,17 +138,51 @@ export default function TrendsView(): React.JSX.Element {
     [days]
   );
 
-  const loading = !configLoaded || cacheLoading || turnLoading || costLoading
+  const loading = !dashConfig || !timeRangeInitialized || cacheLoading || turnLoading || costLoading
     || densityLoading || modelMixLoading || timelineLoading || patternsLoading;
-  const hasCacheData = cacheData && cacheData.length > 0;
-  const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
-  const hasCostData = costData && costData.some(d => d.costUsd > 0);
-  const hasDensityData = densityData && densityData.some(d => d.sessionCount > 0);
-  const hasModelData = modelMixData && modelMixData.models.length > 0;
-  const hasTimelineData = timelineData && timelineData.rows.length > 0;
-  const hasPatternsData = patternsData && patternsData.totalSessions > 0;
-  const hasAnyData = hasCacheData || hasTurnData || hasCostData
-    || hasDensityData || hasModelData || hasTimelineData || hasPatternsData;
+
+  // Widget registry: maps widget IDs to their rendered component and data availability
+  const widgetRegistry: Record<TrendsWidgetId, { node: React.ReactNode; hasData: boolean }> = {
+    usagePatternsSummary: {
+      node: patternsData ? <UsagePatternsCard data={patternsData} /> : null,
+      hasData: !!(patternsData && patternsData.totalSessions > 0),
+    },
+    costVelocity: {
+      node: costData ? <CostVelocityChart data={costData} /> : null,
+      hasData: !!(costData && costData.some(d => d.costUsd > 0)),
+    },
+    cacheEfficiency: {
+      node: cacheData ? <CacheEfficiencyChart data={cacheData} /> : null,
+      hasData: !!(cacheData && cacheData.length > 0),
+    },
+    turnDurationTrend: {
+      node: turnData ? <TurnDurationChart data={turnData} /> : null,
+      hasData: !!(turnData && turnData.some(d => d.turnCount > 0)),
+    },
+    sessionDensity: {
+      node: densityData ? <SessionDensityChart data={densityData} /> : null,
+      hasData: !!(densityData && densityData.some(d => d.sessionCount > 0)),
+    },
+    projectActivityTimeline: {
+      node: timelineData ? <ProjectTimelineChart rows={timelineData.rows} dateRange={timelineData.dateRange} /> : null,
+      hasData: !!(timelineData && timelineData.rows.length > 0),
+    },
+    modelMigration: {
+      node: modelMixData ? <ModelMigrationChart data={modelMixData.days} models={modelMixData.models} /> : null,
+      hasData: !!(modelMixData && modelMixData.models.length > 0),
+    },
+  };
+
+  // Build ordered, visible widget list from config
+  const orderedWidgets = dashConfig
+    ? [...dashConfig.trendsWidgets]
+        .filter(w => w.visible)
+        .sort((a, b) => a.order - b.order)
+        .map(w => ({ id: w.id, ...widgetRegistry[w.id] }))
+        .filter(w => w.hasData)
+    : [];
+
+  const hasAnyData = orderedWidgets.length > 0;
 
   return (
     <div style={viewStyles}>
@@ -168,13 +205,9 @@ export default function TrendsView(): React.JSX.Element {
         <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
       ) : hasAnyData ? (
         <>
-          {hasPatternsData && <UsagePatternsCard data={patternsData} />}
-          {hasCostData && <CostVelocityChart data={costData} />}
-          {hasCacheData && <CacheEfficiencyChart data={cacheData} />}
-          {hasTurnData && <TurnDurationChart data={turnData} />}
-          {hasDensityData && <SessionDensityChart data={densityData} />}
-          {hasTimelineData && <ProjectTimelineChart rows={timelineData.rows} dateRange={timelineData.dateRange} />}
-          {hasModelData && <ModelMigrationChart data={modelMixData.days} models={modelMixData.models} />}
+          {orderedWidgets.map(w => (
+            <React.Fragment key={w.id}>{w.node}</React.Fragment>
+          ))}
         </>
       ) : (
         <EmptyState
