@@ -10,6 +10,7 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import type {
   ElectronApi,
+  CacheEfficiencyData,
   DailyActivity,
   HeatmapDay,
   DateRange,
@@ -169,6 +170,9 @@ const api: ElectronApi = {
     },
     getHeatmapData(days: number): Promise<HeatmapDay[]> {
       return ipcRenderer.invoke('analytics:getHeatmapData', days);
+    },
+    getCacheEfficiency(days: number): Promise<CacheEfficiencyData[]> {
+      return ipcRenderer.invoke('analytics:getCacheEfficiency', days);
     },
   },
 

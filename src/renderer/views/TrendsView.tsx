@@ -5,8 +5,17 @@
 
 import React from 'react';
 import EmptyState from '../components/common/EmptyState';
+import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
+import { useApi } from '../hooks/useApi';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
+
+const TIME_RANGE_DAYS: Record<Exclude<TimeRange, 'custom'>, number> = {
+  '7d': 7,
+  '30d': 30,
+  '90d': 90,
+  '1y': 365,
+};
 
 const viewStyles: React.CSSProperties = {
   padding: 24,
@@ -54,16 +63,22 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
 export default function TrendsView(): React.JSX.Element {
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
 
-  // TODO: implement all 7 trend widgets per wireframe §7:
-  //   7.1 Cache Efficiency Ratio — horizontal bars per project
+  const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
+
+  const { data: cacheData, loading } = useApi(
+    () => window.api.analytics.getCacheEfficiency(days),
+    [days]
+  );
+
+  // TODO: implement remaining 6 trend widgets per wireframe §7:
   //   7.2 Turn Duration Trend — line chart with 7-day moving average
   //   7.3 Cost Velocity — headline + daily cost bar chart
   //   7.4 Session Density — sessions per hour line chart
   //   7.5 Model Migration Tracking — stacked area chart
   //   7.6 Project Activity Timeline — Gantt-style chart
   //   7.7 Usage Patterns Summary — metric card grid + hourly distribution bar
-  // Each widget should be a separate component with its own useApi call
-  // Widgets visibility controlled by DashboardConfig.trendsWidgets
+
+  const hasData = cacheData && cacheData.length > 0;
 
   return (
     <div style={viewStyles}>
@@ -79,14 +94,19 @@ export default function TrendsView(): React.JSX.Element {
               {label}
             </button>
           ))}
-          {/* TODO: custom date range picker */}
         </div>
       </div>
 
-      <EmptyState
-        title="No trend data available"
-        message="Trends will appear here once session data has been collected. Import Claude Code JSONL data or connect the log watcher to begin."
-      />
+      {loading ? (
+        <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
+      ) : hasData ? (
+        <CacheEfficiencyChart data={cacheData} />
+      ) : (
+        <EmptyState
+          title="No trend data available"
+          message="Trends will appear here once session data has been collected. Import Claude Code JSONL data or connect the log watcher to begin."
+        />
+      )}
     </div>
   );
 }

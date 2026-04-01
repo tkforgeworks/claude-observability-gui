@@ -209,6 +209,17 @@ export interface ConfigPaths {
 // Analytics
 // ---------------------------------------------------------------------------
 
+export interface CacheEfficiencyData {
+  project: string;           // shortened project path
+  efficiencyPct: number;     // cache_read / (cache_read + input) * 100
+  reuseRatio: number;        // cache_read / cache_write (0 if no writes)
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  inputTokens: number;
+  estimatedSavingsUsd: number; // cost if cache_read charged at input rate minus actual cache_read cost
+  sessionCount: number;
+}
+
 export interface DailyActivity {
   date: string;          // YYYY-MM-DD
   codeCount: number;
@@ -313,6 +324,7 @@ export interface ElectronApi {
   analytics: {
     getWeeklyActivity(): Promise<DailyActivity[]>;
     getHeatmapData(days: number): Promise<HeatmapDay[]>;
+    getCacheEfficiency(days: number): Promise<CacheEfficiencyData[]>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;

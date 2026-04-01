@@ -28,6 +28,7 @@ import {
   queryCoworkTurns,
   queryWeeklyActivity,
   queryHeatmapData,
+  queryCacheEfficiency,
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -251,6 +252,10 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getHeatmapData', (_event: unknown, days: number) => {
     return queryHeatmapData(db, days);
   });
+
+  ipcMain.handle('analytics:getCacheEfficiency', (_event: unknown, days: number) => {
+    return queryCacheEfficiency(db, days);
+  });
 }
 
 /**
@@ -284,6 +289,7 @@ export function unregisterIpcHandlers(): void {
     'costs:recalculate',
     'analytics:getWeeklyActivity',
     'analytics:getHeatmapData',
+    'analytics:getCacheEfficiency',
   ];
 
   for (const channel of channels) {

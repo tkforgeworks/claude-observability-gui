@@ -9,6 +9,7 @@
 
 import type Database from 'better-sqlite3';
 import type {
+  CacheEfficiencyData,
   CodeSession,
   CoworkSession,
   CoworkTurn,
@@ -501,6 +502,100 @@ export function queryHeatmapData(
     });
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Cache Efficiency
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns per-project cache efficiency ratios for the last `days` days.
+ *
+ * - efficiencyPct: cache_read / (cache_read + input) — how much of the input
+ *   context was served from cache.
+ * - reuseRatio: cache_read / cache_write — how many times each cached byte
+ *   was reused (higher = better ROI on cache writes).
+ * - estimatedSavingsUsd: cost saved by reading from cache instead of paying
+ *   the full input rate. Computed per-session using model-specific pricing,
+ *   then summed per project.
+ *
+ * Top 10 projects by reuse ratio.
+ */
+export function queryCacheEfficiency(
+  db: Database.Database,
+  days: number = 30
+): CacheEfficiencyData[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  // Aggregate token totals per project
+  const rows = db.prepare<[string, string], {
+    project_path: string | null;
+    cache_read: number;
+    cache_write: number;
+    input: number;
+    cnt: number;
+  }>(`
+    SELECT project_path,
+           SUM(COALESCE(cache_read_tokens, 0)) as cache_read,
+           SUM(COALESCE(cache_creation_tokens, 0)) as cache_write,
+           SUM(COALESCE(input_tokens, 0)) as input,
+           COUNT(*) as cnt
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY project_path
+    HAVING (cache_read + input) > 0
+    ORDER BY CASE WHEN cache_write > 0
+               THEN CAST(cache_read AS REAL) / cache_write
+               ELSE 0 END DESC
+  `).all(today, today);
+
+  // Per-session savings: cache_read_tokens * (inputRate - cacheReadRate) / 1M
+  // Grouped by project to avoid per-row iteration in JS.
+  const savingsRows = db.prepare<[string, string], {
+    project_path: string | null;
+    savings: number | null;
+  }>(`
+    SELECT project_path,
+           SUM(
+             COALESCE(cache_read_tokens, 0) *
+             CASE model
+               WHEN 'claude-opus-4-6'           THEN (5.0 - 0.5)  / 1000000.0
+               WHEN 'claude-sonnet-4-6'         THEN (3.0 - 0.3)  / 1000000.0
+               WHEN 'claude-haiku-4-5-20251001' THEN (1.0 - 0.1)  / 1000000.0
+               ELSE (3.0 - 0.3) / 1000000.0
+             END
+           ) as savings
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY project_path
+  `).all(today, today);
+
+  const savingsMap = new Map(savingsRows.map(r => [r.project_path, r.savings ?? 0]));
+
+  return rows.map(r => {
+    const denominator = r.cache_read + r.input;
+    return {
+      project: formatProjectPath(r.project_path),
+      efficiencyPct: Math.round((r.cache_read / denominator) * 10000) / 100,
+      reuseRatio: r.cache_write > 0
+        ? Math.round((r.cache_read / r.cache_write) * 100) / 100
+        : 0,
+      cacheReadTokens: r.cache_read,
+      cacheWriteTokens: r.cache_write,
+      inputTokens: r.input,
+      estimatedSavingsUsd: Math.round((savingsMap.get(r.project_path) ?? 0) * 100) / 100,
+      sessionCount: r.cnt,
+    };
+  });
+}
+
+function formatProjectPath(p: string | null): string {
+  if (!p) return '(unknown)';
+  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
+  return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
 }
 
 // ---------------------------------------------------------------------------
