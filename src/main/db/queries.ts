@@ -16,6 +16,8 @@ import type {
   DailyActivity,
   DailyCostData,
   HeatmapDay,
+  ModelMixDay,
+  SessionDensityDay,
   TodaySummary,
   TimelineEntry,
   TurnDurationDay,
@@ -697,6 +699,130 @@ export function queryDailyCosts(
     });
   }
   return result;
+}
+
+// ---------------------------------------------------------------------------
+// Session Density
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns daily session density (sessions per active hour) for the last
+ * `days` days. Active hours = time span between first and last session
+ * start on that day (across both code and cowork). Days with < 1 hour
+ * of span get density = sessionCount (assume 1 hour minimum).
+ */
+export function querySessionDensity(
+  db: Database.Database,
+  days: number = 30
+): SessionDensityDay[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  // Combine code and cowork session timestamps, then compute span per day
+  const rows = db.prepare<[string, string, string, string], {
+    date: string;
+    cnt: number;
+    earliest: string;
+    latest: string;
+  }>(`
+    SELECT date, COUNT(*) as cnt, MIN(started_at) as earliest, MAX(started_at) as latest
+    FROM (
+      SELECT DATE(started_at) as date, started_at FROM code_sessions
+      WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+      UNION ALL
+      SELECT DATE(started_at) as date, started_at FROM cowork_sessions
+      WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+    )
+    GROUP BY date
+    ORDER BY date ASC
+  `).all(today, today, today, today);
+
+  const dataMap = new Map(rows.map(r => {
+    const spanMs = new Date(r.latest).getTime() - new Date(r.earliest).getTime();
+    const activeHours = Math.max(1, spanMs / (1000 * 60 * 60));
+    return [r.date, {
+      sessionCount: r.cnt,
+      activeHours: Math.round(activeHours * 100) / 100,
+      density: Math.round((r.cnt / activeHours) * 100) / 100,
+    }];
+  }));
+
+  const result: SessionDensityDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const row = dataMap.get(dateStr);
+    result.push({
+      date: dateStr,
+      sessionCount: row?.sessionCount ?? 0,
+      activeHours: row?.activeHours ?? 0,
+      density: row?.density ?? 0,
+    });
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// Model Mix
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns daily model usage breakdown for code sessions over the last
+ * `days` days. Each day has dynamic keys for each model name with the
+ * session count as the value. Also returns the distinct model list so
+ * the renderer knows which series to render.
+ */
+export function queryModelMix(
+  db: Database.Database,
+  days: number = 30
+): { days: ModelMixDay[]; models: string[] } {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  const rows = db.prepare<[string, string], {
+    date: string;
+    model: string | null;
+    cnt: number;
+  }>(`
+    SELECT DATE(started_at) as date,
+           COALESCE(model, 'unknown') as model,
+           COUNT(*) as cnt
+    FROM code_sessions
+    WHERE DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY DATE(started_at), model
+    ORDER BY date ASC
+  `).all(today, today);
+
+  // Collect all distinct models
+  const modelSet = new Set<string>();
+  const dayMap = new Map<string, Record<string, number>>();
+
+  for (const r of rows) {
+    modelSet.add(r.model ?? 'unknown');
+    const entry = dayMap.get(r.date) ?? {};
+    entry[r.model ?? 'unknown'] = r.cnt;
+    dayMap.set(r.date, entry);
+  }
+
+  const models = Array.from(modelSet).sort();
+
+  // Fill all days, zero-fill missing models
+  const result: ModelMixDay[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date();
+    d.setDate(d.getDate() - i);
+    const dateStr = d.toISOString().slice(0, 10);
+    const entry = dayMap.get(dateStr) ?? {};
+    const day: ModelMixDay = { date: dateStr };
+    for (const m of models) {
+      day[m] = entry[m] ?? 0;
+    }
+    result.push(day);
+  }
+
+  return { days: result, models };
 }
 
 // ---------------------------------------------------------------------------

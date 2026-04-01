@@ -209,6 +209,19 @@ export interface ConfigPaths {
 // Analytics
 // ---------------------------------------------------------------------------
 
+export interface SessionDensityDay {
+  date: string;              // YYYY-MM-DD
+  sessionCount: number;      // total code + cowork sessions
+  activeHours: number;       // span between first and last session (hours)
+  density: number;           // sessions / activeHours (0 if < 1 hour)
+}
+
+export interface ModelMixDay {
+  date: string;              // YYYY-MM-DD
+  /** Dynamic keys: model name → session count */
+  [model: string]: string | number;
+}
+
 export interface DailyCostData {
   date: string;            // YYYY-MM-DD
   costUsd: number;
@@ -339,6 +352,8 @@ export interface ElectronApi {
     getCacheEfficiency(days: number): Promise<CacheEfficiencyData[]>;
     getTurnDurationTrend(days: number): Promise<TurnDurationDay[]>;
     getDailyCosts(days: number): Promise<DailyCostData[]>;
+    getSessionDensity(days: number): Promise<SessionDensityDay[]>;
+    getModelMix(days: number): Promise<{ days: ModelMixDay[]; models: string[] }>;
   };
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;

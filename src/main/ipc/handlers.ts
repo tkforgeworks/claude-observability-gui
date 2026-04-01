@@ -31,6 +31,8 @@ import {
   queryCacheEfficiency,
   queryTurnDurationTrend,
   queryDailyCosts,
+  querySessionDensity,
+  queryModelMix,
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -266,6 +268,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getDailyCosts', (_event: unknown, days: number) => {
     return queryDailyCosts(db, days);
   });
+
+  ipcMain.handle('analytics:getSessionDensity', (_event: unknown, days: number) => {
+    return querySessionDensity(db, days);
+  });
+
+  ipcMain.handle('analytics:getModelMix', (_event: unknown, days: number) => {
+    return queryModelMix(db, days);
+  });
 }
 
 /**
@@ -302,6 +312,8 @@ export function unregisterIpcHandlers(): void {
     'analytics:getCacheEfficiency',
     'analytics:getTurnDurationTrend',
     'analytics:getDailyCosts',
+    'analytics:getSessionDensity',
+    'analytics:getModelMix',
   ];
 
   for (const channel of channels) {

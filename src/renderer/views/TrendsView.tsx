@@ -8,6 +8,8 @@ import EmptyState from '../components/common/EmptyState';
 import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
 import TurnDurationChart from '../components/common/TurnDurationChart';
 import CostVelocityChart from '../components/common/CostVelocityChart';
+import SessionDensityChart from '../components/common/SessionDensityChart';
+import ModelMigrationChart from '../components/common/ModelMigrationChart';
 import { useApi } from '../hooks/useApi';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
@@ -82,17 +84,27 @@ export default function TrendsView(): React.JSX.Element {
     [days]
   );
 
-  // TODO: implement remaining 4 trend widgets per wireframe §7:
-  //   7.4 Session Density — sessions per hour line chart
-  //   7.5 Model Migration Tracking — stacked area chart
+  const { data: densityData, loading: densityLoading } = useApi(
+    () => window.api.analytics.getSessionDensity(days),
+    [days]
+  );
+
+  const { data: modelMixData, loading: modelMixLoading } = useApi(
+    () => window.api.analytics.getModelMix(days),
+    [days]
+  );
+
+  // TODO: implement remaining 2 trend widgets per wireframe §7:
   //   7.6 Project Activity Timeline — Gantt-style chart
   //   7.7 Usage Patterns Summary — metric card grid + hourly distribution bar
 
-  const loading = cacheLoading || turnLoading || costLoading;
+  const loading = cacheLoading || turnLoading || costLoading || densityLoading || modelMixLoading;
   const hasCacheData = cacheData && cacheData.length > 0;
   const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
   const hasCostData = costData && costData.some(d => d.costUsd > 0);
-  const hasAnyData = hasCacheData || hasTurnData || hasCostData;
+  const hasDensityData = densityData && densityData.some(d => d.sessionCount > 0);
+  const hasModelData = modelMixData && modelMixData.models.length > 0;
+  const hasAnyData = hasCacheData || hasTurnData || hasCostData || hasDensityData || hasModelData;
 
   return (
     <div style={viewStyles}>
@@ -118,6 +130,8 @@ export default function TrendsView(): React.JSX.Element {
           {hasCostData && <CostVelocityChart data={costData} />}
           {hasCacheData && <CacheEfficiencyChart data={cacheData} />}
           {hasTurnData && <TurnDurationChart data={turnData} />}
+          {hasDensityData && <SessionDensityChart data={densityData} />}
+          {hasModelData && <ModelMigrationChart data={modelMixData.days} models={modelMixData.models} />}
         </>
       ) : (
         <EmptyState

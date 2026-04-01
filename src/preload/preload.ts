@@ -12,6 +12,8 @@ import type {
   ElectronApi,
   CacheEfficiencyData,
   DailyCostData,
+  ModelMixDay,
+  SessionDensityDay,
   TurnDurationDay,
   DailyActivity,
   HeatmapDay,
@@ -181,6 +183,12 @@ const api: ElectronApi = {
     },
     getDailyCosts(days: number): Promise<DailyCostData[]> {
       return ipcRenderer.invoke('analytics:getDailyCosts', days);
+    },
+    getSessionDensity(days: number): Promise<SessionDensityDay[]> {
+      return ipcRenderer.invoke('analytics:getSessionDensity', days);
+    },
+    getModelMix(days: number): Promise<{ days: ModelMixDay[]; models: string[] }> {
+      return ipcRenderer.invoke('analytics:getModelMix', days);
     },
   },
 
