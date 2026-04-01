@@ -66,8 +66,37 @@ const TIME_RANGES: { value: TimeRange; label: string }[] = [
   { value: '1y',  label: '1y' },
 ];
 
+const VALID_RANGES = new Set<string>(['7d', '30d', '90d', '1y']);
+
+function isTimeRange(value: unknown): value is TimeRange {
+  return typeof value === 'string' && VALID_RANGES.has(value);
+}
+
 export default function TrendsView(): React.JSX.Element {
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
+  const [configLoaded, setConfigLoaded] = React.useState(false);
+
+  // Load saved time range from dashboard config on mount
+  React.useEffect(() => {
+    window.api.dashboard.get().then((config) => {
+      const trendsView = config.views?.find((v) => v.id === 'trends');
+      if (trendsView?.defaultTimeRange && isTimeRange(trendsView.defaultTimeRange)) {
+        setTimeRange(trendsView.defaultTimeRange);
+      }
+      setConfigLoaded(true);
+    }).catch(() => setConfigLoaded(true));
+  }, []);
+
+  // Persist time range selection to dashboard config
+  const handleTimeRangeChange = React.useCallback((range: TimeRange) => {
+    setTimeRange(range);
+    window.api.dashboard.get().then((config) => {
+      const views = (config.views ?? []).map((v) =>
+        v.id === 'trends' ? { ...v, defaultTimeRange: range } : v
+      );
+      window.api.dashboard.save({ ...config, views });
+    }).catch(() => { /* persistence is best-effort */ });
+  }, []);
 
   const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
 
@@ -106,7 +135,7 @@ export default function TrendsView(): React.JSX.Element {
     [days]
   );
 
-  const loading = cacheLoading || turnLoading || costLoading
+  const loading = !configLoaded || cacheLoading || turnLoading || costLoading
     || densityLoading || modelMixLoading || timelineLoading || patternsLoading;
   const hasCacheData = cacheData && cacheData.length > 0;
   const hasTurnData = turnData && turnData.some(d => d.turnCount > 0);
@@ -127,7 +156,7 @@ export default function TrendsView(): React.JSX.Element {
             <button
               key={value}
               style={rangeButtonStyles(timeRange === value)}
-              onClick={() => setTimeRange(value)}
+              onClick={() => handleTimeRangeChange(value)}
             >
               {label}
             </button>

@@ -138,7 +138,6 @@ export interface TrendsWidgetConfig {
   id: TrendsWidgetId;
   visible: boolean;
   order: number;
-  defaultTimeRange?: string;
   defaultGranularity?: string;
 }
 
