@@ -352,6 +352,10 @@ export interface ElectronApi {
     save(config: DashboardConfig): Promise<void>;
     reset(): Promise<DashboardConfig>;
   };
+  dialog: {
+    openFile(filters: { name: string; extensions: string[] }[]): Promise<string | null>;
+    getFilePath(file: File): string;
+  };
   chatImport: {
     start(filePath: string): Promise<ImportSummary>;
   };

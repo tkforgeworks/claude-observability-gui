@@ -119,6 +119,39 @@ export const MIGRATIONS: Migration[] = [
     version: 3,
     sql: `ALTER TABLE cowork_sessions ADD COLUMN project_path TEXT;`,
   },
+  {
+    version: 4,
+    sql: `
+      -- -----------------------------------------------------------------------
+      -- v4: Projects and memories tables for claude.ai export import
+      -- -----------------------------------------------------------------------
+
+      CREATE TABLE IF NOT EXISTS chat_projects (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        project_id      TEXT UNIQUE NOT NULL,
+        name            TEXT,
+        description     TEXT,
+        is_private      INTEGER DEFAULT 0,
+        doc_count       INTEGER DEFAULT 0,
+        created_at      TEXT,
+        updated_at      TEXT,
+        imported_at     TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS chat_memories (
+        id              INTEGER PRIMARY KEY AUTOINCREMENT,
+        account_uuid    TEXT NOT NULL,
+        type            TEXT NOT NULL,
+        project_id      TEXT,
+        content_length  INTEGER DEFAULT 0,
+        imported_at     TEXT,
+        UNIQUE(account_uuid, type, project_id)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_chat_projects_created_at ON chat_projects (created_at);
+      CREATE INDEX IF NOT EXISTS idx_chat_memories_account     ON chat_memories (account_uuid);
+    `,
+  },
 ];
 
 /**

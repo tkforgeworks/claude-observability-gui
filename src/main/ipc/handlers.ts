@@ -7,7 +7,7 @@
  * @see src/shared/ipc-types.ts for request/response shapes
  */
 
-import { ipcMain, shell } from 'electron';
+import { ipcMain, shell, dialog } from 'electron';
 import type Database from 'better-sqlite3';
 import type {
   DateRange,
@@ -50,6 +50,7 @@ import {
 } from '../config/configStore';
 import { getDatabasePath } from '../db/database';
 import { getLogPathStatus } from '../services/logPathDiscovery';
+import { ChatExportImporter } from '../importers/chatExportImporter';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -65,7 +66,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('dev:clearDatabase', () => {
     // Delete children before parents to respect FK constraints
-    const tables = ['cowork_turns', 'app_focus_events', 'cowork_sessions', 'code_sessions', 'app_sessions', 'chat_conversations'];
+    const tables = ['cowork_turns', 'app_focus_events', 'cowork_sessions', 'code_sessions', 'app_sessions', 'chat_conversations', 'chat_projects', 'chat_memories'];
     const clear = db.transaction(() => {
       for (const table of tables) {
         db.exec(`DELETE FROM ${table}`);
@@ -198,15 +199,35 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // -------------------------------------------------------------------------
+  // dialog channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle(
+    'dialog:openFile',
+    async (_event, filters: { name: string; extensions: string[] }[]): Promise<string | null> => {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters,
+      });
+      if (result.canceled || result.filePaths.length === 0) return null;
+      return result.filePaths[0];
+    }
+  );
+
+  // -------------------------------------------------------------------------
   // chatImport channels
   // -------------------------------------------------------------------------
 
   ipcMain.handle(
     'chatImport:start',
     (_event, filePath: string): ImportSummary => {
-      // TODO: implement — call ExportImporter service with filePath
-      // Returns ImportSummary with new/updated/error counts
-      throw new Error('chatImport:start not yet implemented');
+      const importer = new ChatExportImporter(db);
+      const summary = importer.import(filePath);
+
+      // Persist import timestamp
+      updateSettings({ lastChatImportAt: summary.scannedAt });
+
+      return summary;
     }
   );
 

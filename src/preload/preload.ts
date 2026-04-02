@@ -7,7 +7,7 @@
  * @see src/shared/ipc-types.ts for ElectronApi type definition
  */
 
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ElectronApi,
   CacheEfficiencyData,
@@ -131,6 +131,18 @@ const api: ElectronApi = {
     },
     reset(): Promise<DashboardConfig> {
       return ipcRenderer.invoke('dashboard:reset');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // dialog
+  // -------------------------------------------------------------------------
+  dialog: {
+    openFile(filters: { name: string; extensions: string[] }[]): Promise<string | null> {
+      return ipcRenderer.invoke('dialog:openFile', filters);
+    },
+    getFilePath(file: File): string {
+      return webUtils.getPathForFile(file);
     },
   },
 
