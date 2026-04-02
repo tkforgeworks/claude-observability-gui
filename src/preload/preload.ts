@@ -29,6 +29,11 @@ import type {
   LogPathStatus,
   ImportSummary,
   SyncStatus,
+  ChatConversationCount,
+  ChatStats,
+  ChatProject,
+  ChatMemoryEntry,
+  ChatDayCount,
 } from '../shared/ipc-types';
 
 const api: ElectronApi = {
@@ -131,6 +136,30 @@ const api: ElectronApi = {
     },
     reset(): Promise<DashboardConfig> {
       return ipcRenderer.invoke('dashboard:reset');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // chat
+  // -------------------------------------------------------------------------
+  chat: {
+    getConversationCounts(groupBy: 'week' | 'month'): Promise<ChatConversationCount[]> {
+      return ipcRenderer.invoke('chat:getConversationCounts', groupBy);
+    },
+    getStats(): Promise<ChatStats> {
+      return ipcRenderer.invoke('chat:getStats');
+    },
+    getProjects(): Promise<ChatProject[]> {
+      return ipcRenderer.invoke('chat:getProjects');
+    },
+    getMemories(): Promise<ChatMemoryEntry[]> {
+      return ipcRenderer.invoke('chat:getMemories');
+    },
+    getConversationHeatmap(days: number): Promise<ChatDayCount[]> {
+      return ipcRenderer.invoke('chat:getConversationHeatmap', days);
+    },
+    getProjectHeatmap(days: number): Promise<ChatDayCount[]> {
+      return ipcRenderer.invoke('chat:getProjectHeatmap', days);
     },
   },
 

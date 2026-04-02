@@ -24,6 +24,11 @@ import type {
   TurnDurationDay,
   UsagePatternsData,
   DateRange,
+  ChatConversationCount,
+  ChatStats,
+  ChatProject,
+  ChatMemoryEntry,
+  ChatDayCount,
 } from '../../shared/ipc-types';
 
 // ---------------------------------------------------------------------------
@@ -1049,6 +1054,123 @@ export function queryUnsyncedCounts(db: Database.Database): {
 } {
   // TODO: implement — SELECT COUNT(*) FROM <table> WHERE synced_to_influx = 0 for each table
   throw new UnsupportedOperationError('queryUnsyncedCounts');
+}
+
+// ---------------------------------------------------------------------------
+// Chat History
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns conversation counts grouped by week or month.
+ * Week periods start on Monday (ISO week). Month periods are first of month.
+ */
+export function queryChatConversationCounts(
+  db: Database.Database,
+  groupBy: 'week' | 'month'
+): ChatConversationCount[] {
+  const dateTrunc =
+    groupBy === 'week'
+      ? "date(created_at, 'weekday 1', '-7 days')"
+      : "date(created_at, 'start of month')";
+
+  const stmt = db.prepare(`
+    SELECT ${dateTrunc} AS period, COUNT(*) AS count
+    FROM chat_conversations
+    WHERE created_at IS NOT NULL
+    GROUP BY period
+    ORDER BY period ASC
+  `);
+
+  return stmt.all() as ChatConversationCount[];
+}
+
+/**
+ * Returns aggregate stats across all imported chat data.
+ */
+export function queryChatStats(db: Database.Database): ChatStats {
+  const conv = db.prepare(`
+    SELECT COUNT(*) AS total, COALESCE(AVG(message_count), 0) AS avg_msgs
+    FROM chat_conversations
+  `).get() as { total: number; avg_msgs: number };
+
+  const proj = db.prepare(`
+    SELECT COUNT(*) AS total FROM chat_projects
+  `).get() as { total: number };
+
+  const mem = db.prepare(`
+    SELECT COALESCE(SUM(content_length), 0) AS total_bytes FROM chat_memories
+  `).get() as { total_bytes: number };
+
+  return {
+    totalConversations: conv.total,
+    totalProjects: proj.total,
+    avgMessagesPerConversation: Math.round(conv.avg_msgs * 10) / 10,
+    totalMemoryBytes: mem.total_bytes,
+  };
+}
+
+/**
+ * Returns all imported projects with lifespan in days.
+ */
+export function queryChatProjects(db: Database.Database): ChatProject[] {
+  const stmt = db.prepare(`
+    SELECT project_id, name, description, is_private, doc_count, created_at, updated_at,
+           MAX(1, CAST(ROUND(julianday(updated_at) - julianday(created_at)) AS INTEGER)) AS lifespan_days
+    FROM chat_projects
+    ORDER BY updated_at DESC
+  `);
+  return stmt.all() as ChatProject[];
+}
+
+/**
+ * Returns all memory entries with project name joined where applicable.
+ */
+export function queryChatMemories(db: Database.Database): ChatMemoryEntry[] {
+  const stmt = db.prepare(`
+    SELECT m.type,
+           CASE WHEN m.project_id = '' THEN NULL ELSE m.project_id END AS project_id,
+           p.name AS project_name,
+           m.content_length
+    FROM chat_memories m
+    LEFT JOIN chat_projects p ON m.project_id != '' AND m.project_id = p.project_id
+    ORDER BY m.content_length DESC
+  `);
+  return stmt.all() as ChatMemoryEntry[];
+}
+
+/**
+ * Returns daily conversation counts for heatmap display.
+ */
+export function queryChatConversationHeatmap(
+  db: Database.Database,
+  days: number
+): ChatDayCount[] {
+  const stmt = db.prepare(`
+    SELECT date(created_at) AS date, COUNT(*) AS count
+    FROM chat_conversations
+    WHERE created_at >= date('now', '-' || ? || ' days')
+    GROUP BY date(created_at)
+    ORDER BY date ASC
+  `);
+  return stmt.all(days) as ChatDayCount[];
+}
+
+/**
+ * Returns daily project activity counts for heatmap display.
+ * Counts projects whose updated_at falls on each day.
+ */
+export function queryChatProjectHeatmap(
+  db: Database.Database,
+  days: number
+): ChatDayCount[] {
+  const stmt = db.prepare(`
+    SELECT date(updated_at) AS date, COUNT(*) AS count
+    FROM chat_projects
+    WHERE updated_at >= date('now', '-' || ? || ' days')
+    GROUP BY date(updated_at)
+    ORDER BY date ASC
+  `);
+  return stmt.all(days) as ChatDayCount[];
 }
 
 // ---------------------------------------------------------------------------

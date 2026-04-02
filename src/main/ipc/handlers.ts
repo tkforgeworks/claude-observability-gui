@@ -38,6 +38,12 @@ import {
   queryTableCounts,
   recalculateAllCosts,
   queryUnsyncedCounts,
+  queryChatConversationCounts,
+  queryChatStats,
+  queryChatProjects,
+  queryChatMemories,
+  queryChatConversationHeatmap,
+  queryChatProjectHeatmap,
 } from '../db/queries';
 import {
   loadSettings,
@@ -196,6 +202,37 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('dashboard:reset', (): DashboardConfig => {
     return resetDashboard();
+  });
+
+  // -------------------------------------------------------------------------
+  // chat channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle(
+    'chat:getConversationCounts',
+    (_event: unknown, groupBy: 'week' | 'month') => {
+      return queryChatConversationCounts(db, groupBy);
+    }
+  );
+
+  ipcMain.handle('chat:getStats', () => {
+    return queryChatStats(db);
+  });
+
+  ipcMain.handle('chat:getProjects', () => {
+    return queryChatProjects(db);
+  });
+
+  ipcMain.handle('chat:getMemories', () => {
+    return queryChatMemories(db);
+  });
+
+  ipcMain.handle('chat:getConversationHeatmap', (_event: unknown, days: number) => {
+    return queryChatConversationHeatmap(db, days);
+  });
+
+  ipcMain.handle('chat:getProjectHeatmap', (_event: unknown, days: number) => {
+    return queryChatProjectHeatmap(db, days);
   });
 
   // -------------------------------------------------------------------------

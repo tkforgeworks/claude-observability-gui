@@ -168,6 +168,45 @@ export interface LogPathStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Chat History
+// ---------------------------------------------------------------------------
+
+export interface ChatConversationCount {
+  period: string; // ISO date string (start of week or month)
+  count: number;
+}
+
+export interface ChatStats {
+  totalConversations: number;
+  totalProjects: number;
+  avgMessagesPerConversation: number;
+  totalMemoryBytes: number;
+}
+
+export interface ChatProject {
+  project_id: string;
+  name: string | null;
+  description: string | null;
+  is_private: number;
+  doc_count: number;
+  created_at: string;
+  updated_at: string;
+  lifespan_days: number;
+}
+
+export interface ChatMemoryEntry {
+  type: string;
+  project_id: string | null;
+  project_name: string | null;
+  content_length: number;
+}
+
+export interface ChatDayCount {
+  date: string; // YYYY-MM-DD
+  count: number;
+}
+
+// ---------------------------------------------------------------------------
 // Import / Sync
 // ---------------------------------------------------------------------------
 
@@ -355,6 +394,14 @@ export interface ElectronApi {
   dialog: {
     openFile(filters: { name: string; extensions: string[] }[]): Promise<string | null>;
     getFilePath(file: File): string;
+  };
+  chat: {
+    getConversationCounts(groupBy: 'week' | 'month'): Promise<ChatConversationCount[]>;
+    getStats(): Promise<ChatStats>;
+    getProjects(): Promise<ChatProject[]>;
+    getMemories(): Promise<ChatMemoryEntry[]>;
+    getConversationHeatmap(days: number): Promise<ChatDayCount[]>;
+    getProjectHeatmap(days: number): Promise<ChatDayCount[]>;
   };
   chatImport: {
     start(filePath: string): Promise<ImportSummary>;

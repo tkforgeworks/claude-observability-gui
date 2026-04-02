@@ -152,6 +152,26 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX IF NOT EXISTS idx_chat_memories_account     ON chat_memories (account_uuid);
     `,
   },
+  {
+    version: 5,
+    sql: `
+      -- -----------------------------------------------------------------------
+      -- v5: Fix chat_memories NULL project_id causing duplicate rows.
+      -- Replace NULLs with empty string so UNIQUE constraint works, then
+      -- deduplicate keeping the most recent import per group.
+      -- -----------------------------------------------------------------------
+
+      -- Remove duplicate NULL-project_id rows first, keeping only the highest id
+      DELETE FROM chat_memories
+      WHERE project_id IS NULL
+        AND id NOT IN (
+          SELECT MAX(id) FROM chat_memories WHERE project_id IS NULL GROUP BY account_uuid, type
+        );
+
+      -- Now convert remaining NULLs to empty string
+      UPDATE chat_memories SET project_id = '' WHERE project_id IS NULL;
+    `,
+  },
 ];
 
 /**

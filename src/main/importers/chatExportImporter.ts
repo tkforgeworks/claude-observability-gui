@@ -268,8 +268,8 @@ export class ChatExportImporter {
         imported_at = excluded.imported_at
     `);
 
-    const checkExists = this.db.prepare<[string, string, string | null], { id: number; content_length: number | null }>(
-      `SELECT id, content_length FROM chat_memories WHERE account_uuid = ? AND type = ? AND project_id IS ?`
+    const checkExists = this.db.prepare<[string, string, string], { id: number; content_length: number | null }>(
+      `SELECT id, content_length FROM chat_memories WHERE account_uuid = ? AND type = ? AND project_id = ?`
     );
 
     const runAll = this.db.transaction(() => {
@@ -278,12 +278,12 @@ export class ChatExportImporter {
           // Global conversation memory
           if (entry.conversations_memory != null) {
             const contentLength = entry.conversations_memory.length;
-            const existing = checkExists.get(entry.account_uuid, 'conversation', null);
+            const existing = checkExists.get(entry.account_uuid, 'conversation', '');
 
             upsert.run({
               accountUuid: entry.account_uuid,
               type: 'conversation',
-              projectId: null,
+              projectId: '',
               contentLength,
               importedAt: now,
             });
