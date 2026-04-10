@@ -36,7 +36,8 @@ src/shared/      → Type-only definitions (ipc-types.ts, models.ts)
 
 ### Main process (`src/main/`)
 
-- **Entry:** `main.ts` — creates BrowserWindow, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, tray refresh loop, and chat import staleness notification
+- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, tray refresh loop, and chat import staleness notification
+- **Launch on startup:** `services/launchOnStartup.ts` — wraps `app.setLoginItemSettings`. Applied once on startup from `loadSettings().launchOnStartup`, re-applied inside the `settings:update` IPC handler whenever the flag is present in the patch
 - **Database:** `db/database.ts` — better-sqlite3 with WAL mode. Schema migrations in `db/migrations/` (versioned, cumulative, never modify existing ones). Queries in `db/queries.ts`
 - **JSONL Importer:** `importers/jsonlImporter.ts` — scans `~/.claude/projects/` on startup and every 5 minutes, parses session files, calculates costs via `importers/costCalculator.ts`, upserts to SQLite
 - **Chat Importer:** `importers/chatImporter.ts` — parses claude.ai export ZIPs (`conversations.json`, `projects.json`, `users.json`) into `chat_conversations` and related tables
@@ -89,6 +90,24 @@ App data lives in `%APPDATA%\ClaudeUsageMonitor\`:
 - `settings.json` — user preferences
 - `dashboard.json` — view/widget configuration
 - `usage.db` — SQLite database (+ WAL files)
+
+## Packaging
+
+`electron-builder` NSIS target for Windows x64, configured in `package.json` under `build`:
+- **Per-user install** (`perMachine: false`) — no UAC prompt, installs to `%LOCALAPPDATA%\Programs\claude-usage-monitor`
+- **Shortcuts:** desktop + start menu, labeled "Claude Usage Monitor"
+- **Settings preservation on upgrade:** `settings.json`, `dashboard.json`, and `usage.db` live in `%APPDATA%` (Electron userData) and are untouched by NSIS install/upgrade. `deleteAppDataOnUninstall: false` is explicit so uninstalling also leaves user data in place
+- **Icon:** `assets/icon.ico` (256×256) — currently a pink/black checkerboard placeholder until final icon lands
+- **Launch on startup:** user-toggleable in Settings → General. Wired via `app.setLoginItemSettings` in `src/main/services/launchOnStartup.ts`, applied on app start (reads `settings.launchOnStartup`) and re-applied inside the `settings:update` IPC handler whenever the flag is included in the patch. Default is `false`
+- **Taskbar icon:** `app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor')` is called at module load in `main.ts` (Windows-only guard) so the Windows taskbar groups the process under the app identity rather than `electron.exe`. **Must match `build.appId` in `package.json`** — if either is changed, update both
+- **Tray icon:** `src/main/tray.ts` loads `assets/icon.ico` via `nativeImage.createFromPath` and downscales it to 16×16 with `quality: 'best'` for the system tray slot
+
+## CI / Releases
+
+- **`.github/workflows/ci.yml`** — runs on push to `main` and on PRs. Ubuntu runner. Steps: `npm ci` → `npm run compile` → `npm test`. No installer build
+- **`.github/workflows/release.yml`** — runs on tags matching `v*`. Windows runner (required for NSIS). Steps: `npm ci` → `npx electron-rebuild` → `npm run dist` → upload `release/*.exe` via `softprops/action-gh-release@v2` with `generate_release_notes: true`. Tags containing a hyphen (e.g. `v1.0.0-rc.1`) are auto-flagged as pre-releases. Uses the default `GITHUB_TOKEN` via `permissions: contents: write`
+- **Release cadence:** `npm version patch|minor|major` bumps `package.json` and creates the matching `v*` tag atomically. `git push --follow-tags` triggers the release workflow
+- **Builds are unsigned.** Windows SmartScreen will warn users until a code-signing certificate is added. Bypass: *More info → Run anyway*. README Installation section documents this for testers
 
 ## Analytics IPC channels
 

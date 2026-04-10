@@ -224,6 +224,39 @@ function LogPathSection(): React.JSX.Element {
   );
 }
 
+function LaunchOnStartupSection(): React.JSX.Element {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    window.api.settings.get().then((s) => setEnabled(s.launchOnStartup));
+  }, []);
+
+  const handleToggle = async () => {
+    const newValue = !enabled;
+    setEnabled(newValue);
+    await window.api.settings.update({ launchOnStartup: newValue });
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        Startup
+      </h3>
+      {enabled !== null && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccccdd', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={handleToggle}
+            style={{ accentColor: '#6666cc' }}
+          />
+          Launch Claude Usage Monitor when I sign in to Windows
+        </label>
+      )}
+    </div>
+  );
+}
+
 function NotificationsSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
@@ -312,6 +345,8 @@ function GeneralTab(): React.JSX.Element {
           <span style={placeholderStyles}>Loading paths...</span>
         )}
       </div>
+
+      <LaunchOnStartupSection />
 
       <NotificationsSection />
     </div>

@@ -57,6 +57,7 @@ import {
 } from '../config/configStore';
 import { getDatabasePath } from '../db/database';
 import { getLogPathStatus } from '../services/logPathDiscovery';
+import { applyLaunchOnStartup } from '../services/launchOnStartup';
 import { ChatExportImporter } from '../importers/chatExportImporter';
 import fs from 'fs';
 import path from 'path';
@@ -214,7 +215,11 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('settings:update', (_event, partial: Partial<AppSettings>) => {
     // TODO: safeStorage encryption for token fields before writing
-    return updateSettings(partial);
+    const merged = updateSettings(partial);
+    if (Object.prototype.hasOwnProperty.call(partial, 'launchOnStartup')) {
+      applyLaunchOnStartup(merged.launchOnStartup);
+    }
+    return merged;
   });
 
   // -------------------------------------------------------------------------

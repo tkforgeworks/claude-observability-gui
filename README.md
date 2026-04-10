@@ -4,7 +4,7 @@ A desktop application for tracking and analyzing Claude AI usage across Claude C
 
 ## Current Status
 
-**v0.4.0 — Chat Import** is complete. The app is an actively-used local dashboard covering Claude Code, Claude Desktop (Cowork), and claude.ai chat history — with automatic JSONL import, live log tailing, cost tracking, analytics, and a dark-themed UI. Currently working through **v0.5.0 — Polish & Packaging**.
+**v0.9.0 — First public installer.** The app ships as a Windows NSIS installer with a CI pipeline that publishes tagged releases to GitHub. Feature-complete for the 1.0 milestone: automatic JSONL import from Claude Code, live `main.log` tailing for Claude Desktop (Cowork), claude.ai chat history import, cost tracking, analytics, a dark-themed UI, system tray with live stats, database backup, and launch-on-startup. A 1.0.0 release will follow once an initial tester round is complete.
 
 ### What works
 
@@ -34,6 +34,18 @@ A desktop application for tracking and analyzing Claude AI usage across Claude C
 | `chat_conversations` | Active | Desktop chat history from claude.ai export |
 | `chat_projects` | Active | Chat projects from claude.ai export |
 | `chat_memories` | Active | Memory entries from claude.ai export |
+
+## Installation
+
+> **Windows only.** The installer is built for 64-bit Windows. macOS and Linux builds are not currently produced.
+
+1. Download the latest `Claude Usage Monitor Setup X.Y.Z.exe` from the [Releases page](../../releases).
+2. Double-click the installer.
+3. **Windows SmartScreen warning:** because the installer is not yet code-signed, Windows will show a blue *"Windows protected your PC"* dialog. Click **More info**, then **Run anyway**. This is expected — once a signing certificate is added in a future release, the warning will go away.
+4. Follow the installer prompts. The app installs per-user (no admin required) to `%LOCALAPPDATA%\Programs\claude-usage-monitor` and creates Start Menu and desktop shortcuts.
+5. User data (settings, dashboard config, usage database) lives in `%APPDATA%\Claude Usage Monitor\ClaudeUsageMonitor\` and is preserved across upgrades and uninstalls.
+
+To enable auto-launch on Windows sign-in, open the app → **Settings → General → Startup** and check the box.
 
 ## Development
 
@@ -71,7 +83,7 @@ src/
     db/              # SQLite database, migrations, queries
     importers/       # JSONL importer, chat ZIP importer, cost calculator
     ipc/             # IPC handler registration
-    services/        # LogWatcher, log line parser, log path discovery
+    services/        # LogWatcher, log line parser, log path discovery, launch-on-startup
     tray.ts          # System tray
     main.ts          # Entry point
   preload/           # contextBridge API exposure
@@ -93,6 +105,22 @@ src/
 - **Packaging:** electron-builder (NSIS installer for Windows)
 - **Testing:** Jest + ts-jest
 
+## Releases
+
+Tagged releases are built and published automatically via GitHub Actions:
+
+- **`.github/workflows/ci.yml`** — runs typecheck + unit tests on every push to `main` and every PR (Ubuntu runner).
+- **`.github/workflows/release.yml`** — runs on any tag matching `v*`, builds the NSIS installer on a Windows runner, and publishes it to a GitHub Release with auto-generated notes from commits since the previous tag. Tags containing a hyphen (e.g. `v0.9.0-rc.1`) are automatically flagged as pre-releases.
+
+To cut a release:
+
+```bash
+npm version patch   # or minor / major
+git push --follow-tags
+```
+
+The installer appears under [Releases](../../releases) once the build finishes (~5-10 min). Builds are currently **unsigned** — Windows SmartScreen will show a warning that users can bypass via *More info → Run anyway*. See the Installation section above.
+
 ## Roadmap
 
 | Version | Epic | Status |
@@ -101,7 +129,9 @@ src/
 | v0.2.0 | Live Cowork Tracking — Claude Desktop log watcher, cowork session/turn tracking | Complete |
 | v0.3.0 | Trends & Analytics — 7 analytics widgets, heatmap, dashboard config | Complete |
 | v0.4.0 | Chat Import — claude.ai ZIP importer, Chat History view | Complete |
-| **v0.5.0** | **Polish & Packaging — Tray notifications, DB backup, status banners, UI polish, installer** | **In Progress** |
+| v0.5.0 | Polish & Packaging — Tray notifications, DB backup, status banners, UI polish | Complete |
+| **v0.9.0** | **First public installer — NSIS installer, launch-on-startup, CI/CD pipeline, GitHub Releases** | **Current** |
+| v1.0.0 | First stable release — code signing, tester feedback incorporated | Planned |
 
 ## License
 

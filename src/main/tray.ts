@@ -23,15 +23,14 @@ let tray: Tray | null = null;
  *   Quit
  */
 export function createTray(mainWindow: BrowserWindow): Tray {
-  // TODO: replace placeholder icon with real icon asset
-  // Icon should be a 16×16 or 32×32 ICO/PNG file at assets/icon.png
-  const iconPath = path.join(app.getAppPath(), 'assets', 'tray-icon.png');
-  let icon: Electron.NativeImage;
-  try {
-    icon = nativeImage.createFromPath(iconPath);
-  } catch {
-    // Fallback to empty image during development before assets are created
+  const iconPath = path.join(app.getAppPath(), 'assets', 'icon.ico');
+  let icon = nativeImage.createFromPath(iconPath);
+  if (icon.isEmpty()) {
+    console.warn(`[tray] Icon not found at ${iconPath}, using empty placeholder`);
     icon = nativeImage.createEmpty();
+  } else {
+    // Downscale the 256×256 app icon for the system tray slot
+    icon = icon.resize({ width: 16, height: 16, quality: 'best' });
   }
 
   tray = new Tray(icon);

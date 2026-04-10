@@ -19,6 +19,7 @@ import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
 import { LogWatcher } from './services/logWatcher';
+import { applyLaunchOnStartup } from './services/launchOnStartup';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
@@ -38,6 +39,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     title: 'Claude Usage Monitor',
+    icon: path.join(app.getAppPath(), 'assets', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,
@@ -80,9 +82,19 @@ function createMainWindow(): BrowserWindow {
 // App lifecycle
 // ---------------------------------------------------------------------------
 
+// Windows: set the AppUserModelID so the taskbar groups this process under the
+// app's own identity and picks up the BrowserWindow icon instead of electron.exe's
+// embedded default. Must match the `appId` in package.json's electron-builder config.
+if (process.platform === 'win32') {
+  app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor');
+}
+
 app.whenReady().then(() => {
   // Create config files with defaults if they don't exist
   ensureConfigFiles();
+
+  // Apply launch-on-startup preference to OS login items
+  applyLaunchOnStartup(loadSettings().launchOnStartup);
 
   // Initialise database — must happen before IPC handlers are registered
   const db = initDatabase();
