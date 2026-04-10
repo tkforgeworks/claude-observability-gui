@@ -8,15 +8,16 @@
  * - Start background services (JSONL importer, log watcher) — stubs for now
  */
 
-import { app, BrowserWindow, Notification } from 'electron';
+import { app, BrowserWindow, Notification, ipcMain } from 'electron';
 import path from 'path';
+import type { LogConnectionStatus } from '../shared/ipc-types';
 import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles, loadSettings } from './config/configStore';
 import { createTray, destroyTray, updateTrayMenu } from './tray';
 import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
-import { discoverLogPath } from './services/logPathDiscovery';
+import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
 import { LogWatcher } from './services/logWatcher';
 
 let mainWindow: BrowserWindow | null = null;
@@ -113,14 +114,61 @@ app.whenReady().then(() => {
 
   // Start LogWatcher — tails Claude Desktop main.log for new lines
   logWatcher = new LogWatcher(db);
+
+  // Safe wrapper — the BrowserWindow may already be destroyed when LogWatcher
+  // events fire during app teardown (stop() emits 'disconnected' from will-quit).
+  const sendToRenderer = (channel: string, payload: unknown): void => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(channel, payload);
+  };
+
   logWatcher.on('event', (event) => {
-    win.webContents.send('logWatcher:newEvent', event);
-    refreshTray();
+    sendToRenderer('logWatcher:newEvent', event);
+    if (!win.isDestroyed()) refreshTray();
   });
   logWatcher.on('healthStatus', (status) => {
-    win.webContents.send('logWatcher:healthStatus', status);
+    sendToRenderer('logWatcher:healthStatus', status);
+  });
+  logWatcher.on('connected', (logPath: string) => {
+    sendToRenderer('logWatcher:connectionStatus', {
+      connected: true,
+      path: logPath,
+      reason: null,
+    });
+  });
+  logWatcher.on('disconnected', (reason: string) => {
+    sendToRenderer('logWatcher:connectionStatus', {
+      connected: false,
+      path: null,
+      reason,
+    });
   });
   logWatcher.start();
+
+  // Retry handler — re-runs discovery, restarts the watcher, and returns the
+  // resulting connection state. The existing connected/disconnected listeners
+  // also broadcast the new state to any mounted renderers.
+  ipcMain.handle('logWatcher:retry', async (): Promise<LogConnectionStatus> => {
+    if (!logWatcher) {
+      return { connected: false, path: null, reason: 'LogWatcher not initialised' };
+    }
+    console.log('[main] logWatcher:retry requested');
+    discoverLogPath();
+    if (logWatcher.watching) {
+      await logWatcher.stop();
+    }
+    await logWatcher.start();
+    const status = getLogPathStatus();
+    return {
+      connected: logWatcher.watching,
+      path: logWatcher.watching ? status.path : null,
+      reason: logWatcher.watching
+        ? null
+        : status.source === 'not-found'
+          ? 'Claude Desktop log not found — is Claude Desktop installed?'
+          : `Log path invalid: ${status.path ?? 'unknown'}`,
+    };
+  });
 
   // Start JSONL importer: scan on startup, then every 5 minutes
   const importer = new JsonlImporter(db);
@@ -192,6 +240,7 @@ app.on('will-quit', () => {
   if (importerInterval) clearInterval(importerInterval);
   if (stalenessInterval) clearInterval(stalenessInterval);
   if (logWatcher) logWatcher.stop();
+  ipcMain.removeHandler('logWatcher:retry');
   unregisterIpcHandlers();
   destroyTray();
   closeDatabase();

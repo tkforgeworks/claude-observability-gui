@@ -26,6 +26,7 @@ import type {
   DashboardConfig,
   LogEvent,
   LogHealthStatus,
+  LogConnectionStatus,
   LogPathStatus,
   ImportSummary,
   SyncStatus,
@@ -55,6 +56,15 @@ const api: ElectronApi = {
   logPath: {
     getStatus(): Promise<LogPathStatus> {
       return ipcRenderer.invoke('logPath:getStatus');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // logWatcher
+  // -------------------------------------------------------------------------
+  logWatcher: {
+    retry(): Promise<LogConnectionStatus> {
+      return ipcRenderer.invoke('logWatcher:retry');
     },
   },
 
@@ -269,6 +279,13 @@ const api: ElectronApi = {
       callback(data);
     ipcRenderer.on('logWatcher:healthStatus', handler);
     return () => ipcRenderer.removeListener('logWatcher:healthStatus', handler);
+  },
+
+  onLogWatcherConnection(callback: (status: LogConnectionStatus) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, data: LogConnectionStatus) =>
+      callback(data);
+    ipcRenderer.on('logWatcher:connectionStatus', handler);
+    return () => ipcRenderer.removeListener('logWatcher:connectionStatus', handler);
   },
 
   onScanStarted(callback: () => void): () => void {

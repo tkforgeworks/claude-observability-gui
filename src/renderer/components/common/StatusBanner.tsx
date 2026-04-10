@@ -9,14 +9,19 @@ import React from 'react';
 
 type BannerVariant = 'info' | 'warning' | 'error';
 
+export interface BannerAction {
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+}
+
 interface StatusBannerProps {
   variant: BannerVariant;
   message: string;
-  /** Optional call-to-action button displayed on the right */
-  action?: {
-    label: string;
-    onClick: () => void;
-  };
+  /** Single call-to-action button displayed on the right */
+  action?: BannerAction;
+  /** Multiple call-to-action buttons, rendered left-to-right before the dismiss button */
+  actions?: BannerAction[];
   /** Optional dismiss handler — renders an X button */
   onDismiss?: () => void;
 }
@@ -96,6 +101,7 @@ export default function StatusBanner({
   variant,
   message,
   action,
+  actions,
   onDismiss,
 }: StatusBannerProps): React.JSX.Element {
   const combinedStyles: React.CSSProperties = {
@@ -103,17 +109,24 @@ export default function StatusBanner({
     ...VARIANT_STYLES[variant],
   };
 
+  const allActions: BannerAction[] = actions ?? (action ? [action] : []);
+
   return (
     <div style={combinedStyles} role="alert">
       <span style={iconStyles} aria-hidden="true">
         {VARIANT_ICONS[variant]}
       </span>
       <span style={textStyles}>{message}</span>
-      {action && (
-        <button style={actionButtonStyles} onClick={action.onClick}>
-          {action.label}
+      {allActions.map((a) => (
+        <button
+          key={a.label}
+          style={{ ...actionButtonStyles, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? 'default' : 'pointer' }}
+          onClick={a.onClick}
+          disabled={a.disabled}
+        >
+          {a.label}
         </button>
-      )}
+      ))}
       {onDismiss && (
         <button
           style={dismissButtonStyles}

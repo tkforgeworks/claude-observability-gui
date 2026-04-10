@@ -8,6 +8,7 @@ import React, { useEffect } from 'react';
 import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import ContentArea from './components/layout/ContentArea';
+import GlobalBanners from './components/common/GlobalBanners';
 import TodayView from './views/TodayView';
 import CoworkSessionsView from './views/CoworkSessionsView';
 import CodeSessionsView from './views/CodeSessionsView';
@@ -52,6 +53,7 @@ export default function App(): React.JSX.Element {
         <div style={appStyles}>
           <Sidebar />
           <ContentArea>
+            <GlobalBanners />
             <Routes>
               <Route path="/" element={<DefaultRedirect />} />
               <Route path="/today" element={<TodayView />} />

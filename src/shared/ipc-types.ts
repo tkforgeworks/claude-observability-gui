@@ -336,6 +336,12 @@ export interface LogHealthStatus {
   fileSizeBytes: number;
 }
 
+export interface LogConnectionStatus {
+  connected: boolean;
+  path: string | null;
+  reason: string | null;
+}
+
 export interface DatabaseStats {
   path: string;
   sizeBytes: number;
@@ -378,6 +384,9 @@ export interface ElectronApi {
   };
   logPath: {
     getStatus(): Promise<LogPathStatus>;
+  };
+  logWatcher: {
+    retry(): Promise<LogConnectionStatus>;
   };
   data: {
     getTableCounts(): Promise<Record<string, number>>;
@@ -447,6 +456,7 @@ export interface ElectronApi {
   // Push event subscriptions
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
   onLogWatcherHealth(callback: (status: LogHealthStatus) => void): () => void;
+  onLogWatcherConnection(callback: (status: LogConnectionStatus) => void): () => void;
   onScanStarted(callback: () => void): () => void;
   onImportComplete(callback: (summary: ImportSummary) => void): () => void;
   onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void;

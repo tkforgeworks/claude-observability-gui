@@ -5,6 +5,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
+import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import {
@@ -78,7 +79,20 @@ const TABS: { id: SettingsTab; label: string }[] = [
 ];
 
 export default function SettingsView(): React.JSX.Element {
-  const [activeTab, setActiveTab] = React.useState<SettingsTab>('general');
+  const location = useLocation();
+  const [activeTab, setActiveTab] = React.useState<SettingsTab>(() => {
+    const initial = (location.state as { tab?: SettingsTab } | null)?.tab;
+    return initial ?? 'general';
+  });
+
+  // Respond to deep-links (e.g. GlobalBanners navigating to /settings with a target tab).
+  // Triggers whenever navigate() is called with new state, even if the pathname is unchanged.
+  useEffect(() => {
+    const target = (location.state as { tab?: SettingsTab } | null)?.tab;
+    if (target) {
+      setActiveTab(target);
+    }
+  }, [location.key, location.state]);
 
   return (
     <div style={viewStyles}>

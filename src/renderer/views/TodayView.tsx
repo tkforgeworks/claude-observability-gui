@@ -6,10 +6,9 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { TodaySummary, TimelineEntry, DailyActivity, LogHealthStatus } from '../../shared/ipc-types';
+import type { TodaySummary, TimelineEntry, DailyActivity } from '../../shared/ipc-types';
 import MetricCard from '../components/common/MetricCard';
 import EmptyState from '../components/common/EmptyState';
-import StatusBanner from '../components/common/StatusBanner';
 import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 
@@ -70,7 +69,6 @@ export default function TodayView(): React.JSX.Element {
   const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
   const [weeklyActivity, setWeeklyActivity] = useState<DailyActivity[]>([]);
   const [loading, setLoading] = useState(true);
-  const [logHealthWarning, setLogHealthWarning] = useState(false);
 
   const fetchData = useCallback(() => {
     return Promise.all([
@@ -107,14 +105,6 @@ export default function TodayView(): React.JSX.Element {
     return () => { unsub?.(); };
   }, [fetchData]);
 
-  // Log format health check — show warning when log grows without successful parses
-  useEffect(() => {
-    const unsub = window.api.onLogWatcherHealth?.((status: LogHealthStatus) => {
-      setLogHealthWarning(!status.healthy);
-    });
-    return () => { unsub?.(); };
-  }, []);
-
   const hasAnyData = summary && summary.sessionCount > 0;
   const hasCodeData = summary && summary.codeSessionCount > 0;
   const hasCoworkData = summary && summary.coworkSessionCount > 0;
@@ -148,14 +138,6 @@ export default function TodayView(): React.JSX.Element {
   return (
     <div style={viewStyles}>
       <h1 style={headerStyles}>Last 24 Hours — {getTodayLabel()}</h1>
-
-      {logHealthWarning && (
-        <StatusBanner
-          variant="warning"
-          message="Log format may have changed — no events parsed in several minutes despite log file growth. Some activity may not be tracked."
-          onDismiss={() => setLogHealthWarning(false)}
-        />
-      )}
 
       <div style={metricsRowStyles}>
         <MetricCard value={sessionValue} label="Sessions" secondaryStat={sessionSecondary} />

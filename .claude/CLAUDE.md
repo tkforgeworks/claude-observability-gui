@@ -64,8 +64,8 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
     7. Model Migration — stacked area chart with auto-discovered model series
   - `HeatmapView` — 365-day GitHub-style usage heatmap
   - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
-  - `SettingsView` — tabbed config (General, Notifications, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API
-- **Components:** `components/common/` (chart widgets, MetricCard, EmptyState, StatusBanner), `components/layout/` (Sidebar, ContentArea)
+  - `SettingsView` — tabbed config (General, Remote Sync, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API. Supports deep-linking to a specific tab via `navigate('/settings', { state: { tab: 'general' } })` — reads `location.state.tab` and syncs to `activeTab` on mount and on subsequent location changes
+- **Components:** `components/common/` (chart widgets, MetricCard, EmptyState, StatusBanner, GlobalBanners), `components/layout/` (Sidebar, ContentArea). `GlobalBanners` is rendered inside `ContentArea` (above `<Routes>` in `App.tsx`) and shows persistent warnings for LogWatcher connection loss (non-dismissible, with Retry + Go to General Tab / Open Settings actions) and log-format health issues (dismissible, re-arms on next unhealthy trigger). `StatusBanner` supports an `actions` array for multiple buttons, or a single `action` for backwards compatibility.
 - **Hooks:** `hooks/useApi.ts` — generic async fetching hook with loading/error state
 - **Styling:** Dark theme with inline CSS (background: `#1a1a2e`, text: `#ccccdd`, accent: `#6666cc`). Charts use Recharts library.
 
@@ -124,6 +124,7 @@ The Chat History view uses these `chat:*` channels, backed by the claude.ai ZIP 
 Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe function:
 
 - `onLogWatcherEvent` / `onLogWatcherHealth` — live LogWatcher events and health status
+- `onLogWatcherConnection` — LogWatcher connection state (log path found/lost); paired with `logWatcher.retry()` request channel which re-runs path discovery and restarts the watcher
 - `onScanStarted` / `onImportComplete` — JSONL importer scan lifecycle
 - `onSyncStatusChanged` — remote sync state (stub)
 - `onNavigate` — main-process navigation commands (used by the stale-chat Notification click handler to deep-link to `/chat`)
