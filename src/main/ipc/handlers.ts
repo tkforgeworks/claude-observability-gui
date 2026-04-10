@@ -36,6 +36,7 @@ import {
   queryProjectTimeline,
   queryUsagePatterns,
   queryTableCounts,
+  queryDatabaseStats,
   recalculateAllCosts,
   queryUnsyncedCounts,
   queryChatConversationCounts,
@@ -173,6 +174,34 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('data:getTableCounts', (): Record<string, number> => {
     return queryTableCounts(db);
+  });
+
+  ipcMain.handle('data:getStats', () => {
+    return queryDatabaseStats(db);
+  });
+
+  ipcMain.handle('data:backup', async () => {
+    const now = new Date().toISOString().slice(0, 10);
+    const result = await dialog.showSaveDialog({
+      title: 'Backup Database',
+      defaultPath: `usage-backup-${now}.db`,
+      filters: [{ name: 'SQLite Database', extensions: ['db'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false };
+    }
+    try {
+      await db.backup(result.filePath);
+      return { success: true, path: result.filePath };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[ipc] data:backup failed:', message);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('data:openFolder', () => {
+    shell.showItemInFolder(getDatabasePath());
   });
 
   // -------------------------------------------------------------------------
@@ -362,6 +391,9 @@ export function unregisterIpcHandlers(): void {
     'configPaths:openFolder',
     'logPath:getStatus',
     'data:getTableCounts',
+    'data:getStats',
+    'data:backup',
+    'data:openFolder',
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',

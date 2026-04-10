@@ -15,6 +15,7 @@ import type {
   CoworkTurn,
   DailyActivity,
   DailyCostData,
+  DatabaseStats,
   HeatmapDay,
   ModelMixDay,
   ProjectTimelineRow,
@@ -30,6 +31,8 @@ import type {
   ChatMemoryEntry,
   ChatDayCount,
 } from '../../shared/ipc-types';
+import { getDatabasePath } from './database';
+import * as fs from 'fs';
 
 // ---------------------------------------------------------------------------
 // Code Sessions
@@ -1038,6 +1041,38 @@ export function queryTableCounts(db: Database.Database): Record<string, number> 
     counts[table] = row.cnt;
   }
   return counts;
+}
+
+/**
+ * Returns database path, total file size, and oldest record per table.
+ */
+export function queryDatabaseStats(db: Database.Database): DatabaseStats {
+  const dbPath = getDatabasePath();
+
+  // Sum sizes of .db, .db-wal, .db-shm
+  let sizeBytes = 0;
+  for (const suffix of ['', '-wal', '-shm']) {
+    try {
+      sizeBytes += fs.statSync(dbPath + suffix).size;
+    } catch { /* file may not exist */ }
+  }
+
+  const dateColumns: Record<string, string> = {
+    app_sessions: 'launched_at',
+    code_sessions: 'started_at',
+    cowork_sessions: 'started_at',
+    cowork_turns: 'started_at',
+    chat_conversations: 'created_at',
+    app_focus_events: 'focused_at',
+  };
+
+  const oldestRecords: Record<string, string | null> = {};
+  for (const [table, col] of Object.entries(dateColumns)) {
+    const row = db.prepare(`SELECT MIN(${col}) as oldest FROM ${table}`).get() as { oldest: string | null };
+    oldestRecords[table] = row.oldest;
+  }
+
+  return { path: dbPath, sizeBytes, oldestRecords };
 }
 
 // ---------------------------------------------------------------------------

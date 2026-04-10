@@ -5,7 +5,7 @@
  */
 
 import React, { useEffect, useState, useCallback } from 'react';
-import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId } from '../../shared/ipc-types';
+import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import {
   DndContext,
@@ -601,6 +601,17 @@ function DashboardTab(): React.JSX.Element {
   );
 }
 
+const actionButtonStyles: React.CSSProperties = {
+  padding: '8px 16px',
+  backgroundColor: '#2a2a4a',
+  border: '1px solid #4a4a6a',
+  borderRadius: 4,
+  color: '#ccccdd',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+};
+
 const dangerButtonStyles: React.CSSProperties = {
   padding: '8px 16px',
   backgroundColor: '#4a1a1a',
@@ -629,16 +640,48 @@ const TABLE_LABELS: Record<string, string> = {
   app_focus_events: 'Focus Events',
 };
 
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function formatOldestDate(iso: string | null): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
 function DataTab(): React.JSX.Element {
   const [clearing, setClearing] = useState(false);
   const [cleared, setCleared] = useState(false);
   const [tableCounts, setTableCounts] = useState<Record<string, number> | null>(null);
+  const [stats, setStats] = useState<DatabaseStats | null>(null);
+  const [backupStatus, setBackupStatus] = useState<string | null>(null);
+  const [backingUp, setBackingUp] = useState(false);
 
   useEffect(() => {
     window.api.data.getTableCounts().then(setTableCounts);
+    window.api.data.getStats().then(setStats);
   }, []);
 
-  // Refresh counts after clearing the database
+  const handleBackup = async () => {
+    setBackingUp(true);
+    setBackupStatus(null);
+    try {
+      const result: BackupResult = await window.api.data.backup();
+      if (result.success) {
+        setBackupStatus(`Backed up to ${result.path}`);
+      } else if (result.error) {
+        setBackupStatus(`Backup failed: ${result.error}`);
+      }
+      // User cancelled — no message
+    } finally {
+      setBackingUp(false);
+      setTimeout(() => setBackupStatus(null), 5000);
+    }
+  };
+
   const handleClearDatabase = async () => {
     const confirmed = window.confirm(
       'This will permanently delete ALL data from the database (code sessions, cowork sessions, etc.). ' +
@@ -651,33 +694,81 @@ function DataTab(): React.JSX.Element {
       await window.api.dev.clearDatabase();
       setCleared(true);
       setTimeout(() => setCleared(false), 3000);
-      // Refresh counts
       const counts = await window.api.data.getTableCounts();
       setTableCounts(counts);
+      const newStats = await window.api.data.getStats();
+      setStats(newStats);
     } finally {
       setClearing(false);
     }
   };
 
-  // TODO: implement per wireframe §8.4
-  // Database stats (path, size, mode)
-  // Backup Database and Open Folder buttons
-  // Chat Import drop zone (same as ChatHistoryView)
-  // Log Watcher Status panel
-  // Recalculate Costs button (calls window.api.costs.recalculate())
   return (
     <div style={{ padding: 4 }}>
+      {/* Database Info */}
+      <div style={{ marginBottom: 20 }}>
+        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+          Database
+        </h3>
+        {stats ? (
+          <div>
+            <div style={tableCountRowStyles}>
+              <span style={{ color: '#8888aa' }}>Path</span>
+              <span style={{ color: '#ccccdd', fontFamily: 'monospace', fontSize: 11, maxWidth: '70%', textAlign: 'right', wordBreak: 'break-all' }}>
+                {stats.path}
+              </span>
+            </div>
+            <div style={tableCountRowStyles}>
+              <span style={{ color: '#8888aa' }}>Size</span>
+              <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>
+                {formatBytes(stats.sizeBytes)}
+              </span>
+            </div>
+            <div style={tableCountRowStyles}>
+              <span style={{ color: '#8888aa' }}>Mode</span>
+              <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>WAL</span>
+            </div>
+          </div>
+        ) : (
+          <span style={placeholderStyles}>Loading...</span>
+        )}
+
+        {/* Action buttons */}
+        <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
+          <button style={actionButtonStyles} onClick={handleBackup} disabled={backingUp}>
+            {backingUp ? 'Backing up...' : 'Backup Database'}
+          </button>
+          <button style={actionButtonStyles} onClick={() => window.api.data.openFolder()}>
+            Open Folder
+          </button>
+        </div>
+        {backupStatus && (
+          <p style={{ fontSize: 12, color: backupStatus.startsWith('Backed') ? '#66cc66' : '#ff6666', marginTop: 8 }}>
+            {backupStatus}
+          </p>
+        )}
+      </div>
+
+      {/* Table Row Counts with oldest record */}
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
           Table Row Counts
         </h3>
         {tableCounts ? (
           <div>
+            <div style={{ ...tableCountRowStyles, borderBottom: '1px solid #4a4a6a', marginBottom: 4 }}>
+              <span style={{ color: '#8888aa', flex: 1 }}>Table</span>
+              <span style={{ color: '#8888aa', width: 80, textAlign: 'right' }}>Rows</span>
+              <span style={{ color: '#8888aa', width: 120, textAlign: 'right' }}>Oldest Record</span>
+            </div>
             {Object.entries(TABLE_LABELS).map(([key, label]) => (
-              <div key={key} style={tableCountRowStyles}>
-                <span style={{ color: '#8888aa' }}>{label}</span>
-                <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>
+              <div key={key} style={{ ...tableCountRowStyles, alignItems: 'center' }}>
+                <span style={{ color: '#8888aa', flex: 1 }}>{label}</span>
+                <span style={{ color: '#ccccdd', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
                   {(tableCounts[key] ?? 0).toLocaleString()}
+                </span>
+                <span style={{ color: '#666688', fontFamily: 'monospace', fontSize: 11, width: 120, textAlign: 'right' }}>
+                  {formatOldestDate(stats?.oldestRecords[key] ?? null)}
                 </span>
               </div>
             ))}
@@ -687,15 +778,7 @@ function DataTab(): React.JSX.Element {
         )}
       </div>
 
-      <div style={placeholderStyles}>
-        {/* TODO: Database info (path, size, WAL mode) */}
-        {/* TODO: Backup Database and Open Folder buttons */}
-        {/* TODO: Chat import drop zone */}
-        {/* TODO: Log watcher status */}
-        {/* TODO: Recalculate Costs action button */}
-        Remaining data management — not yet implemented
-      </div>
-
+      {/* Danger Zone */}
       <div style={{ marginTop: 32, padding: '16px', borderTop: '1px solid #3a2a2a' }}>
         <h3 style={{ fontSize: 14, color: '#ff6666', marginBottom: 8 }}>
           Danger Zone

@@ -333,6 +333,18 @@ export interface LogHealthStatus {
   fileSizeBytes: number;
 }
 
+export interface DatabaseStats {
+  path: string;
+  sizeBytes: number;
+  oldestRecords: Record<string, string | null>;
+}
+
+export interface BackupResult {
+  success: boolean;
+  path?: string;
+  error?: string;
+}
+
 // ---------------------------------------------------------------------------
 // Push events (main → renderer)
 // ---------------------------------------------------------------------------
@@ -366,6 +378,9 @@ export interface ElectronApi {
   };
   data: {
     getTableCounts(): Promise<Record<string, number>>;
+    getStats(): Promise<DatabaseStats>;
+    backup(): Promise<BackupResult>;
+    openFolder(): void;
   };
   dev: {
     clearDatabase(): Promise<void>;

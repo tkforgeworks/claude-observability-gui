@@ -65,6 +65,15 @@ const api: ElectronApi = {
     getTableCounts(): Promise<Record<string, number>> {
       return ipcRenderer.invoke('data:getTableCounts');
     },
+    getStats() {
+      return ipcRenderer.invoke('data:getStats');
+    },
+    backup() {
+      return ipcRenderer.invoke('data:backup');
+    },
+    openFolder() {
+      ipcRenderer.invoke('data:openFolder');
+    },
   },
 
   // -------------------------------------------------------------------------
