@@ -36,12 +36,13 @@ src/shared/      → Type-only definitions (ipc-types.ts, models.ts)
 
 ### Main process (`src/main/`)
 
-- **Entry:** `main.ts` — creates BrowserWindow, initializes DB, registers IPC handlers, starts JSONL scan timer
+- **Entry:** `main.ts` — creates BrowserWindow, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, tray refresh loop, and chat import staleness notification
 - **Database:** `db/database.ts` — better-sqlite3 with WAL mode. Schema migrations in `db/migrations/` (versioned, cumulative, never modify existing ones). Queries in `db/queries.ts`
 - **JSONL Importer:** `importers/jsonlImporter.ts` — scans `~/.claude/projects/` on startup and every 5 minutes, parses session files, calculates costs via `importers/costCalculator.ts`, upserts to SQLite
+- **Chat Importer:** `importers/chatImporter.ts` — parses claude.ai export ZIPs (`conversations.json`, `projects.json`, `users.json`) into `chat_conversations` and related tables
+- **LogWatcher:** `services/logWatcher.ts` — tails Claude Desktop `main.log`, parses lines via `services/logLineParser.ts`, persists events to `cowork_sessions`, `cowork_turns`, `app_sessions`, and `app_focus_events`. Uses a persisted offset/timestamp to skip already-processed lines on restart
 - **IPC Handlers:** `ipc/handlers.ts` — all channels typed via `ElectronApi` interface in `shared/ipc-types.ts`
-- **Config:** `config/configStore.ts` (settings + dashboard load/save), `config/pricing.ts` (per-model token rates) — JSON files in `%APPDATA%\ClaudeUsageMonitor\`
-- **Services:** `services/` — LogWatcher and InfluxDB sync (stubs for v0.2+)
+- **Config:** `config/configStore.ts` (settings + dashboard load/save), `config/pricing.ts` (per-model token rates), `config/defaultSettings.ts` — JSON files in `%APPDATA%\ClaudeUsageMonitor\`
 
 ### Preload (`src/preload/`)
 
@@ -62,8 +63,8 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
     6. Project Activity Timeline — Gantt-style swimlane grid, expandable project list
     7. Model Migration — stacked area chart with auto-discovered model series
   - `HeatmapView` — 365-day GitHub-style usage heatmap
-  - `ChatHistoryView` — stub for chat export importer
-  - `SettingsView` — app configuration, database stats, import controls
+  - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
+  - `SettingsView` — tabbed config (General, Notifications, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API
 - **Components:** `components/common/` (chart widgets, MetricCard, EmptyState, StatusBanner), `components/layout/` (Sidebar, ContentArea)
 - **Hooks:** `hooks/useApi.ts` — generic async fetching hook with loading/error state
 - **Styling:** Dark theme with inline CSS (background: `#1a1a2e`, text: `#ccccdd`, accent: `#6666cc`). Charts use Recharts library.
@@ -105,6 +106,36 @@ The Trends view uses these `analytics:*` channels, each following the full verti
 | `analytics:getProjectTimeline` | `queryProjectTimeline` | Per-project active dates for Gantt view |
 | `analytics:getUsagePatterns` | `queryUsagePatterns` | Hourly/daily distribution, streaks, averages |
 
+## Chat IPC channels
+
+The Chat History view uses these `chat:*` channels, backed by the claude.ai ZIP importer:
+
+| Channel | Returns |
+|---------|---------|
+| `chat:getConversationCounts` | Conversation counts grouped by week or month |
+| `chat:getStats` | Aggregate chat stats (totals, date range) |
+| `chat:getProjects` | Project list with per-project conversation counts |
+| `chat:getMemories` | Memory entries extracted from export |
+| `chat:getConversationHeatmap` | Daily conversation counts for heatmap |
+| `chat:getProjectHeatmap` | Daily project-activity counts for heatmap |
+
+## Push events (main → renderer)
+
+Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe function:
+
+- `onLogWatcherEvent` / `onLogWatcherHealth` — live LogWatcher events and health status
+- `onScanStarted` / `onImportComplete` — JSONL importer scan lifecycle
+- `onSyncStatusChanged` — remote sync state (stub)
+- `onNavigate` — main-process navigation commands (used by the stale-chat Notification click handler to deep-link to `/chat`)
+
 ## Jira
 
 Project key: **CGUI**. Tracked in Jira Cloud.
+
+## Project Rules
+
+**IMPORTANT — follow these rules exactly:**
+
+1. **Always update CLAUDE.md as the last step of any ticket closure.** When wrapping up work on a ticket, review this file and update any sections that are now stale (new views, new IPC channels, new services, changed architecture, etc.). This keeps future sessions accurately grounded.
+
+2. **Never close a Jira ticket unless specifically requested by the user.** Do not transition tickets to Done, Closed, or any terminal state on your own. The workflow is: move tickets to "In Progress", add detailed "Actions taken" + "Commit" comments, and leave them there. The user closes tickets manually after testing a fresh build.
