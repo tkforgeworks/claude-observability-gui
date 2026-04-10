@@ -251,6 +251,25 @@ export function insertAppLaunch(
 }
 
 /**
+ * Inserts an app focus event with dedup (skip if a row within 5s already exists).
+ */
+export function insertAppFocusEvent(
+  db: Database.Database,
+  focusedAt: string,
+  gapSinceLastMs: number
+): boolean {
+  const result = db.prepare(`
+    INSERT INTO app_focus_events (focused_at, gap_since_last_ms)
+    SELECT ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM app_focus_events
+      WHERE ABS(julianday(focused_at) - julianday(?)) * 86400 < 5
+    )
+  `).run(focusedAt, gapSinceLastMs, focusedAt);
+  return result.changes > 0;
+}
+
+/**
  * Closes the most recent open app session (quit_at IS NULL) by setting
  * quit_at and computing duration_seconds. If no open session exists, this
  * is a no-op (the monitor may have missed the launch event).

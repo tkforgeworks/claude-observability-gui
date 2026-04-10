@@ -28,6 +28,7 @@ import {
   updateCoworkSessionCliId,
   insertCoworkTurn,
   completeCoworkTurn,
+  insertAppFocusEvent,
 } from '../db/queries';
 
 /** How often the health check runs (ms) */
@@ -299,6 +300,10 @@ export class LogWatcher extends EventEmitter {
           return insertCoworkTurn(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
         case 'cowork_turn_ended':
           return completeCoworkTurn(this.db, event.sessionId!, event.timestamp) ? 'new' : 'deduped';
+        case 'app_focus':
+          return insertAppFocusEvent(
+            this.db, event.timestamp, event.data!.gapSinceLastMs as number
+          ) ? 'new' : 'deduped';
         // cowork_turn_completed ([Result] Turn succeeded) is logged but
         // we use turn_ended (running → idle) for timing since it fires after cleanup
       }

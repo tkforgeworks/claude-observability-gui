@@ -42,6 +42,9 @@ export function parseLogLine(line: string): ParsedLine | null {
 // Arrow character appears as either → (UTF-8) or ΓåÆ (Windows cp1252 encoding)
 const ARROW_PATTERN = '(?:→|ΓåÆ)';
 
+// Em-dash appears as either — (UTF-8) or ΓÇö (Windows cp1252 encoding)
+const EM_DASH_PATTERN = '(?:—|ΓÇö)';
+
 /**
  * Matches: `Starting app {`
  * Indicates Claude Desktop launched.
@@ -154,6 +157,24 @@ function matchCoworkTurnEnded(parsed: ParsedLine): LogEvent | null {
   };
 }
 
+/**
+ * Matches: `[SkillsPlugin] Window focused — polling now (last poll was 2490335ms ago)`
+ * Indicates the Claude Desktop window gained focus.
+ */
+const APP_FOCUS_RE = new RegExp(
+  `^\\[SkillsPlugin\\] Window focused ${EM_DASH_PATTERN} polling now \\(last poll was (\\d+)ms ago\\)$`
+);
+
+function matchAppFocus(parsed: ParsedLine): LogEvent | null {
+  const match = APP_FOCUS_RE.exec(parsed.message);
+  if (!match) return null;
+  return {
+    type: 'app_focus',
+    timestamp: parsed.timestamp,
+    data: { gapSinceLastMs: parseInt(match[1], 10) },
+  };
+}
+
 // Registry of matchers — checked in order, first match wins
 const matchers: Array<(parsed: ParsedLine) => LogEvent | null> = [
   matchAppLaunch,
@@ -163,6 +184,7 @@ const matchers: Array<(parsed: ParsedLine) => LogEvent | null> = [
   matchCoworkTurnStarted,
   matchCoworkTurnCompleted,
   matchCoworkTurnEnded,
+  matchAppFocus,
 ];
 
 /**
