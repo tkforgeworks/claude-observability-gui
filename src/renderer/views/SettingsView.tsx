@@ -210,6 +210,39 @@ function LogPathSection(): React.JSX.Element {
   );
 }
 
+function NotificationsSection(): React.JSX.Element {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    window.api.settings.get().then((s) => setEnabled(s.showTrayNotifications));
+  }, []);
+
+  const handleToggle = async () => {
+    const newValue = !enabled;
+    setEnabled(newValue);
+    await window.api.settings.update({ showTrayNotifications: newValue });
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        Notifications
+      </h3>
+      {enabled !== null && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccccdd', cursor: 'pointer' }}>
+          <input
+            type="checkbox"
+            checked={enabled}
+            onChange={handleToggle}
+            style={{ accentColor: '#6666cc' }}
+          />
+          Show tray notifications (stale chat import)
+        </label>
+      )}
+    </div>
+  );
+}
+
 function GeneralTab(): React.JSX.Element {
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
 
@@ -266,12 +299,7 @@ function GeneralTab(): React.JSX.Element {
         )}
       </div>
 
-      <div style={placeholderStyles}>
-        {/* TODO: Claude Code data path input + last scan timestamp */}
-        {/* TODO: cleanupPeriodDays warning if set to 30 or less */}
-        {/* TODO: Behavior checkboxes (minimize to tray, launch on startup, notifications) */}
-        Remaining general settings — not yet implemented
-      </div>
+      <NotificationsSection />
     </div>
   );
 }

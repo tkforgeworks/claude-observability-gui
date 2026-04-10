@@ -8,12 +8,13 @@
  * - Start background services (JSONL importer, log watcher) — stubs for now
  */
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, Notification } from 'electron';
 import path from 'path';
 import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
-import { ensureConfigFiles } from './config/configStore';
-import { createTray, destroyTray } from './tray';
+import { ensureConfigFiles, loadSettings } from './config/configStore';
+import { createTray, destroyTray, updateTrayMenu } from './tray';
+import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath } from './services/logPathDiscovery';
 import { LogWatcher } from './services/logWatcher';
@@ -21,7 +22,9 @@ import { LogWatcher } from './services/logWatcher';
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let importerInterval: ReturnType<typeof setInterval> | null = null;
+let stalenessInterval: ReturnType<typeof setInterval> | null = null;
 let logWatcher: LogWatcher | null = null;
+let stalenessNotified = false;
 
 // ---------------------------------------------------------------------------
 // Window creation
@@ -95,10 +98,24 @@ app.whenReady().then(() => {
   // Discover Claude Desktop log path (MSIX auto-discovery)
   discoverLogPath();
 
+  // Tray menu refresh helper — updates session count and cost
+  const refreshTray = () => {
+    try {
+      const today = queryTodaySummary(db);
+      updateTrayMenu(win, {
+        sessionCount: today.sessionCount,
+        costUsd: today.codeCostUsd ?? undefined,
+      });
+    } catch (err) {
+      console.error('[main] Tray refresh failed:', err);
+    }
+  };
+
   // Start LogWatcher — tails Claude Desktop main.log for new lines
   logWatcher = new LogWatcher(db);
   logWatcher.on('event', (event) => {
     win.webContents.send('logWatcher:newEvent', event);
+    refreshTray();
   });
   logWatcher.on('healthStatus', (status) => {
     win.webContents.send('logWatcher:healthStatus', status);
@@ -116,14 +133,46 @@ app.whenReady().then(() => {
     } catch (err) {
       console.error('[main] JSONL scan failed:', err);
     }
+    refreshTray();
   };
 
   runScan();
   importerInterval = setInterval(runScan, 5 * 60 * 1000);
 
-  // TODO (v0.4): Start InfluxDB sync service
-  // const influxSync = new InfluxSync(db);
-  // influxSync.start();
+  // Chat import staleness notification
+  const checkChatStaleness = () => {
+    if (stalenessNotified) return;
+    const settings = loadSettings();
+    if (!settings.showTrayNotifications) {
+      console.log('[staleness] Notifications disabled in settings');
+      return;
+    }
+    if (!settings.lastChatImportAt) {
+      console.log('[staleness] No chat import yet, skipping');
+      return;
+    }
+
+    const daysSince = (Date.now() - new Date(settings.lastChatImportAt).getTime()) / 86_400_000;
+    const threshold = settings.chatStalenessDays ?? 14;
+    console.log(`[staleness] Last import ${Math.floor(daysSince)} days ago, threshold ${threshold}`);
+    if (daysSince <= threshold) return;
+
+    stalenessNotified = true;
+    const notification = new Notification({
+      title: 'Chat Import Data is Stale',
+      body: `Your last claude.ai import was ${Math.floor(daysSince)} days ago. Click to update.`,
+    });
+    notification.on('click', () => {
+      if (win) {
+        win.show();
+        win.focus();
+        win.webContents.send('navigate', '/chat');
+      }
+    });
+    notification.show();
+  };
+  setTimeout(checkChatStaleness, 10_000); // Check 10s after startup
+  stalenessInterval = setInterval(checkChatStaleness, 60 * 60 * 1000); // Then every hour
 
   app.on('activate', () => {
     // macOS: re-create window if dock icon clicked with no open windows
@@ -141,6 +190,7 @@ app.on('before-quit', () => {
 
 app.on('will-quit', () => {
   if (importerInterval) clearInterval(importerInterval);
+  if (stalenessInterval) clearInterval(stalenessInterval);
   if (logWatcher) logWatcher.stop();
   unregisterIpcHandlers();
   destroyTray();

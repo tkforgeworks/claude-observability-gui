@@ -10,6 +10,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   minimizeToTrayOnClose: true,
   launchOnStartup: false,
   showTrayNotifications: true,
+  chatStalenessDays: 14,
   syncEnabled: false,
   activeProfileId: null,
   connectionProfiles: [],

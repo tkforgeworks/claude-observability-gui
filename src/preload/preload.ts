@@ -292,6 +292,13 @@ const api: ElectronApi = {
     ipcRenderer.on('sync:statusChanged', handler);
     return () => ipcRenderer.removeListener('sync:statusChanged', handler);
   },
+
+  onNavigate(callback: (path: string) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, path: string) =>
+      callback(path);
+    ipcRenderer.on('navigate', handler);
+    return () => ipcRenderer.removeListener('navigate', handler);
+  },
 };
 
 contextBridge.exposeInMainWorld('api', api);

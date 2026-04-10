@@ -105,6 +105,9 @@ export interface AppSettings {
   activeProfileId: string | null;
   connectionProfiles: InfluxConnectionProfile[];
 
+  // Notifications
+  chatStalenessDays: number;          // Days before chat import is considered stale (default 14)
+
   // Import history
   lastChatImportAt: string | null;
   lastJsonlScanAt: string | null;
@@ -447,6 +450,7 @@ export interface ElectronApi {
   onScanStarted(callback: () => void): () => void;
   onImportComplete(callback: (summary: ImportSummary) => void): () => void;
   onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void;
+  onNavigate(callback: (path: string) => void): () => void;
 }
 
 declare global {

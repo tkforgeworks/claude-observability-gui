@@ -4,8 +4,8 @@
  * @see §Application Shell wireframe in 04-wireframes.md
  */
 
-import React from 'react';
-import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { HashRouter, Routes, Route, Navigate, useNavigate } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import ContentArea from './components/layout/ContentArea';
 import TodayView from './views/TodayView';
@@ -26,6 +26,17 @@ const appStyles: React.CSSProperties = {
   color: '#e0e0e0',
 };
 
+/** Listens for main-process navigation commands and routes accordingly. */
+function NavigationListener(): null {
+  const navigate = useNavigate();
+  useEffect(() => {
+    return window.api.onNavigate((path: string) => {
+      navigate(path);
+    });
+  }, [navigate]);
+  return null;
+}
+
 function DefaultRedirect(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const landing = config?.views.find(v => v.defaultLanding && v.visible);
@@ -37,6 +48,7 @@ export default function App(): React.JSX.Element {
   return (
     <HashRouter>
       <DashboardConfigProvider>
+        <NavigationListener />
         <div style={appStyles}>
           <Sidebar />
           <ContentArea>

@@ -672,12 +672,13 @@ export default function ChatHistoryView(): React.JSX.Element {
   const lastImportAt = settings?.lastChatImportAt ?? null;
   const hasData = stats != null && stats.totalConversations > 0;
 
-  // Check staleness (>14 days)
+  // Check staleness (configurable via settings, default 14 days)
+  const staleThreshold = settings?.chatStalenessDays ?? 14;
   const isStale = useMemo(() => {
     if (!lastImportAt) return false;
     const daysSince = (Date.now() - new Date(lastImportAt).getTime()) / 86_400_000;
-    return daysSince > 14;
-  }, [lastImportAt]);
+    return daysSince > staleThreshold;
+  }, [lastImportAt, staleThreshold]);
 
   // Chart data with formatted labels
   const chartData = useMemo(() => {
