@@ -112,14 +112,53 @@ Tagged releases are built and published automatically via GitHub Actions:
 - **`.github/workflows/ci.yml`** — runs typecheck + unit tests on every push to `main` and every PR (Ubuntu runner).
 - **`.github/workflows/release.yml`** — runs on any tag matching `v*`, builds the NSIS installer on a Windows runner, and publishes it to a GitHub Release with auto-generated notes from commits since the previous tag. Tags containing a hyphen (e.g. `v0.9.0-rc.1`) are automatically flagged as pre-releases.
 
-To cut a release:
+The installer appears under [Releases](../../releases) once the build finishes (~5-10 min). Builds are currently **unsigned** — Windows SmartScreen will show a warning that users can bypass via *More info → Run anyway*. See the Installation section above.
+
+### Cutting a release
+
+> **Note:** the command for version bumping is `npm version`, not `npm publish`. `npm publish` pushes to the public npm registry — do not run it for this project.
+
+`npm version` in one step updates `package.json`, creates a commit, and creates an annotated `v<version>` git tag. Pushing that tag triggers the release workflow.
+
+**Standard bump:**
 
 ```bash
-npm version patch   # or minor / major
+npm version patch   # 0.9.0 → 0.9.1
+npm version minor   # 0.9.0 → 0.10.0
+npm version major   # 0.9.0 → 1.0.0
 git push --follow-tags
 ```
 
-The installer appears under [Releases](../../releases) once the build finishes (~5-10 min). Builds are currently **unsigned** — Windows SmartScreen will show a warning that users can bypass via *More info → Run anyway*. See the Installation section above.
+`--follow-tags` pushes the commit and any annotated tags reachable from it in one shot. Without it, `git push` alone will not push the new tag.
+
+**Pre-release / release-candidate tags:**
+
+```bash
+npm version 1.0.0-rc.1                # explicit
+npm version prerelease --preid=rc     # auto-increment: 0.9.0 → 0.9.1-rc.0 → 0.9.1-rc.1 → ...
+git push --follow-tags
+```
+
+Any tag containing a hyphen is automatically flagged as a GitHub pre-release by the workflow.
+
+**First tag on a version that already exists in `package.json`:**
+
+`npm version <x.y.z>` refuses to set the version to what it already is. For the very first tag on a fresh `package.json` version, tag manually:
+
+```bash
+git tag v0.9.0
+git push origin main --follow-tags
+```
+
+**Gotcha — dirty working tree:**
+
+`npm version` refuses to run if there are modified tracked files in the working tree (untracked files are fine). If you hit `Git working directory not clean`, either commit/stash the pending changes first, or bypass the check with:
+
+```bash
+npm version patch --force
+```
+
+`git tag` (used for the manual first-tag path above) does not enforce this check.
 
 ## Roadmap
 
