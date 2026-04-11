@@ -35,7 +35,17 @@
       "Bash(npx webpack:*)",
       "Bash(npm test:*)",
       "Bash(find /c/Code/claude-observability-gui -maxdepth 3 -name .cursorrules -o -name copilot-instructions.md -o -name .claude* -type f)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "Bash(npx electron:*)",
+      "Bash(node -e \"console.log\\(require\\(''@types/node/package.json''\\).version\\)\")",
+      "Bash(curl -s https://tkforgeworks.atlassian.net/rest/api/3/issue/CGUI-46/comment)",
+      "Bash(node -e \"console.log\\(require\\(''chokidar/package.json''\\).version\\)\")",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git:*)",
+      "Bash(xargs grep:*)",
+      "Bash(curl -s \"https://tkforgeworks.atlassian.net/rest/api/3/issue/CGUI-23/comment\")",
+      "Bash(cp /tmp/plan_content.md \"/c/Users/timkl/.claude/plans/moonlit-foraging-brooks-agent-a18228b1d8755dde8.md\")"
     ]
   }
 }

@@ -2,6 +2,9 @@ node_modules/
 dist/
 out/
 release/
+application-iconography/
+*.zip
+
 
 # SQLite databases
 *.db
