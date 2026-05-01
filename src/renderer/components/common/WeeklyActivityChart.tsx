@@ -21,11 +21,11 @@ interface WeeklyActivityChartProps {
 }
 
 const COLORS = {
-  code: '#22aa66',
-  cowork: '#6666cc',
-  grid: '#2a2a3e',
-  axis: '#6666aa',
-  bg: '#16162a',
+  code: 'var(--chart-1)',
+  cowork: 'var(--chart-5)',
+  grid: 'var(--border-soft)',
+  axis: 'var(--text-tertiary)',
+  bg: 'var(--background)',
 };
 
 function formatDayLabel(dateStr: string): string {
@@ -69,14 +69,15 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
 
   return (
     <div style={{
-      backgroundColor: '#1a1a2e',
-      border: '1px solid #3a3a5e',
+      backgroundColor: 'var(--background-light)',
+      border: '1px solid var(--border)',
       borderRadius: 6,
       padding: '8px 12px',
       fontSize: 12,
+      fontFamily: '"JetBrains Mono", monospace',
       lineHeight: 1.6,
     }}>
-      <div style={{ color: '#ccccdd', fontWeight: 600, marginBottom: 4 }}>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4 }}>
         {formatDateFull(label)}
       </div>
       {codeEntry && codeEntry.value > 0 && (
@@ -90,39 +91,19 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
         </div>
       )}
       {(codeEntry?.value ?? 0) === 0 && (coworkEntry?.value ?? 0) === 0 && (
-        <div style={{ color: '#6666aa' }}>No sessions</div>
+        <div style={{ color: 'var(--text-tertiary)' }}>No sessions</div>
       )}
     </div>
   );
 }
 
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
+const containerStyles: React.CSSProperties = {};
 
 const headerStyles: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   alignItems: 'center',
   marginBottom: 12,
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-};
-
-const legendStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 16,
-  fontSize: 11,
-  color: '#8888aa',
 };
 
 const legendDotStyles = (color: string): React.CSSProperties => ({
@@ -140,13 +121,13 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
   const totalCost = data.reduce((sum, d) => sum + d.codeCost, 0);
 
   return (
-    <div style={containerStyles}>
-      <div style={headerStyles}>
-        <span style={titleStyles}>Last 7 Days</span>
-        <div style={legendStyles}>
+    <div className="card" style={containerStyles}>
+      <div className="card-head">
+        <h2>Last 7 Days</h2>
+        <div className="legend">
           <span><span style={legendDotStyles(COLORS.code)} />Code</span>
           <span><span style={legendDotStyles(COLORS.cowork)} />Cowork</span>
-          <span style={{ color: '#6666aa' }}>
+          <span style={{ color: 'var(--text-tertiary)' }}>
             {totalSessions} sessions · {formatCost(totalCost)}
           </span>
         </div>

@@ -12,11 +12,10 @@ interface ContentAreaProps {
 const contentAreaStyles: React.CSSProperties = {
   flex: 1,
   height: '100%',
-  overflowY: 'auto',
-  overflowX: 'hidden',
+  overflow: 'hidden',
   display: 'flex',
   flexDirection: 'column',
-  backgroundColor: '#1a1a2e',
+  backgroundColor: 'var(--background-deep)',
 };
 
 export default function ContentArea({ children }: ContentAreaProps): React.JSX.Element {

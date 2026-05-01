@@ -1,9 +1,3 @@
-/**
- * Settings view — tabbed layout.
- * Tabs: General, Remote Sync, Dashboard, Data
- * @see §8 "Settings Panel" in 04-wireframes.md
- */
-
 import React, { useEffect, useState, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
@@ -28,27 +22,10 @@ import { CSS } from '@dnd-kit/utilities';
 
 type SettingsTab = 'general' | 'remoteSync' | 'dashboard' | 'data';
 
-const viewStyles: React.CSSProperties = {
-  padding: 24,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 0,
-  height: '100%',
-};
-
-const headerStyles: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#ccccdd',
-  letterSpacing: '0.5px',
-  textTransform: 'uppercase',
-  marginBottom: 20,
-};
-
 const tabBarStyles: React.CSSProperties = {
   display: 'flex',
   gap: 0,
-  borderBottom: '1px solid #2a2a4a',
+  borderBottom: '1px solid var(--border-soft)',
   marginBottom: 24,
 };
 
@@ -56,9 +33,10 @@ const tabButtonStyles = (active: boolean): React.CSSProperties => ({
   padding: '8px 20px',
   backgroundColor: 'transparent',
   border: 'none',
-  borderBottom: active ? '2px solid #6666cc' : '2px solid transparent',
-  color: active ? '#ffffff' : '#8888aa',
+  borderBottom: active ? '2px solid var(--purple-primary)' : '2px solid transparent',
+  color: active ? 'var(--text-primary)' : 'var(--text-secondary)',
   fontSize: 14,
+  fontFamily: '"Poppins", sans-serif',
   cursor: 'pointer',
   fontWeight: active ? 600 : 400,
   marginBottom: -1,
@@ -66,8 +44,9 @@ const tabButtonStyles = (active: boolean): React.CSSProperties => ({
 
 const placeholderStyles: React.CSSProperties = {
   padding: 24,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
   fontSize: 14,
+  fontFamily: '"Poppins", sans-serif',
   fontStyle: 'italic',
 };
 
@@ -85,8 +64,6 @@ export default function SettingsView(): React.JSX.Element {
     return initial ?? 'general';
   });
 
-  // Respond to deep-links (e.g. GlobalBanners navigating to /settings with a target tab).
-  // Triggers whenever navigate() is called with new state, even if the pathname is unchanged.
   useEffect(() => {
     const target = (location.state as { tab?: SettingsTab } | null)?.tab;
     if (target) {
@@ -95,9 +72,7 @@ export default function SettingsView(): React.JSX.Element {
   }, [location.key, location.state]);
 
   return (
-    <div style={viewStyles}>
-      <h1 style={headerStyles}>Settings</h1>
-
+    <div className="page">
       <div style={tabBarStyles} role="tablist">
         {TABS.map(({ id, label }) => (
           <button
@@ -122,30 +97,27 @@ export default function SettingsView(): React.JSX.Element {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Tab panel stubs — each becomes its own component when implemented
-// ---------------------------------------------------------------------------
-
 const pathRowStyles: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 4,
   padding: '12px 0',
-  borderBottom: '1px solid #2a2a4a',
+  borderBottom: '1px solid var(--border-soft)',
 };
 
 const pathLabelStyles: React.CSSProperties = {
   fontSize: 12,
   fontWeight: 600,
-  color: '#8888aa',
+  color: 'var(--text-tertiary)',
   textTransform: 'uppercase',
   letterSpacing: '0.5px',
+  fontFamily: '"Poppins", sans-serif',
 };
 
 const pathValueStyles: React.CSSProperties = {
   fontSize: 13,
-  color: '#ccccdd',
-  fontFamily: 'monospace',
+  color: 'var(--text-primary)',
+  fontFamily: '"JetBrains Mono", monospace',
   wordBreak: 'break-all',
 };
 
@@ -157,18 +129,20 @@ const statusBadgeStyles = (color: string): React.CSSProperties => ({
   fontWeight: 600,
   letterSpacing: '0.3px',
   textTransform: 'uppercase',
-  backgroundColor: color === 'green' ? '#1a3a1a' : color === 'amber' ? '#3a3a1a' : '#3a1a1a',
-  color: color === 'green' ? '#44cc44' : color === 'amber' ? '#ccaa44' : '#cc4444',
-  border: `1px solid ${color === 'green' ? '#2a4a2a' : color === 'amber' ? '#4a4a2a' : '#4a2a2a'}`,
+  fontFamily: '"Poppins", sans-serif',
+  backgroundColor: color === 'green' ? 'rgba(74, 222, 128, 0.12)' : color === 'amber' ? 'rgba(251, 191, 36, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+  color: color === 'green' ? 'var(--success)' : color === 'amber' ? 'var(--warning)' : 'var(--error)',
+  border: `1px solid ${color === 'green' ? 'rgba(74, 222, 128, 0.25)' : color === 'amber' ? 'rgba(251, 191, 36, 0.25)' : 'rgba(248, 113, 113, 0.25)'}`,
 });
 
 const warningBannerStyles: React.CSSProperties = {
   padding: '10px 14px',
-  backgroundColor: '#3a2a1a',
-  border: '1px solid #4a3a2a',
+  backgroundColor: 'rgba(251, 191, 36, 0.08)',
+  border: '1px solid rgba(251, 191, 36, 0.25)',
   borderRadius: 6,
-  color: '#ccaa44',
+  color: 'var(--warning)',
   fontSize: 13,
+  fontFamily: '"Poppins", sans-serif',
   marginTop: 8,
 };
 
@@ -197,7 +171,7 @@ function LogPathSection(): React.JSX.Element {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
         Claude Desktop Log
       </h3>
       <div style={pathRowStyles}>
@@ -208,11 +182,11 @@ function LogPathSection(): React.JSX.Element {
         {status.path ? (
           <span style={pathValueStyles}>{status.path}</span>
         ) : (
-          <span style={{ ...pathValueStyles, color: '#666688', fontStyle: 'italic' }}>
+          <span style={{ ...pathValueStyles, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
             Claude Desktop not detected — install it or set a path override in settings.json
           </span>
         )}
-        <span style={{ fontSize: 11, color: '#666688' }}>{sourceLabel}</span>
+        <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace' }}>{sourceLabel}</span>
       </div>
       {status.source === 'settings-override' && !status.valid && (
         <div style={warningBannerStyles}>
@@ -239,16 +213,16 @@ function LaunchOnStartupSection(): React.JSX.Element {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
         Startup
       </h3>
       {enabled !== null && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccccdd', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', fontFamily: '"Poppins", sans-serif' }}>
           <input
             type="checkbox"
             checked={enabled}
             onChange={handleToggle}
-            style={{ accentColor: '#6666cc' }}
+            style={{ accentColor: 'var(--purple-primary)' }}
           />
           Launch Claude Usage Monitor when I sign in to Windows
         </label>
@@ -272,16 +246,16 @@ function NotificationsSection(): React.JSX.Element {
 
   return (
     <div style={{ marginBottom: 20 }}>
-      <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
         Notifications
       </h3>
       {enabled !== null && (
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#ccccdd', cursor: 'pointer' }}>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', fontFamily: '"Poppins", sans-serif' }}>
           <input
             type="checkbox"
             checked={enabled}
             onChange={handleToggle}
-            style={{ accentColor: '#6666cc' }}
+            style={{ accentColor: 'var(--purple-primary)' }}
           />
           Show tray notifications (stale chat import)
         </label>
@@ -302,7 +276,7 @@ function GeneralTab(): React.JSX.Element {
       <LogPathSection />
 
       <div style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Configuration Files
         </h3>
         {paths ? (
@@ -327,11 +301,12 @@ function GeneralTab(): React.JSX.Element {
               <button
                 style={{
                   padding: '6px 14px',
-                  backgroundColor: '#2a2a4a',
-                  border: '1px solid #3a3a5a',
+                  backgroundColor: 'var(--background-light)',
+                  border: '1px solid var(--border)',
                   borderRadius: 4,
-                  color: '#ccccdd',
+                  color: 'var(--text-primary)',
                   fontSize: 13,
+                  fontFamily: '"Poppins", sans-serif',
                   cursor: 'pointer',
                   whiteSpace: 'nowrap',
                 }}
@@ -354,26 +329,12 @@ function GeneralTab(): React.JSX.Element {
 }
 
 function RemoteSyncTab(): React.JSX.Element {
-  // TODO: implement per wireframe §8.2
-  // Fields: Sync enabled toggle, connection profiles list,
-  //         URL/Bucket/Org/Token fields for active profile,
-  //         Test Connection button, Save button,
-  //         Sync status panel with pending row counts, Sync Now button
   return (
     <div style={placeholderStyles}>
-      {/* TODO: Sync enabled/disabled toggle */}
-      {/* TODO: Connection profiles list with add/edit */}
-      {/* TODO: Active profile config form (URL, bucket, org, token with safeStorage notice) */}
-      {/* TODO: Test Connection and Save buttons */}
-      {/* TODO: Sync status panel with pending counts and Sync Now */}
       Remote sync settings — not yet implemented
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Dashboard tab — label maps, styles, sortable item, and main component
-// ---------------------------------------------------------------------------
 
 const VIEW_LABELS: Record<ViewId, string> = {
   today: 'Today',
@@ -398,13 +359,15 @@ const WIDGET_LABELS: Record<TrendsWidgetId, string> = {
 const sectionHeaderStyles: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: '#ccccdd',
+  color: 'var(--text-primary)',
+  fontFamily: '"Poppins", sans-serif',
   marginBottom: 4,
 };
 
 const sectionSubtextStyles: React.CSSProperties = {
   fontSize: 12,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
+  fontFamily: '"Poppins", sans-serif',
   marginBottom: 12,
 };
 
@@ -413,17 +376,18 @@ const sortableItemStyles: React.CSSProperties = {
   alignItems: 'center',
   gap: 12,
   padding: '8px 12px',
-  backgroundColor: '#1a1a2e',
-  border: '1px solid #2a2a4a',
+  backgroundColor: 'var(--background)',
+  border: '1px solid var(--border-soft)',
   borderRadius: 4,
   marginBottom: 4,
   fontSize: 13,
-  color: '#ccccdd',
+  fontFamily: '"Poppins", sans-serif',
+  color: 'var(--text-primary)',
 };
 
 const dragHandleStyles: React.CSSProperties = {
   cursor: 'grab',
-  color: '#555577',
+  color: 'var(--text-tertiary)',
   fontSize: 16,
   userSelect: 'none',
   lineHeight: 1,
@@ -433,53 +397,55 @@ const toggleStyles = (on: boolean): React.CSSProperties => ({
   width: 36,
   height: 20,
   borderRadius: 10,
-  backgroundColor: on ? '#4444aa' : '#2a2a3a',
-  border: '1px solid ' + (on ? '#5555bb' : '#3a3a5a'),
+  backgroundColor: on ? 'var(--purple-tint)' : 'var(--background-light)',
+  border: '1px solid ' + (on ? 'var(--purple-secondary)' : 'var(--border)'),
   position: 'relative',
   cursor: 'pointer',
   flexShrink: 0,
-  transition: 'background-color 0.15s',
+  transition: 'background-color 200ms ease',
 });
 
 const toggleKnobStyles = (on: boolean): React.CSSProperties => ({
   width: 14,
   height: 14,
   borderRadius: '50%',
-  backgroundColor: on ? '#ffffff' : '#666688',
+  backgroundColor: on ? 'var(--text-primary)' : 'var(--text-tertiary)',
   position: 'absolute',
   top: 2,
   left: on ? 19 : 3,
-  transition: 'left 0.15s',
+  transition: 'left 200ms ease',
 });
 
 const radioStyles = (selected: boolean): React.CSSProperties => ({
   width: 14,
   height: 14,
   borderRadius: '50%',
-  border: `2px solid ${selected ? '#6666cc' : '#444466'}`,
-  backgroundColor: selected ? '#6666cc' : 'transparent',
+  border: `2px solid ${selected ? 'var(--purple-primary)' : 'var(--border)'}`,
+  backgroundColor: selected ? 'var(--purple-primary)' : 'transparent',
   cursor: 'pointer',
   flexShrink: 0,
 });
 
 const primaryButtonStyles = (disabled: boolean): React.CSSProperties => ({
   padding: '8px 16px',
-  backgroundColor: disabled ? '#2a2a4a' : '#4444aa',
-  border: '1px solid ' + (disabled ? '#3a3a5a' : '#5555bb'),
+  backgroundColor: disabled ? 'var(--background-light)' : 'var(--purple-tint)',
+  border: '1px solid ' + (disabled ? 'var(--border)' : 'var(--purple-secondary)'),
   borderRadius: 4,
-  color: disabled ? '#555577' : '#ffffff',
+  color: disabled ? 'var(--text-tertiary)' : 'var(--purple-dark)',
   fontSize: 13,
   fontWeight: 600,
+  fontFamily: '"Poppins", sans-serif',
   cursor: disabled ? 'default' : 'pointer',
 });
 
 const secondaryButtonStyles: React.CSSProperties = {
   padding: '8px 16px',
   backgroundColor: 'transparent',
-  border: '1px solid #3a3a5a',
+  border: '1px solid var(--border)',
   borderRadius: 4,
-  color: '#8888aa',
+  color: 'var(--text-secondary)',
   fontSize: 13,
+  fontFamily: '"Poppins", sans-serif',
   cursor: 'pointer',
 };
 
@@ -510,7 +476,6 @@ function DashboardTab(): React.JSX.Element {
   const [localConfig, setLocalConfig] = useState<DashboardConfig | null>(null);
   const [dirty, setDirty] = useState(false);
 
-  // Clone context config into local state on first load
   useEffect(() => {
     if (contextConfig && !localConfig) {
       setLocalConfig(structuredClone(contextConfig));
@@ -555,7 +520,6 @@ function DashboardTab(): React.JSX.Element {
       if (!prev) return prev;
       const view = prev.views.find(v => v.id === viewId);
       if (!view) return prev;
-      // Cannot hide the landing view
       if (view.defaultLanding && view.visible) return prev;
       const views = prev.views.map(v =>
         v.id === viewId ? { ...v, visible: !v.visible } : v
@@ -571,7 +535,6 @@ function DashboardTab(): React.JSX.Element {
       const views = prev.views.map(v => ({
         ...v,
         defaultLanding: v.id === viewId,
-        // Ensure landing view is visible
         visible: v.id === viewId ? true : v.visible,
       }));
       return { ...prev, views };
@@ -617,7 +580,6 @@ function DashboardTab(): React.JSX.Element {
 
   return (
     <div style={{ padding: 4 }}>
-      {/* Navigation Views */}
       <h3 style={sectionHeaderStyles}>Navigation Views</h3>
       <p style={sectionSubtextStyles}>Drag to reorder. Toggle visibility. Set the landing view.</p>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleViewDragEnd}>
@@ -642,7 +604,6 @@ function DashboardTab(): React.JSX.Element {
         </SortableContext>
       </DndContext>
 
-      {/* Trends Widgets */}
       <h3 style={{ ...sectionHeaderStyles, marginTop: 24 }}>Trends Widgets</h3>
       <p style={sectionSubtextStyles}>Drag to reorder. Toggle visibility.</p>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWidgetDragEnd}>
@@ -662,7 +623,6 @@ function DashboardTab(): React.JSX.Element {
         </SortableContext>
       </DndContext>
 
-      {/* Action buttons */}
       <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
         <button style={primaryButtonStyles(!dirty)} onClick={handleSave} disabled={!dirty}>
           {dirty ? 'Save Changes' : 'Saved'}
@@ -680,23 +640,25 @@ function DashboardTab(): React.JSX.Element {
 
 const actionButtonStyles: React.CSSProperties = {
   padding: '8px 16px',
-  backgroundColor: '#2a2a4a',
-  border: '1px solid #4a4a6a',
+  backgroundColor: 'var(--background-light)',
+  border: '1px solid var(--border)',
   borderRadius: 4,
-  color: '#ccccdd',
+  color: 'var(--text-primary)',
   fontSize: 13,
   fontWeight: 600,
+  fontFamily: '"Poppins", sans-serif',
   cursor: 'pointer',
 };
 
 const dangerButtonStyles: React.CSSProperties = {
   padding: '8px 16px',
-  backgroundColor: '#4a1a1a',
-  border: '1px solid #6a2a2a',
+  backgroundColor: 'rgba(248, 113, 113, 0.1)',
+  border: '1px solid rgba(248, 113, 113, 0.3)',
   borderRadius: 4,
-  color: '#ff6666',
+  color: 'var(--error)',
   fontSize: 13,
   fontWeight: 600,
+  fontFamily: '"Poppins", sans-serif',
   cursor: 'pointer',
 };
 
@@ -704,7 +666,7 @@ const tableCountRowStyles: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
   padding: '6px 0',
-  borderBottom: '1px solid #2a2a4a',
+  borderBottom: '1px solid var(--border-soft)',
   fontSize: 13,
 };
 
@@ -752,7 +714,6 @@ function DataTab(): React.JSX.Element {
       } else if (result.error) {
         setBackupStatus(`Backup failed: ${result.error}`);
       }
-      // User cancelled — no message
     } finally {
       setBackingUp(false);
       setTimeout(() => setBackupStatus(null), 5000);
@@ -782,35 +743,33 @@ function DataTab(): React.JSX.Element {
 
   return (
     <div style={{ padding: 4 }}>
-      {/* Database Info */}
       <div style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Database
         </h3>
         {stats ? (
           <div>
             <div style={tableCountRowStyles}>
-              <span style={{ color: '#8888aa' }}>Path</span>
-              <span style={{ color: '#ccccdd', fontFamily: 'monospace', fontSize: 11, maxWidth: '70%', textAlign: 'right', wordBreak: 'break-all' }}>
+              <span style={{ color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif' }}>Path</span>
+              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace', fontSize: 11, maxWidth: '70%', textAlign: 'right', wordBreak: 'break-all' }}>
                 {stats.path}
               </span>
             </div>
             <div style={tableCountRowStyles}>
-              <span style={{ color: '#8888aa' }}>Size</span>
-              <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>
+              <span style={{ color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif' }}>Size</span>
+              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>
                 {formatBytes(stats.sizeBytes)}
               </span>
             </div>
             <div style={tableCountRowStyles}>
-              <span style={{ color: '#8888aa' }}>Mode</span>
-              <span style={{ color: '#ccccdd', fontFamily: 'monospace' }}>WAL</span>
+              <span style={{ color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif' }}>Mode</span>
+              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>WAL</span>
             </div>
           </div>
         ) : (
           <span style={placeholderStyles}>Loading...</span>
         )}
 
-        {/* Action buttons */}
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
           <button style={actionButtonStyles} onClick={handleBackup} disabled={backingUp}>
             {backingUp ? 'Backing up...' : 'Backup Database'}
@@ -820,31 +779,30 @@ function DataTab(): React.JSX.Element {
           </button>
         </div>
         {backupStatus && (
-          <p style={{ fontSize: 12, color: backupStatus.startsWith('Backed') ? '#66cc66' : '#ff6666', marginTop: 8 }}>
+          <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: backupStatus.startsWith('Backed') ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>
             {backupStatus}
           </p>
         )}
       </div>
 
-      {/* Table Row Counts with oldest record */}
       <div style={{ marginBottom: 20 }}>
-        <h3 style={{ fontSize: 14, color: '#ccccdd', marginBottom: 12 }}>
+        <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Table Row Counts
         </h3>
         {tableCounts ? (
           <div>
-            <div style={{ ...tableCountRowStyles, borderBottom: '1px solid #4a4a6a', marginBottom: 4 }}>
-              <span style={{ color: '#8888aa', flex: 1 }}>Table</span>
-              <span style={{ color: '#8888aa', width: 80, textAlign: 'right' }}>Rows</span>
-              <span style={{ color: '#8888aa', width: 120, textAlign: 'right' }}>Oldest Record</span>
+            <div style={{ ...tableCountRowStyles, borderBottom: '1px solid var(--border)', marginBottom: 4 }}>
+              <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Table</span>
+              <span style={{ color: 'var(--text-secondary)', width: 80, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Rows</span>
+              <span style={{ color: 'var(--text-secondary)', width: 120, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Oldest Record</span>
             </div>
             {Object.entries(TABLE_LABELS).map(([key, label]) => (
               <div key={key} style={{ ...tableCountRowStyles, alignItems: 'center' }}>
-                <span style={{ color: '#8888aa', flex: 1 }}>{label}</span>
-                <span style={{ color: '#ccccdd', fontFamily: 'monospace', width: 80, textAlign: 'right' }}>
+                <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif' }}>{label}</span>
+                <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace', width: 80, textAlign: 'right' }}>
                   {(tableCounts[key] ?? 0).toLocaleString()}
                 </span>
-                <span style={{ color: '#666688', fontFamily: 'monospace', fontSize: 11, width: 120, textAlign: 'right' }}>
+                <span style={{ color: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace', fontSize: 11, width: 120, textAlign: 'right' }}>
                   {formatOldestDate(stats?.oldestRecords[key] ?? null)}
                 </span>
               </div>
@@ -855,12 +813,11 @@ function DataTab(): React.JSX.Element {
         )}
       </div>
 
-      {/* Danger Zone */}
-      <div style={{ marginTop: 32, padding: '16px', borderTop: '1px solid #3a2a2a' }}>
-        <h3 style={{ fontSize: 14, color: '#ff6666', marginBottom: 8 }}>
+      <div style={{ marginTop: 32, padding: 16, borderTop: '1px solid rgba(248, 113, 113, 0.2)' }}>
+        <h3 style={{ fontSize: 14, color: 'var(--error)', marginBottom: 8, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Danger Zone
         </h3>
-        <p style={{ fontSize: 13, color: '#888', marginBottom: 12 }}>
+        <p style={{ fontSize: 13, color: 'var(--text-tertiary)', fontFamily: '"Poppins", sans-serif', marginBottom: 12 }}>
           Clear all data from the database. Schema and config files are preserved.
           Data will be re-imported on next scan cycle.
         </p>

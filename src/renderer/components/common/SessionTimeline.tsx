@@ -12,35 +12,14 @@ interface SessionTimelineProps {
   entries: TimelineEntry[];
 }
 
-// Colors
-const CODE_COLOR = '#22aa66';
-const CODE_COLOR_OPEN = '#22aa6699';
-const COWORK_COLOR = '#6666cc';
-const COWORK_COLOR_OPEN = '#6666cc99';
-const TURN_TICK_COLOR = '#ffffffaa';
-
-const containerStyles: React.CSSProperties = {
-  backgroundColor: '#0f0f23',
-  border: '1px solid #2a2a4a',
-  borderRadius: 8,
-  padding: '16px 20px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 8,
-};
-
-const headerStyles: React.CSSProperties = {
-  fontSize: 12,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-};
+const CODE_COLOR = 'var(--chart-1)';
+const COWORK_COLOR = 'var(--chart-5)';
+const TURN_TICK_COLOR = 'rgba(255, 255, 255, 0.65)';
 
 const trackStyles: React.CSSProperties = {
   position: 'relative',
   height: 40,
-  backgroundColor: '#1a1a2e',
+  backgroundColor: 'var(--background-light)',
   borderRadius: 4,
   overflow: 'hidden',
 };
@@ -50,29 +29,6 @@ const hourLabelsStyles: React.CSSProperties = {
   height: 16,
   marginTop: 2,
 };
-
-const legendStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 16,
-  marginTop: 4,
-};
-
-const legendItemStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  fontSize: 11,
-  color: '#666688',
-};
-
-function legendDot(color: string): React.CSSProperties {
-  return {
-    width: 8,
-    height: 8,
-    borderRadius: 2,
-    backgroundColor: color,
-  };
-}
 
 /** Compute the time axis range: 24h window snapped to hour boundaries. */
 function computeAxis(entries: TimelineEntry[], now: Date): { start: number; end: number } {
@@ -136,9 +92,7 @@ function SessionBlock({ entry, axisStart, axisEnd, now }: {
   const width = Math.max(right - left, 0.3); // minimum visible width
 
   const isCode = entry.type === 'code';
-  const bgColor = isCode
-    ? (isOpen ? CODE_COLOR_OPEN : CODE_COLOR)
-    : (isOpen ? COWORK_COLOR_OPEN : COWORK_COLOR);
+  const bgColor = isCode ? CODE_COLOR : COWORK_COLOR;
 
   const durationMs = endMs - startMs;
   const projectLabel = entry.projectPath
@@ -160,9 +114,10 @@ function SessionBlock({ entry, axisStart, axisEnd, now }: {
     left: `${left}%`,
     width: `${width}%`,
     backgroundColor: bgColor,
+    opacity: isOpen ? 0.7 : 1,
     borderRadius: 3,
     cursor: 'default',
-    borderRight: isOpen ? '2px dashed #ffffff66' : 'none',
+    borderRight: isOpen ? '2px dashed rgba(255,255,255,0.4)' : 'none',
     transition: 'opacity 0.15s',
   };
 
@@ -217,8 +172,8 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
   const labelInterval = hourMarkers.length > 16 ? 3 : hourMarkers.length > 8 ? 2 : 1;
 
   return (
-    <div style={containerStyles}>
-      <div style={headerStyles}>Session Timeline</div>
+    <div className="card">
+      <div className="card-head"><h2>Session Timeline</h2></div>
 
       <div style={trackStyles}>
         {/* Hour gridlines */}
@@ -233,7 +188,7 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
                 top: 0,
                 bottom: 0,
                 width: 1,
-                backgroundColor: '#2a2a4a',
+                backgroundColor: 'var(--border-soft)',
               }}
             />
           );
@@ -264,7 +219,8 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
                 left: `${pct}%`,
                 transform: 'translateX(-50%)',
                 fontSize: 10,
-                color: '#666688',
+                fontFamily: '"JetBrains Mono", monospace',
+                color: 'var(--text-tertiary)',
               }}
             >
               {formatHour(h)}
@@ -273,15 +229,9 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
         })}
       </div>
 
-      <div style={legendStyles}>
-        <div style={legendItemStyles}>
-          <div style={legendDot(CODE_COLOR)} />
-          Code
-        </div>
-        <div style={legendItemStyles}>
-          <div style={legendDot(COWORK_COLOR)} />
-          Cowork
-        </div>
+      <div className="legend" style={{ marginTop: 4 }}>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: CODE_COLOR, marginRight: 4, verticalAlign: 'middle' }} />Code</span>
+        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: COWORK_COLOR, marginRight: 4, verticalAlign: 'middle' }} />Cowork</span>
       </div>
     </div>
   );

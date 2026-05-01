@@ -1,10 +1,3 @@
-/**
- * Reusable warning/status banner component.
- * Shown at the top of the content area when conditions are met (log path missing,
- * stale import, sync offline, etc.).
- * @see §10 "Warning / Status Banners" in 04-wireframes.md
- */
-
 import React from 'react';
 
 type BannerVariant = 'info' | 'warning' | 'error';
@@ -18,29 +11,26 @@ export interface BannerAction {
 interface StatusBannerProps {
   variant: BannerVariant;
   message: string;
-  /** Single call-to-action button displayed on the right */
   action?: BannerAction;
-  /** Multiple call-to-action buttons, rendered left-to-right before the dismiss button */
   actions?: BannerAction[];
-  /** Optional dismiss handler — renders an X button */
   onDismiss?: () => void;
 }
 
 const VARIANT_STYLES: Record<BannerVariant, React.CSSProperties> = {
   info: {
-    backgroundColor: '#1a2a4a',
-    borderColor: '#3355aa',
-    color: '#aabbdd',
+    backgroundColor: 'rgba(56, 189, 248, 0.08)',
+    borderColor: 'rgba(56, 189, 248, 0.3)',
+    color: 'var(--info)',
   },
   warning: {
-    backgroundColor: '#2a2010',
-    borderColor: '#aa8833',
-    color: '#ddcc88',
+    backgroundColor: 'rgba(251, 191, 36, 0.08)',
+    borderColor: 'rgba(251, 191, 36, 0.3)',
+    color: 'var(--warning)',
   },
   error: {
-    backgroundColor: '#2a1010',
-    borderColor: '#aa3333',
-    color: '#ddaaaa',
+    backgroundColor: 'rgba(248, 113, 113, 0.08)',
+    borderColor: 'rgba(248, 113, 113, 0.3)',
+    color: 'var(--error)',
   },
 };
 
@@ -58,18 +48,9 @@ const bannerBaseStyles: React.CSSProperties = {
   borderWidth: 1,
   borderStyle: 'solid',
   borderRadius: 6,
-  margin: '12px 16px 0',
   fontSize: 13,
+  fontFamily: '"Poppins", sans-serif',
   lineHeight: 1.5,
-};
-
-const iconStyles: React.CSSProperties = {
-  flexShrink: 0,
-  marginTop: 1,
-};
-
-const textStyles: React.CSSProperties = {
-  flex: 1,
 };
 
 const actionButtonStyles: React.CSSProperties = {
@@ -80,6 +61,7 @@ const actionButtonStyles: React.CSSProperties = {
   borderRadius: 4,
   color: 'inherit',
   fontSize: 12,
+  fontFamily: '"Poppins", sans-serif',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
   alignSelf: 'center',
@@ -113,10 +95,10 @@ export default function StatusBanner({
 
   return (
     <div style={combinedStyles} role="alert">
-      <span style={iconStyles} aria-hidden="true">
+      <span style={{ flexShrink: 0, marginTop: 1 }} aria-hidden="true">
         {VARIANT_ICONS[variant]}
       </span>
-      <span style={textStyles}>{message}</span>
+      <span style={{ flex: 1 }}>{message}</span>
       {allActions.map((a) => (
         <button
           key={a.label}

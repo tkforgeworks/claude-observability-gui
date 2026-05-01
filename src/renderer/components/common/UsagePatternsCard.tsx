@@ -12,13 +12,13 @@ interface UsagePatternsCardProps {
 }
 
 const COLORS = {
-  bg: '#16162a',
-  cardBg: '#1e1e38',
-  accent: '#6688cc',
-  heatLow: '#1e1e36',
-  heatHigh: '#6688cc',
-  label: '#666688',
-  value: '#ccccdd',
+  bg: 'var(--background)',
+  cardBg: 'var(--background-light)',
+  accent: 'var(--chart-1)',
+  heatLow: 'var(--background-light)',
+  heatHigh: 'var(--chart-1)',
+  label: 'var(--text-tertiary)',
+  value: 'var(--text-primary)',
 };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -35,22 +35,6 @@ function formatCost(n: number): string {
   return `$${n.toFixed(2)}`;
 }
 
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 12px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 12,
-};
-
 const gridStyles: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(4, 1fr)',
@@ -60,6 +44,7 @@ const gridStyles: React.CSSProperties = {
 
 const statCardStyles: React.CSSProperties = {
   backgroundColor: COLORS.cardBg,
+  border: '1px solid var(--border-soft)',
   borderRadius: 6,
   padding: '10px 12px',
   display: 'flex',
@@ -69,14 +54,17 @@ const statCardStyles: React.CSSProperties = {
 
 const statLabelStyles: React.CSSProperties = {
   fontSize: 10,
+  fontFamily: '"Poppins"',
+  fontWeight: 600,
   color: COLORS.label,
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
+  letterSpacing: '0.14em',
 };
 
 const statValueStyles: React.CSSProperties = {
   fontSize: 18,
-  fontWeight: 700,
+  fontWeight: 500,
+  fontFamily: '"JetBrains Mono", monospace',
   color: COLORS.value,
 };
 
@@ -86,10 +74,12 @@ const heatbarContainerStyles: React.CSSProperties = {
 
 const heatbarLabelStyles: React.CSSProperties = {
   fontSize: 11,
+  fontFamily: '"Poppins"',
+  fontWeight: 600,
   color: COLORS.label,
   marginBottom: 6,
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
+  letterSpacing: '0.14em',
 };
 
 const heatbarRowStyles: React.CSSProperties = {
@@ -104,10 +94,9 @@ const hourLabelRowStyles: React.CSSProperties = {
 };
 
 function interpolateColor(ratio: number): string {
-  // From heatLow (#1e1e36) to heatHigh (#6688cc)
-  const r = Math.round(0x1e + (0x66 - 0x1e) * ratio);
-  const g = Math.round(0x1e + (0x88 - 0x1e) * ratio);
-  const b = Math.round(0x36 + (0xcc - 0x36) * ratio);
+  const r = Math.round(0x1e + (0xa8 - 0x1e) * ratio);
+  const g = Math.round(0x29 + (0x55 - 0x29) * ratio);
+  const b = Math.round(0x3b + (0xf7 - 0x3b) * ratio);
   return `rgb(${r}, ${g}, ${b})`;
 }
 
@@ -128,8 +117,8 @@ export default function UsagePatternsCard({ data }: UsagePatternsCardProps): Rea
   ];
 
   return (
-    <div style={containerStyles}>
-      <div style={titleStyles}>Usage Patterns</div>
+    <div className="card">
+      <div className="card-head"><h2>Usage Patterns</h2></div>
 
       <div style={gridStyles}>
         {stats.map(s => (

@@ -18,41 +18,26 @@ const INITIAL_ROWS = 10;
 const INCREMENT = 5;
 
 const COLORS = {
-  active: '#6688cc',
-  empty: '#1e1e36',
-  bg: '#16162a',
-  axis: '#6666aa',
-  label: '#8888aa',
-};
-
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 4,
+  active: 'var(--chart-1)',
+  empty: 'var(--background-light)',
+  axis: 'var(--text-tertiary)',
+  label: 'var(--text-secondary)',
 };
 
 const subtitleStyles: React.CSSProperties = {
   fontSize: 11,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
+  fontFamily: '"JetBrains Mono", monospace',
   marginBottom: 12,
 };
 
 const buttonStyles: React.CSSProperties = {
   background: 'none',
-  border: '1px solid #3333aa',
-  borderRadius: 4,
-  color: '#8888aa',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-sm)',
+  color: 'var(--text-secondary)',
   fontSize: 11,
+  fontFamily: '"Poppins"',
   padding: '4px 12px',
   cursor: 'pointer',
   marginRight: 8,
@@ -112,8 +97,8 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
   const labelInterval = Math.max(1, Math.floor(dateRange.length / 7));
 
   return (
-    <div ref={containerRef} style={containerStyles}>
-      <div style={titleStyles}>Project Activity Timeline</div>
+    <div ref={containerRef} className="card">
+      <div className="card-head"><h2>Project Activity Timeline</h2></div>
       <div style={subtitleStyles}>Code sessions by project and day</div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: ROW_GAP }}>

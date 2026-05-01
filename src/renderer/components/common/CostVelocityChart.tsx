@@ -24,16 +24,16 @@ interface CostVelocityChartProps {
 }
 
 const COLORS = {
-  bar: '#cc8844',
-  barAlt: '#bb7733',
-  barZero: '#333350',
-  ma7: '#cc6688',
-  grid: '#2a2a3e',
-  axis: '#6666aa',
-  bg: '#16162a',
-  trendUp: '#cc6666',
-  trendDown: '#66cc88',
-  neutral: '#8888aa',
+  bar: 'var(--chart-1)',
+  barAlt: 'var(--chart-2)',
+  barZero: 'var(--border-soft)',
+  ma7: 'var(--chart-4)',
+  grid: 'var(--border-soft)',
+  axis: 'var(--text-tertiary)',
+  bg: 'var(--background)',
+  trendUp: 'var(--error)',
+  trendDown: 'var(--success)',
+  neutral: 'var(--text-secondary)',
 };
 
 function formatCost(n: number): string {
@@ -70,38 +70,23 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   const d = payload[0].payload;
   return (
     <div style={{
-      backgroundColor: '#1a1a2e',
-      border: '1px solid #3a3a5e',
+      backgroundColor: 'var(--background-light)',
+      border: '1px solid var(--border)',
       borderRadius: 6,
       padding: '8px 12px',
       fontSize: 12,
+      fontFamily: '"JetBrains Mono", monospace',
       lineHeight: 1.6,
     }}>
-      <div style={{ color: '#ccccdd', fontWeight: 600, marginBottom: 2 }}>{d.label}</div>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 2 }}>{d.label}</div>
       <div style={{ color: COLORS.bar }}>{formatCost(d.costUsd)}</div>
       {d.ma7 != null && (
         <div style={{ color: COLORS.ma7 }}>7d MA: {formatCost(d.ma7)}</div>
       )}
-      <div style={{ color: '#666688' }}>{d.sessionCount} session{d.sessionCount !== 1 ? 's' : ''}</div>
+      <div style={{ color: 'var(--text-tertiary)' }}>{d.sessionCount} session{d.sessionCount !== 1 ? 's' : ''}</div>
     </div>
   );
 }
-
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 12,
-};
 
 const headlineRowStyles: React.CSSProperties = {
   display: 'flex',
@@ -112,21 +97,14 @@ const headlineRowStyles: React.CSSProperties = {
 
 const headlineValueStyles: React.CSSProperties = {
   fontSize: 28,
-  fontWeight: 700,
-  color: '#ccccdd',
+  fontWeight: 500,
+  fontFamily: '"JetBrains Mono", monospace',
+  color: 'var(--text-primary)',
 };
 
 const headlineLabelStyles: React.CSSProperties = {
   fontSize: 13,
-  color: '#666688',
-};
-
-const summaryRowStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 24,
-  marginTop: 12,
-  padding: '8px 4px 4px',
-  borderTop: '1px solid #2a2a3e',
+  color: 'var(--text-tertiary)',
 };
 
 const summaryItemStyles: React.CSSProperties = {
@@ -137,15 +115,17 @@ const summaryItemStyles: React.CSSProperties = {
 
 const summaryLabelStyles: React.CSSProperties = {
   fontSize: 11,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
+  letterSpacing: '0.04em',
+  fontFamily: '"JetBrains Mono", monospace',
 };
 
 const summaryValueStyles: React.CSSProperties = {
   fontSize: 16,
-  fontWeight: 600,
-  color: '#ccccdd',
+  fontWeight: 500,
+  fontFamily: '"JetBrains Mono", monospace',
+  color: 'var(--text-primary)',
 };
 
 export default function CostVelocityChart({ data }: CostVelocityChartProps): React.JSX.Element | null {
@@ -212,8 +192,8 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
   const tickInterval = chartData.length > 60 ? 13 : chartData.length > 14 ? 6 : 1;
 
   return (
-    <div style={containerStyles}>
-      <div style={titleStyles}>Cost Velocity</div>
+    <div className="card">
+      <div className="card-head"><h2>Cost Velocity</h2></div>
 
       <div style={headlineRowStyles}>
         <span style={headlineValueStyles}>{formatCost(avg7d)}</span>
@@ -262,7 +242,7 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
         </ComposedChart>
       </ResponsiveContainer>
 
-      <div style={summaryRowStyles}>
+      <div className="summary-row">
         <div style={summaryItemStyles}>
           <span style={summaryLabelStyles}>Period total</span>
           <span style={summaryValueStyles}>{formatCost(totalPeriod)}</span>

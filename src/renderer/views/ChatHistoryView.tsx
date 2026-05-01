@@ -1,9 +1,3 @@
-/**
- * Chat history view — metric cards, conversation chart, projects table,
- * memory breakdown, import status, staleness warning, drop zone.
- * @see CGUI-37
- */
-
 import React, { useState, useCallback, useMemo } from 'react';
 import {
   BarChart,
@@ -16,7 +10,10 @@ import {
 } from 'recharts';
 import EmptyState from '../components/common/EmptyState';
 import StatusBanner from '../components/common/StatusBanner';
-import MetricCard from '../components/common/MetricCard';
+import StatCard from '../components/common/StatCard';
+import HBar from '../components/charts/HBar';
+import HeatmapChart from '../components/charts/HeatmapChart';
+import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
 import type {
   ImportSummary,
@@ -26,221 +23,12 @@ import type {
   ChatDayCount,
 } from '../../shared/ipc-types';
 
-// ---------------------------------------------------------------------------
-// Styles
-// ---------------------------------------------------------------------------
-
-const viewStyles: React.CSSProperties = {
-  padding: 24,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-  height: '100%',
-  overflowY: 'auto',
-};
-
-const headerRowStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-};
-
-const headerStyles: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#ccccdd',
-  letterSpacing: '0.5px',
-  textTransform: 'uppercase',
-};
-
-const metricsRowStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 16,
-  flexWrap: 'wrap',
-};
-
-const sectionHeaderStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  marginBottom: 8,
-};
-
-const toggleContainerStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 4,
-};
-
-const toggleButtonBase: React.CSSProperties = {
-  padding: '4px 12px',
-  fontSize: 12,
-  border: '1px solid #3344aa',
-  borderRadius: 4,
-  cursor: 'pointer',
-  color: '#8888aa',
-  backgroundColor: 'transparent',
-  transition: 'background-color 0.15s, color 0.15s',
-};
-
-const toggleButtonActive: React.CSSProperties = {
-  ...toggleButtonBase,
-  backgroundColor: '#3344aa',
-  color: '#ccccdd',
-};
-
-const chartContainerStyles: React.CSSProperties = {
-  backgroundColor: 'rgba(20, 20, 40, 0.4)',
-  borderRadius: 8,
-  padding: '16px 8px 8px 8px',
-  border: '1px solid rgba(51, 68, 170, 0.2)',
-};
-
-const tableContainerStyles: React.CSSProperties = {
-  backgroundColor: 'rgba(20, 20, 40, 0.4)',
-  borderRadius: 8,
-  border: '1px solid rgba(51, 68, 170, 0.2)',
-  overflowX: 'auto',
-};
-
-const tableStyles: React.CSSProperties = {
-  width: '100%',
-  borderCollapse: 'collapse',
-  fontSize: 13,
-};
-
-const thStyles: React.CSSProperties = {
-  textAlign: 'left',
-  padding: '10px 12px',
-  color: '#8888aa',
-  fontWeight: 600,
-  fontSize: 11,
-  textTransform: 'uppercase',
-  letterSpacing: '0.5px',
-  borderBottom: '1px solid rgba(51, 68, 170, 0.2)',
-  cursor: 'pointer',
-  userSelect: 'none',
-};
-
-const tdStyles: React.CSSProperties = {
-  padding: '8px 12px',
-  color: '#ccccdd',
-  borderBottom: '1px solid rgba(51, 68, 170, 0.1)',
-};
-
-const memoryBarContainerStyles: React.CSSProperties = {
-  backgroundColor: 'rgba(20, 20, 40, 0.4)',
-  borderRadius: 8,
-  padding: 16,
-  border: '1px solid rgba(51, 68, 170, 0.2)',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-};
-
-const memoryRowStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 12,
-  fontSize: 13,
-};
-
-const memoryLabelStyles: React.CSSProperties = {
-  width: 180,
-  color: '#aaaacc',
-  flexShrink: 0,
-  overflow: 'hidden',
-  textOverflow: 'ellipsis',
-  whiteSpace: 'nowrap',
-};
-
-const memoryBarBgStyles: React.CSSProperties = {
-  flex: 1,
-  height: 16,
-  backgroundColor: 'rgba(51, 68, 170, 0.15)',
-  borderRadius: 3,
-  overflow: 'hidden',
-};
-
-const memorySizeStyles: React.CSSProperties = {
-  width: 60,
-  textAlign: 'right',
-  color: '#666688',
-  fontSize: 12,
-  flexShrink: 0,
-};
-
-const metaRowStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  fontSize: 12,
-  color: '#666688',
-};
-
-const dropZoneBaseStyles: React.CSSProperties = {
-  border: '2px dashed #3344aa',
-  borderRadius: 8,
-  padding: 24,
-  textAlign: 'center',
-  color: '#8888aa',
-  fontSize: 13,
-  cursor: 'pointer',
-  backgroundColor: 'rgba(51, 68, 170, 0.05)',
-  transition: 'border-color 0.15s, background-color 0.15s',
-};
-
-const dropZoneActiveStyles: React.CSSProperties = {
-  ...dropZoneBaseStyles,
-  borderColor: '#6666cc',
-  backgroundColor: 'rgba(102, 102, 204, 0.12)',
-};
-
-const summaryStyles: React.CSSProperties = {
-  padding: 12,
-  borderRadius: 8,
-  backgroundColor: 'rgba(51, 68, 170, 0.1)',
-  border: '1px solid #3344aa',
-  color: '#ccccdd',
-  fontSize: 13,
-  lineHeight: 1.6,
-};
-
-const errorStyles: React.CSSProperties = {
-  ...summaryStyles,
-  backgroundColor: 'rgba(170, 51, 51, 0.1)',
-  borderColor: '#aa3333',
-  color: '#dd8888',
-};
-
-const emptyContainerStyles: React.CSSProperties = {
-  flex: 1,
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  justifyContent: 'center',
-  gap: 24,
-};
-
-const CHART_COLORS = {
-  bar: '#6666cc',
-  grid: 'rgba(102, 102, 204, 0.15)',
-  axis: '#555577',
-  tooltipBg: '#1a1a2e',
-  tooltipBorder: '#3344aa',
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
-
 function formatPeriodLabel(period: string, groupBy: 'week' | 'month'): string {
   const d = new Date(period + 'T00:00:00');
   if (groupBy === 'month') {
     return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
   }
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
 function formatStaleness(isoDate: string): string {
@@ -261,10 +49,6 @@ function formatDate(iso: string): string {
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// ---------------------------------------------------------------------------
-// Tooltip
-// ---------------------------------------------------------------------------
-
 function ChartTooltip({ active, payload, label }: {
   active?: boolean;
   payload?: { value: number }[];
@@ -273,12 +57,13 @@ function ChartTooltip({ active, payload, label }: {
   if (!active || !payload?.length) return null;
   return (
     <div style={{
-      backgroundColor: CHART_COLORS.tooltipBg,
-      border: `1px solid ${CHART_COLORS.tooltipBorder}`,
+      backgroundColor: 'var(--background)',
+      border: '1px solid var(--border-soft)',
       borderRadius: 6,
       padding: '8px 12px',
       fontSize: 12,
-      color: '#ccccdd',
+      fontFamily: '"JetBrains Mono", monospace',
+      color: 'var(--text-primary)',
     }}>
       <div style={{ fontWeight: 600, marginBottom: 4 }}>{label}</div>
       <div>{payload[0].value} conversation{payload[0].value !== 1 ? 's' : ''}</div>
@@ -286,38 +71,19 @@ function ChartTooltip({ active, payload, label }: {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Sub-components
-// ---------------------------------------------------------------------------
-
 const COLLAPSED_LIMIT = 5;
 
-const showMoreButtonStyles: React.CSSProperties = {
-  background: 'none',
-  border: 'none',
-  color: '#6666cc',
-  fontSize: 12,
-  cursor: 'pointer',
-  padding: '8px 0',
-  textAlign: 'center',
-  width: '100%',
-};
-
-type SortKey = 'name' | 'doc_count' | 'created_at' | 'lifespan_days';
+type ProjectSortKey = 'name' | 'doc_count' | 'created_at' | 'lifespan_days';
 type SortDir = 'asc' | 'desc';
 
 function ProjectsTable({ projects }: { projects: ChatProject[] }) {
-  const [sortKey, setSortKey] = useState<SortKey>('created_at');
+  const [sortKey, setSortKey] = useState<ProjectSortKey>('created_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expanded, setExpanded] = useState(false);
 
-  const handleSort = (key: SortKey) => {
-    if (sortKey === key) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc');
-    } else {
-      setSortKey(key);
-      setSortDir('desc');
-    }
+  const handleSort = (key: ProjectSortKey) => {
+    if (sortKey === key) setSortDir(d => d === 'asc' ? 'desc' : 'asc');
+    else { setSortKey(key); setSortDir('desc'); }
   };
 
   const sorted = useMemo(() => {
@@ -334,306 +100,73 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
 
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hasMore = sorted.length > COLLAPSED_LIMIT;
-  const arrow = (key: SortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
+  const arrow = (key: ProjectSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   return (
-    <div style={tableContainerStyles}>
-      <table style={tableStyles}>
+    <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
+      <table className="data">
         <thead>
           <tr>
-            <th style={thStyles} onClick={() => handleSort('name')}>Name{arrow('name')}</th>
-            <th style={{ ...thStyles, textAlign: 'right' }} onClick={() => handleSort('doc_count')}>Docs{arrow('doc_count')}</th>
-            <th style={thStyles} onClick={() => handleSort('created_at')}>Created{arrow('created_at')}</th>
-            <th style={{ ...thStyles, textAlign: 'right' }} onClick={() => handleSort('lifespan_days')}>Lifespan{arrow('lifespan_days')}</th>
+            <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>Name{arrow('name')}</th>
+            <th className="num" onClick={() => handleSort('doc_count')} style={{ cursor: 'pointer' }}>Docs{arrow('doc_count')}</th>
+            <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Created{arrow('created_at')}</th>
+            <th className="num" onClick={() => handleSort('lifespan_days')} style={{ cursor: 'pointer' }}>Lifespan{arrow('lifespan_days')}</th>
           </tr>
         </thead>
         <tbody>
           {visible.map((p) => (
             <tr key={p.project_id}>
-              <td style={tdStyles}>
+              <td>
                 {p.name || 'Untitled'}
-                {p.is_private ? <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11 }}>private</span> : ''}
+                {p.is_private && <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11, fontFamily: '"Poppins", sans-serif' }}>private</span>}
               </td>
-              <td style={{ ...tdStyles, textAlign: 'right' }}>{p.doc_count}</td>
-              <td style={tdStyles}>{formatDate(p.created_at)}</td>
-              <td style={{ ...tdStyles, textAlign: 'right' }}>{p.lifespan_days}d</td>
+              <td className="num">{p.doc_count}</td>
+              <td>{formatDate(p.created_at)}</td>
+              <td className="num">{p.lifespan_days}d</td>
             </tr>
           ))}
         </tbody>
       </table>
       {hasMore && (
-        <button style={showMoreButtonStyles} onClick={() => setExpanded(!expanded)}>
-          {expanded ? `Show fewer ▲` : `Show all ${sorted.length} projects ▼`}
+        <button
+          style={{
+            background: 'none',
+            border: 'none',
+            color: 'var(--purple-primary)',
+            fontSize: 12,
+            fontFamily: '"JetBrains Mono", monospace',
+            cursor: 'pointer',
+            padding: '8px 0',
+            textAlign: 'center',
+            width: '100%',
+          }}
+          onClick={() => setExpanded(!expanded)}
+        >
+          {expanded ? 'Show fewer ▲' : `Show all ${sorted.length} projects ▼`}
         </button>
       )}
     </div>
   );
 }
 
-function MemoryBreakdown({ memories }: { memories: ChatMemoryEntry[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const maxLength = useMemo(
-    () => Math.max(...memories.map((m) => m.content_length), 1),
-    [memories]
-  );
-
-  const visible = expanded ? memories : memories.slice(0, COLLAPSED_LIMIT);
-  const hasMore = memories.length > COLLAPSED_LIMIT;
+function MemorySection({ memories }: { memories: ChatMemoryEntry[] }) {
+  const items = useMemo(() => {
+    return memories.map(m => ({
+      label: m.type === 'conversation'
+        ? 'Global conversation memory'
+        : (m.project_name || m.project_id || 'Unknown project'),
+      value: m.content_length,
+      formattedValue: formatBytes(m.content_length),
+    }));
+  }, [memories]);
 
   return (
-    <div style={memoryBarContainerStyles}>
-      {visible.map((m, i) => {
-        const label = m.type === 'conversation'
-          ? 'Global conversation memory'
-          : (m.project_name || m.project_id || 'Unknown project');
-        const pct = (m.content_length / maxLength) * 100;
-
-        return (
-          <div key={`${m.type}-${m.project_id ?? i}`} style={memoryRowStyles}>
-            <div style={memoryLabelStyles} title={label}>{label}</div>
-            <div style={memoryBarBgStyles}>
-              <div style={{
-                height: '100%',
-                width: `${pct}%`,
-                backgroundColor: m.type === 'conversation' ? '#6666cc' : '#4488aa',
-                borderRadius: 3,
-                transition: 'width 0.3s',
-              }} />
-            </div>
-            <div style={memorySizeStyles}>{formatBytes(m.content_length)}</div>
-          </div>
-        );
-      })}
-      {hasMore && (
-        <button style={showMoreButtonStyles} onClick={() => setExpanded(!expanded)}>
-          {expanded ? `Show fewer ▲` : `Show all ${memories.length} memories ▼`}
-        </button>
-      )}
+    <div className="card">
+      <div className="card-head"><h2>Memory Sizes</h2></div>
+      <HBar items={items} color="var(--chart-1)" altColor="var(--chart-5)" maxItems={12} />
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Mini Heatmap
-// ---------------------------------------------------------------------------
-
-const HEATMAP_CELL = 12;
-const HEATMAP_GAP = 2;
-const HEATMAP_RADIUS = 2;
-const HEATMAP_DAY_LABEL_W = 24;
-const HEATMAP_MONTH_H = 16;
-const HEATMAP_DAY_LABELS = ['', 'M', '', 'W', '', 'F', ''];
-const HEATMAP_MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-
-const HEATMAP_RAMPS = {
-  conversations: ['#1a1a2e', '#1e2a5a', '#224488', '#3366bb', '#5588ee'],
-  projects: ['#1a1a2e', '#1e2a2a', '#204848', '#308080', '#44aaaa'],
-};
-
-const heatmapSectionStyles: React.CSSProperties = {
-  padding: 16,
-  backgroundColor: '#12122a',
-  borderRadius: 8,
-  border: '1px solid #2a2a4a',
-};
-
-const heatmapLegendStyles: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 4,
-  fontSize: 11,
-  color: '#8888aa',
-  marginTop: 8,
-};
-
-interface HeatmapCell {
-  date: string;
-  weekIndex: number;
-  dayIndex: number;
-  count: number;
-}
-
-interface HeatmapLayout {
-  cells: HeatmapCell[];
-  monthLabels: { label: string; weekIndex: number }[];
-  weeksCount: number;
-}
-
-function buildHeatmapGrid(data: ChatDayCount[], days: number): HeatmapLayout {
-  const dataMap = new Map(data.map(d => [d.date, d.count]));
-
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - (days - 1));
-  startDate.setHours(12, 0, 0, 0);
-
-  // Align to Sunday
-  const gridStart = new Date(startDate);
-  gridStart.setDate(gridStart.getDate() - gridStart.getDay());
-
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-
-  const cells: HeatmapCell[] = [];
-  const monthLabels: { label: string; weekIndex: number }[] = [];
-  let lastMonth = -1;
-  let weekIndex = 0;
-
-  const current = new Date(gridStart);
-  while (current <= today) {
-    const dayIndex = current.getDay();
-    if (dayIndex === 0 && cells.length > 0) weekIndex++;
-
-    const dateStr = current.toISOString().slice(0, 10);
-
-    if (current.getMonth() !== lastMonth) {
-      lastMonth = current.getMonth();
-      if (dayIndex <= 3) {
-        monthLabels.push({ label: HEATMAP_MONTH_NAMES[lastMonth], weekIndex });
-      }
-    }
-
-    cells.push({ date: dateStr, weekIndex, dayIndex, count: dataMap.get(dateStr) ?? 0 });
-    current.setDate(current.getDate() + 1);
-  }
-
-  return { cells, monthLabels, weeksCount: weekIndex + 1 };
-}
-
-function computeLevels(values: number[]): number[] {
-  const nonZero = values.filter(v => v > 0).sort((a, b) => a - b);
-  if (nonZero.length === 0) return values.map(() => 0);
-  const p25 = nonZero[Math.floor(nonZero.length * 0.25)] ?? 1;
-  const p50 = nonZero[Math.floor(nonZero.length * 0.50)] ?? p25;
-  const p75 = nonZero[Math.floor(nonZero.length * 0.75)] ?? p50;
-  return values.map(v => {
-    if (v === 0) return 0;
-    if (v <= p25) return 1;
-    if (v <= p50) return 2;
-    if (v <= p75) return 3;
-    return 4;
-  });
-}
-
-function MiniHeatmap({ title, data, days, colorRamp, itemLabel }: {
-  title: string;
-  data: ChatDayCount[];
-  days: number;
-  colorRamp: string[];
-  itemLabel: string;
-}) {
-  const [tooltip, setTooltip] = useState<{ x: number; y: number; text: string } | null>(null);
-
-  const grid = useMemo(() => buildHeatmapGrid(data, days), [data, days]);
-  const levels = useMemo(() => computeLevels(grid.cells.map(c => c.count)), [grid]);
-
-  const gridWidth = HEATMAP_DAY_LABEL_W + grid.weeksCount * (HEATMAP_CELL + HEATMAP_GAP);
-  const gridHeight = HEATMAP_MONTH_H + 7 * (HEATMAP_CELL + HEATMAP_GAP);
-
-  return (
-    <div style={heatmapSectionStyles}>
-      <div style={sectionHeaderStyles}>{title}</div>
-      <div style={{ overflow: 'auto' }}>
-        <svg width={gridWidth} height={gridHeight} style={{ display: 'block' }}>
-          {grid.monthLabels.map((m, i) => (
-            <text
-              key={i}
-              x={HEATMAP_DAY_LABEL_W + m.weekIndex * (HEATMAP_CELL + HEATMAP_GAP)}
-              y={HEATMAP_MONTH_H - 4}
-              fill="#6666aa"
-              fontSize={9}
-            >
-              {m.label}
-            </text>
-          ))}
-          {HEATMAP_DAY_LABELS.map((label, i) =>
-            label ? (
-              <text
-                key={i}
-                x={0}
-                y={HEATMAP_MONTH_H + i * (HEATMAP_CELL + HEATMAP_GAP) + HEATMAP_CELL - 2}
-                fill="#6666aa"
-                fontSize={9}
-              >
-                {label}
-              </text>
-            ) : null
-          )}
-          {grid.cells.map((cell, i) => {
-            const x = HEATMAP_DAY_LABEL_W + cell.weekIndex * (HEATMAP_CELL + HEATMAP_GAP);
-            const y = HEATMAP_MONTH_H + cell.dayIndex * (HEATMAP_CELL + HEATMAP_GAP);
-            return (
-              <rect
-                key={i}
-                x={x}
-                y={y}
-                width={HEATMAP_CELL}
-                height={HEATMAP_CELL}
-                rx={HEATMAP_RADIUS}
-                ry={HEATMAP_RADIUS}
-                fill={colorRamp[levels[i]]}
-                stroke={levels[i] > 0 ? colorRamp[levels[i]] : '#2a2a4a'}
-                strokeWidth={0.5}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) => {
-                  const d = new Date(cell.date + 'T12:00:00');
-                  const label = d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
-                  setTooltip({
-                    x: e.clientX + 12,
-                    y: e.clientY - 10,
-                    text: `${label}: ${cell.count} ${itemLabel}${cell.count !== 1 ? 's' : ''}`,
-                  });
-                }}
-                onMouseMove={(e) => {
-                  setTooltip(prev => prev ? { ...prev, x: e.clientX + 12, y: e.clientY - 10 } : null);
-                }}
-                onMouseLeave={() => setTooltip(null)}
-              />
-            );
-          })}
-        </svg>
-      </div>
-      <div style={heatmapLegendStyles}>
-        <span>Less</span>
-        {colorRamp.map((color, i) => (
-          <div
-            key={i}
-            style={{
-              width: HEATMAP_CELL,
-              height: HEATMAP_CELL,
-              backgroundColor: color,
-              borderRadius: HEATMAP_RADIUS,
-              border: i === 0 ? '0.5px solid #2a2a4a' : 'none',
-            }}
-          />
-        ))}
-        <span>More</span>
-      </div>
-      {tooltip && (
-        <div style={{
-          position: 'fixed',
-          left: tooltip.x,
-          top: tooltip.y,
-          padding: '5px 8px',
-          backgroundColor: '#2a2a4a',
-          border: '1px solid #3a3a6a',
-          borderRadius: 6,
-          fontSize: 11,
-          color: '#ccccdd',
-          pointerEvents: 'none',
-          zIndex: 1000,
-          whiteSpace: 'nowrap',
-          boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
-        }}>
-          {tooltip.text}
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
-// Main Component
-// ---------------------------------------------------------------------------
 
 export default function ChatHistoryView(): React.JSX.Element {
   const [groupBy, setGroupBy] = useState<'week' | 'month'>('week');
@@ -642,7 +175,6 @@ export default function ChatHistoryView(): React.JSX.Element {
   const [lastSummary, setLastSummary] = useState<ImportSummary | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  // Fetch data
   const { data: counts, loading: countsLoading, refetch: refetchCounts } = useApi(
     () => window.api.chat.getConversationCounts(groupBy),
     [groupBy]
@@ -672,7 +204,6 @@ export default function ChatHistoryView(): React.JSX.Element {
   const lastImportAt = settings?.lastChatImportAt ?? null;
   const hasData = stats != null && stats.totalConversations > 0;
 
-  // Check staleness (configurable via settings, default 14 days)
   const staleThreshold = settings?.chatStalenessDays ?? 14;
   const isStale = useMemo(() => {
     if (!lastImportAt) return false;
@@ -680,7 +211,6 @@ export default function ChatHistoryView(): React.JSX.Element {
     return daysSince > staleThreshold;
   }, [lastImportAt, staleThreshold]);
 
-  // Chart data with formatted labels
   const chartData = useMemo(() => {
     if (!counts) return [];
     return counts.map((c: ChatConversationCount) => ({
@@ -689,7 +219,18 @@ export default function ChatHistoryView(): React.JSX.Element {
     }));
   }, [counts, groupBy]);
 
-  // Import handlers
+  const currentPeriodIndex = chartData.length > 0 ? chartData.length - 1 : -1;
+
+  const convHeatmapData = useMemo(() => {
+    if (!convHeatmap) return [];
+    return convHeatmap.map(d => ({ date: d.date, value: d.count }));
+  }, [convHeatmap]);
+
+  const projHeatmapData = useMemo(() => {
+    if (!projHeatmap) return [];
+    return projHeatmap.map(d => ({ date: d.date, value: d.count }));
+  }, [projHeatmap]);
+
   const refetchAll = useCallback(() => {
     refetchCounts();
     refetchStats();
@@ -719,9 +260,7 @@ export default function ChatHistoryView(): React.JSX.Element {
     const filePath = await window.api.dialog.openFile([
       { name: 'ZIP Archives', extensions: ['zip'] },
     ]);
-    if (filePath) {
-      runImport(filePath);
-    }
+    if (filePath) runImport(filePath);
   }, [importing, runImport]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -737,7 +276,6 @@ export default function ChatHistoryView(): React.JSX.Element {
     e.preventDefault();
     setDragOver(false);
     if (importing) return;
-
     const file = e.dataTransfer.files[0];
     if (file && file.name.endsWith('.zip')) {
       const filePath = window.api.dialog.getFilePath(file);
@@ -751,9 +289,38 @@ export default function ChatHistoryView(): React.JSX.Element {
     document.getElementById('chat-drop-zone')?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
+  if (countsLoading) {
+    return (
+      <div className="page">
+        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
+      </div>
+    );
+  }
+
+  if (!hasData) {
+    return (
+      <div className="page">
+        <EmptyState
+          title="No chat history imported"
+          message="Drop your claude.ai data export ZIP below, or request an export from claude.ai > Settings > Privacy > Export data."
+        />
+        <div style={{ marginTop: 16 }}>
+          <DropZone
+            dragOver={dragOver}
+            importing={importing}
+            onClick={handleDropZoneClick}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+          />
+        </div>
+        {importError && <ImportError message={importError} />}
+      </div>
+    );
+  }
+
   return (
-    <div style={viewStyles}>
-      {/* Staleness warning */}
+    <div className="page">
       {isStale && lastImportAt && (
         <StatusBanner
           variant="warning"
@@ -762,179 +329,203 @@ export default function ChatHistoryView(): React.JSX.Element {
         />
       )}
 
-      {/* Header */}
-      <div style={headerRowStyles}>
-        <h1 style={headerStyles}>Chat History</h1>
-        {hasData && (
-          <div style={toggleContainerStyles}>
-            <button
-              style={groupBy === 'week' ? toggleButtonActive : toggleButtonBase}
-              onClick={() => setGroupBy('week')}
-            >
-              Weekly
-            </button>
-            <button
-              style={groupBy === 'month' ? toggleButtonActive : toggleButtonBase}
-              onClick={() => setGroupBy('month')}
-            >
-              Monthly
-            </button>
+      {stats && (
+        <div className="stats-grid">
+          <StatCard label="Conversations" value={stats.totalConversations} icon={Icons.chat} variant="minimal" />
+          <StatCard label="Projects" value={stats.totalProjects} icon={Icons.layers} variant="minimal" />
+          <StatCard label="Avg Msgs / Conv" value={stats.avgMessagesPerConversation} icon={Icons.hash} variant="minimal" />
+          <StatCard label="Total Memory" value={formatBytes(stats.totalMemoryBytes)} icon={Icons.bolt} variant="minimal" />
+        </div>
+      )}
+
+      {/* Conversations over time */}
+      <div className="card">
+        <div className="card-head">
+          <h2>Conversations Over Time</h2>
+          <div style={{ display: 'flex', gap: 4 }}>
+            {(['week', 'month'] as const).map(g => (
+              <button
+                key={g}
+                className={`range-tab${groupBy === g ? ' active' : ''}`}
+                onClick={() => setGroupBy(g)}
+              >
+                {g === 'week' ? 'Weekly' : 'Monthly'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <ResponsiveContainer width="100%" height={240}>
+          <BarChart data={chartData} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--border-soft)" vertical={false} />
+            <XAxis
+              dataKey="label"
+              tick={{ fontSize: 11, fill: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace' }}
+              tickLine={false}
+              axisLine={{ stroke: 'var(--border-soft)' }}
+              interval={chartData.length > 16 ? Math.floor(chartData.length / 10) : 0}
+            />
+            <YAxis
+              tick={{ fontSize: 11, fill: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace' }}
+              tickLine={false}
+              axisLine={false}
+              allowDecimals={false}
+              width={36}
+            />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(102, 102, 204, 0.08)' }} />
+            <Bar
+              dataKey="count"
+              radius={[3, 3, 0, 0]}
+              fill="var(--chart-1)"
+              shape={(props: unknown) => {
+                const { x, y, width, height, index } = props as { x: number; y: number; width: number; height: number; index: number };
+                const isCurrentPeriod = index === currentPeriodIndex;
+                return (
+                  <rect
+                    x={x}
+                    y={y}
+                    width={width}
+                    height={height}
+                    rx={3}
+                    ry={3}
+                    fill={isCurrentPeriod ? 'var(--chart-4)' : 'var(--chart-1)'}
+                  />
+                );
+              }}
+            />
+          </BarChart>
+        </ResponsiveContainer>
+        {lastImportAt && (
+          <div className="summary-row" style={{ marginTop: 8 }}>
+            <span>{stats?.totalConversations} total conversation{stats?.totalConversations !== 1 ? 's' : ''}</span>
+            <span className="sep">&middot;</span>
+            <span>Last import: {formatStaleness(lastImportAt)}</span>
           </div>
         )}
       </div>
 
-      {countsLoading ? (
-        <div style={{ color: '#666688', fontSize: 13, padding: 24 }}>Loading...</div>
-      ) : hasData ? (
-        <>
-          {/* Metric cards */}
-          {stats && (
-            <div style={metricsRowStyles}>
-              <MetricCard
-                value={String(stats.totalConversations)}
-                label="Conversations"
-              />
-              <MetricCard
-                value={String(stats.totalProjects)}
-                label="Projects"
-              />
-              <MetricCard
-                value={String(stats.avgMessagesPerConversation)}
-                label="Avg Messages / Conv"
-              />
-              <MetricCard
-                value={formatBytes(stats.totalMemoryBytes)}
-                label="Total Memory Size"
+      {/* Projects table */}
+      {projects && projects.length > 0 && (
+        <div>
+          <div className="card-head" style={{ paddingLeft: 0 }}><h2>Projects</h2></div>
+          <ProjectsTable projects={projects} />
+        </div>
+      )}
+
+      {/* Memory breakdown */}
+      {memories && memories.length > 0 && (
+        <MemorySection memories={memories} />
+      )}
+
+      {/* Heatmaps — two column */}
+      {(convHeatmapData.length > 0 || projHeatmapData.length > 0) && (
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
+          {convHeatmapData.length > 0 && (
+            <div className="card">
+              <div className="card-head"><h2>Conversation Activity</h2></div>
+              <HeatmapChart
+                data={convHeatmapData}
+                days={365}
+                colorScale="indigo"
+                formatValue={v => `${v} conversation${v !== 1 ? 's' : ''}`}
               />
             </div>
           )}
-
-          {/* Conversation count chart */}
-          <div>
-            <div style={sectionHeaderStyles}>Conversations Over Time</div>
-            <div style={chartContainerStyles}>
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={chartData} margin={{ top: 4, right: 12, bottom: 4, left: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
-                  <XAxis
-                    dataKey="label"
-                    tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-                    tickLine={false}
-                    axisLine={{ stroke: CHART_COLORS.grid }}
-                    interval={chartData.length > 16 ? Math.floor(chartData.length / 10) : 0}
-                  />
-                  <YAxis
-                    tick={{ fontSize: 11, fill: CHART_COLORS.axis }}
-                    tickLine={false}
-                    axisLine={false}
-                    allowDecimals={false}
-                    width={36}
-                  />
-                  <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(102, 102, 204, 0.08)' }} />
-                  <Bar dataKey="count" fill={CHART_COLORS.bar} radius={[3, 3, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-            {lastImportAt && (
-              <div style={{ ...metaRowStyles, marginTop: 8 }}>
-                <span>{stats?.totalConversations} total conversation{stats?.totalConversations !== 1 ? 's' : ''}</span>
-                <span>Last import: {formatStaleness(lastImportAt)}</span>
-              </div>
-            )}
-          </div>
-
-          {/* Projects table */}
-          {projects && projects.length > 0 && (
-            <div>
-              <div style={sectionHeaderStyles}>Projects</div>
-              <ProjectsTable projects={projects} />
+          {projHeatmapData.length > 0 && (
+            <div className="card">
+              <div className="card-head"><h2>Project Activity</h2></div>
+              <HeatmapChart
+                data={projHeatmapData}
+                days={365}
+                colorScale="teal"
+                formatValue={v => `${v} project${v !== 1 ? 's' : ''}`}
+              />
             </div>
           )}
-
-          {/* Memory breakdown */}
-          {memories && memories.length > 0 && (
-            <div>
-              <div style={sectionHeaderStyles}>Memory Sizes</div>
-              <MemoryBreakdown memories={memories} />
-            </div>
-          )}
-
-          {/* Heatmaps */}
-          {convHeatmap && convHeatmap.length > 0 && (
-            <MiniHeatmap
-              title="Conversation Activity"
-              data={convHeatmap}
-              days={365}
-              colorRamp={HEATMAP_RAMPS.conversations}
-              itemLabel="conversation"
-            />
-          )}
-          {projHeatmap && projHeatmap.length > 0 && (
-            <MiniHeatmap
-              title="Project Activity"
-              data={projHeatmap}
-              days={365}
-              colorRamp={HEATMAP_RAMPS.projects}
-              itemLabel="project"
-            />
-          )}
-        </>
-      ) : (
-        <div style={emptyContainerStyles}>
-          <EmptyState
-            title="No chat history imported"
-            message="Drop your claude.ai data export ZIP below, or request an export from claude.ai > Settings > Privacy > Export data."
-          />
         </div>
       )}
 
       {/* Import summary */}
       {lastSummary && (
-        <div style={summaryStyles}>
-          <div style={{ fontWeight: 600, marginBottom: 8, color: '#aaaacc' }}>
+        <div className="card" style={{ borderColor: 'var(--success)' }}>
+          <div style={{ fontWeight: 600, marginBottom: 8, color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif', fontSize: 13 }}>
             Import Complete
           </div>
-          <div>{lastSummary.newRecords} new records imported</div>
-          <div>{lastSummary.updatedRecords} records updated</div>
-          <div>{lastSummary.skippedRecords} records unchanged</div>
-          {lastSummary.errorCount > 0 && (
-            <div style={{ color: '#dd8888' }}>{lastSummary.errorCount} errors</div>
-          )}
-          <div style={{ marginTop: 8, opacity: 0.6, fontSize: 12 }}>
-            Completed in {lastSummary.scanDurationMs}ms
+          <div style={{ fontSize: 13, fontFamily: '"JetBrains Mono", monospace', color: 'var(--text-primary)', lineHeight: 1.8 }}>
+            <div>{lastSummary.newRecords} new records imported</div>
+            <div>{lastSummary.updatedRecords} records updated</div>
+            <div>{lastSummary.skippedRecords} records unchanged</div>
+            {lastSummary.errorCount > 0 && (
+              <div style={{ color: 'var(--error)' }}>{lastSummary.errorCount} errors</div>
+            )}
+            <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 12 }}>
+              Completed in {lastSummary.scanDurationMs}ms
+            </div>
           </div>
         </div>
       )}
 
-      {/* Import error */}
-      {importError && (
-        <div style={errorStyles}>
-          <div style={{ fontWeight: 600, marginBottom: 4 }}>Import Failed</div>
-          <div>{importError}</div>
-        </div>
-      )}
+      {importError && <ImportError message={importError} />}
 
-      {/* Drop zone */}
-      <div
-        id="chat-drop-zone"
-        style={dragOver ? dropZoneActiveStyles : dropZoneBaseStyles}
+      <DropZone
+        dragOver={dragOver}
+        importing={importing}
         onClick={handleDropZoneClick}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
-        role="button"
-        tabIndex={0}
-        aria-label="Drop claude.ai export ZIP here or click to browse"
-      >
-        {importing ? (
-          <div style={{ color: '#6666cc' }}>Importing...</div>
-        ) : (
-          <>
-            <div>Drop claude.ai export ZIP here</div>
-            <div style={{ marginTop: 4, opacity: 0.7 }}>or click to browse</div>
-          </>
-        )}
-      </div>
+      />
+    </div>
+  );
+}
+
+function ImportError({ message }: { message: string }) {
+  return (
+    <div className="card" style={{ borderColor: 'var(--error)' }}>
+      <div style={{ fontWeight: 600, marginBottom: 4, color: 'var(--error)', fontFamily: '"Poppins", sans-serif', fontSize: 13 }}>Import Failed</div>
+      <div style={{ color: 'var(--text-secondary)', fontSize: 13, fontFamily: '"JetBrains Mono", monospace' }}>{message}</div>
+    </div>
+  );
+}
+
+function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDrop }: {
+  dragOver: boolean;
+  importing: boolean;
+  onClick: () => void;
+  onDragOver: (e: React.DragEvent) => void;
+  onDragLeave: () => void;
+  onDrop: (e: React.DragEvent) => void;
+}) {
+  return (
+    <div
+      id="chat-drop-zone"
+      style={{
+        border: `2px dashed ${dragOver ? 'var(--purple-primary)' : 'var(--border-soft)'}`,
+        borderRadius: 8,
+        padding: 24,
+        textAlign: 'center',
+        color: 'var(--text-secondary)',
+        fontSize: 13,
+        fontFamily: '"Poppins", sans-serif',
+        cursor: 'pointer',
+        backgroundColor: dragOver ? 'rgba(102, 102, 204, 0.08)' : 'transparent',
+        transition: 'border-color 0.15s, background-color 0.15s',
+      }}
+      onClick={onClick}
+      onDragOver={onDragOver}
+      onDragLeave={onDragLeave}
+      onDrop={onDrop}
+      role="button"
+      tabIndex={0}
+      aria-label="Drop claude.ai export ZIP here or click to browse"
+    >
+      {importing ? (
+        <div style={{ color: 'var(--purple-primary)' }}>Importing...</div>
+      ) : (
+        <>
+          <div>Drop claude.ai export ZIP here</div>
+          <div style={{ marginTop: 4, color: 'var(--text-tertiary)' }}>or click to browse</div>
+        </>
+      )}
     </div>
   );
 }

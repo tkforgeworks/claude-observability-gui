@@ -378,6 +378,13 @@ export interface LogEvent {
 // ---------------------------------------------------------------------------
 
 export interface ElectronApi {
+  windowControls: {
+    minimize(): void;
+    maximize(): void;
+    close(): void;
+    quit(): void;
+    isMaximized(): Promise<boolean>;
+  };
   configPaths: {
     get(): Promise<ConfigPaths>;
     openFolder(folderPath: string): Promise<void>;
@@ -454,6 +461,7 @@ export interface ElectronApi {
     getUsagePatterns(days: number): Promise<UsagePatternsData>;
   };
   // Push event subscriptions
+  onMaximizeChange(callback: (isMaximized: boolean) => void): () => void;
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
   onLogWatcherHealth(callback: (status: LogHealthStatus) => void): () => void;
   onLogWatcherConnection(callback: (status: LogConnectionStatus) => void): () => void;

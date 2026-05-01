@@ -39,6 +39,27 @@ import type {
 
 const api: ElectronApi = {
   // -------------------------------------------------------------------------
+  // windowControls
+  // -------------------------------------------------------------------------
+  windowControls: {
+    minimize() {
+      ipcRenderer.send('window:minimize');
+    },
+    maximize() {
+      ipcRenderer.send('window:maximize');
+    },
+    close() {
+      ipcRenderer.send('window:close');
+    },
+    quit() {
+      ipcRenderer.send('window:quit');
+    },
+    isMaximized(): Promise<boolean> {
+      return ipcRenderer.invoke('window:isMaximized');
+    },
+  },
+
+  // -------------------------------------------------------------------------
   // configPaths
   // -------------------------------------------------------------------------
   configPaths: {
@@ -267,6 +288,13 @@ const api: ElectronApi = {
   // Push event subscriptions (main → renderer)
   // Returns an unsubscribe function for cleanup.
   // -------------------------------------------------------------------------
+  onMaximizeChange(callback: (isMaximized: boolean) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, isMaximized: boolean) =>
+      callback(isMaximized);
+    ipcRenderer.on('window:maximizeChanged', handler);
+    return () => ipcRenderer.removeListener('window:maximizeChanged', handler);
+  },
+
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void {
     const handler = (_event: Electron.IpcRendererEvent, data: LogEvent) =>
       callback(data);

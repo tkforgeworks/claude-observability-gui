@@ -21,10 +21,10 @@ interface SessionDensityChartProps {
 }
 
 const COLORS = {
-  line: '#44bbaa',
-  grid: '#2a2a3e',
-  axis: '#6666aa',
-  bg: '#16162a',
+  line: 'var(--chart-5)',
+  grid: 'var(--border-soft)',
+  axis: 'var(--text-tertiary)',
+  bg: 'var(--background)',
 };
 
 function formatDateLabel(date: string): string {
@@ -53,42 +53,28 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   const d = payload[0].payload;
   return (
     <div style={{
-      backgroundColor: '#1a1a2e',
-      border: '1px solid #3a3a5e',
+      backgroundColor: 'var(--background-light)',
+      border: '1px solid var(--border)',
       borderRadius: 6,
       padding: '8px 12px',
       fontSize: 12,
+      fontFamily: '"JetBrains Mono", monospace',
       lineHeight: 1.6,
     }}>
-      <div style={{ color: '#ccccdd', fontWeight: 600, marginBottom: 2 }}>{d.label}</div>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 2 }}>{d.label}</div>
       {d.density != null && (
         <div style={{ color: COLORS.line }}>{d.density.toFixed(1)} sessions/hr</div>
       )}
-      <div style={{ color: '#8888aa' }}>{d.sessionCount} sessions</div>
-      <div style={{ color: '#666688' }}>{d.activeHours.toFixed(1)}h active</div>
+      <div style={{ color: 'var(--text-secondary)' }}>{d.sessionCount} sessions</div>
+      <div style={{ color: 'var(--text-tertiary)' }}>{d.activeHours.toFixed(1)}h active</div>
     </div>
   );
 }
 
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 4,
-};
-
 const subtitleStyles: React.CSSProperties = {
   fontSize: 11,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
+  fontFamily: '"JetBrains Mono", monospace',
   marginBottom: 12,
 };
 
@@ -106,8 +92,8 @@ export default function SessionDensityChart({ data }: SessionDensityChartProps):
   const tickInterval = data.length > 60 ? 13 : data.length > 14 ? 6 : 1;
 
   return (
-    <div style={containerStyles}>
-      <div style={titleStyles}>Session Density</div>
+    <div className="card">
+      <div className="card-head"><h2>Session Density</h2></div>
       <div style={subtitleStyles}>Sessions per active hour per day</div>
 
       <ResponsiveContainer width="100%" height={180}>

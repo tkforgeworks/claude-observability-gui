@@ -1,8 +1,3 @@
-/**
- * Trends view — scrollable page with time range selector and 7 widget cards.
- * @see §7 "Trends View" in 04-wireframes.md
- */
-
 import React from 'react';
 import EmptyState from '../components/common/EmptyState';
 import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
@@ -14,59 +9,17 @@ import ProjectTimelineChart from '../components/common/ProjectTimelineChart';
 import UsagePatternsCard from '../components/common/UsagePatternsCard';
 import { useApi } from '../hooks/useApi';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import { useTopbar } from '../contexts/TopbarContext';
 import type { TrendsWidgetId } from '../../shared/ipc-types';
 
-type TimeRange = '7d' | '30d' | '90d' | '1y' | 'custom';
+type TimeRange = '7d' | '30d' | '90d' | '1y';
 
-const TIME_RANGE_DAYS: Record<Exclude<TimeRange, 'custom'>, number> = {
+const TIME_RANGE_DAYS: Record<TimeRange, number> = {
   '7d': 7,
   '30d': 30,
   '90d': 90,
   '1y': 365,
 };
-
-const viewStyles: React.CSSProperties = {
-  padding: 24,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 20,
-};
-
-const headerRowStyles: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-};
-
-const headerStyles: React.CSSProperties = {
-  fontSize: 18,
-  fontWeight: 700,
-  color: '#ccccdd',
-  letterSpacing: '0.5px',
-  textTransform: 'uppercase',
-};
-
-const timeRangeSelectorStyles: React.CSSProperties = {
-  display: 'flex',
-  gap: 4,
-};
-
-const rangeButtonStyles = (active: boolean): React.CSSProperties => ({
-  padding: '4px 12px',
-  backgroundColor: active ? '#4444aa' : 'transparent',
-  border: '1px solid #3333aa',
-  borderRadius: 4,
-  color: active ? '#ffffff' : '#8888aa',
-  fontSize: 13,
-  cursor: 'pointer',
-});
-
-const TIME_RANGES: { value: TimeRange; label: string }[] = [
-  { value: '7d',  label: '7d' },
-  { value: '30d', label: '30d' },
-  { value: '90d', label: '90d' },
-  { value: '1y',  label: '1y' },
-];
 
 const VALID_RANGES = new Set<string>(['7d', '30d', '90d', '1y']);
 
@@ -76,10 +29,10 @@ function isTimeRange(value: unknown): value is TimeRange {
 
 export default function TrendsView(): React.JSX.Element {
   const { config: dashConfig, refreshConfig } = useDashboardConfig();
+  const { setRangeControls, clearRangeControls } = useTopbar();
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
   const [timeRangeInitialized, setTimeRangeInitialized] = React.useState(false);
 
-  // Initialize time range from dashboard config when context loads
   React.useEffect(() => {
     if (dashConfig && !timeRangeInitialized) {
       const trendsView = dashConfig.views?.find((v) => v.id === 'trends');
@@ -90,16 +43,21 @@ export default function TrendsView(): React.JSX.Element {
     }
   }, [dashConfig, timeRangeInitialized]);
 
-  // Persist time range selection to dashboard config
-  const handleTimeRangeChange = React.useCallback((range: TimeRange) => {
+  const handleTimeRangeChange = React.useCallback((range: string) => {
+    if (!isTimeRange(range)) return;
     setTimeRange(range);
     window.api.dashboard.get().then((config) => {
       const views = (config.views ?? []).map((v) =>
         v.id === 'trends' ? { ...v, defaultTimeRange: range } : v
       );
       window.api.dashboard.save({ ...config, views }).then(refreshConfig);
-    }).catch(() => { /* persistence is best-effort */ });
+    }).catch(() => {});
   }, [refreshConfig]);
+
+  React.useEffect(() => {
+    setRangeControls(timeRange, handleTimeRangeChange);
+    return clearRangeControls;
+  }, [timeRange, handleTimeRangeChange, setRangeControls, clearRangeControls]);
 
   const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
 
@@ -185,24 +143,9 @@ export default function TrendsView(): React.JSX.Element {
   const hasAnyData = orderedWidgets.length > 0;
 
   return (
-    <div style={viewStyles}>
-      <div style={headerRowStyles}>
-        <h1 style={headerStyles}>Trends</h1>
-        <div style={timeRangeSelectorStyles}>
-          {TIME_RANGES.map(({ value, label }) => (
-            <button
-              key={value}
-              style={rangeButtonStyles(timeRange === value)}
-              onClick={() => handleTimeRangeChange(value)}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <div className="page">
       {loading ? (
-        <div style={{ color: '#666688', padding: 40, textAlign: 'center' }}>Loading...</div>
+        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
       ) : hasAnyData ? (
         <>
           {orderedWidgets.map(w => (

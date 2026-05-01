@@ -38,6 +38,7 @@ function createMainWindow(): BrowserWindow {
     height: 800,
     minWidth: 900,
     minHeight: 600,
+    frame: false,
     title: 'Claude Usage Monitor',
     icon: path.join(app.getAppPath(), 'assets', 'icon.ico'),
     webPreferences: {
@@ -105,6 +106,26 @@ app.whenReady().then(() => {
   // Create main window
   const win = createMainWindow();
 
+  // Safe wrapper — the BrowserWindow may already be destroyed when events
+  // fire during app teardown (stop() emits 'disconnected' from will-quit).
+  const sendToRenderer = (channel: string, payload: unknown): void => {
+    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
+    win.webContents.send(channel, payload);
+  };
+
+  // Window control IPC (frameless title bar)
+  ipcMain.on('window:minimize', () => win.minimize());
+  ipcMain.on('window:maximize', () => {
+    if (win.isMaximized()) win.unmaximize();
+    else win.maximize();
+  });
+  ipcMain.on('window:close', () => win.close());
+  ipcMain.on('window:quit', () => { isQuitting = true; app.quit(); });
+  ipcMain.handle('window:isMaximized', () => win.isMaximized());
+
+  win.on('maximize', () => sendToRenderer('window:maximizeChanged', true));
+  win.on('unmaximize', () => sendToRenderer('window:maximizeChanged', false));
+
   // Create system tray icon
   createTray(win);
 
@@ -126,13 +147,6 @@ app.whenReady().then(() => {
 
   // Start LogWatcher — tails Claude Desktop main.log for new lines
   logWatcher = new LogWatcher(db);
-
-  // Safe wrapper — the BrowserWindow may already be destroyed when LogWatcher
-  // events fire during app teardown (stop() emits 'disconnected' from will-quit).
-  const sendToRenderer = (channel: string, payload: unknown): void => {
-    if (win.isDestroyed() || win.webContents.isDestroyed()) return;
-    win.webContents.send(channel, payload);
-  };
 
   logWatcher.on('event', (event) => {
     sendToRenderer('logWatcher:newEvent', event);
@@ -253,6 +267,11 @@ app.on('will-quit', () => {
   if (stalenessInterval) clearInterval(stalenessInterval);
   if (logWatcher) logWatcher.stop();
   ipcMain.removeHandler('logWatcher:retry');
+  ipcMain.removeHandler('window:isMaximized');
+  ipcMain.removeAllListeners('window:minimize');
+  ipcMain.removeAllListeners('window:maximize');
+  ipcMain.removeAllListeners('window:close');
+  ipcMain.removeAllListeners('window:quit');
   unregisterIpcHandlers();
   destroyTray();
   closeDatabase();
