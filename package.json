@@ -1,6 +1,6 @@
 {
   "name": "claude-usage-monitor",
-  "version": "0.9.1-rc1",
+  "version": "0.9.1-rc.1",
   "description": "Claude AI usage tracking desktop application",
   "main": "dist/main/main/main.js",
   "scripts": {
