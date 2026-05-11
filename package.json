@@ -14,7 +14,14 @@
     "compile": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.renderer.json --noEmit",
     "pack": "electron-builder --dir",
     "dist": "electron-builder",
-    "test": "jest"
+    "test": "jest",
+    "rebuild": "electron-rebuild -f -w better-sqlite3",
+    "release:patch": "npm version patch && git push && git push --tags",
+    "release:minor": "npm version minor && git push && git push --tags",
+    "release:major": "npm version major && git push && git push --tags",
+    "rc:patch": "node scripts/rc-tag.js patch",
+    "rc:minor": "node scripts/rc-tag.js minor",
+    "rc:major": "node scripts/rc-tag.js major"
   },
   "keywords": [
     "claude",

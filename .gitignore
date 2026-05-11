@@ -33,3 +33,6 @@ npm-debug.log*
 
 # TypeScript cache
 *.tsbuildinfo
+
+# Claude Code local settings (machine-specific permissions)
+.claude/settings.local.json
