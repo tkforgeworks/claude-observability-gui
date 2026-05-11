@@ -41,7 +41,7 @@ function formatProjectName(p: string | null): string {
 
 function shortenModel(model: string | null): string {
   if (!model) return 'unknown';
-  const match = model.match(/(opus|sonnet|haiku)-(\d+(?:\.\d+)?)/i);
+  const match = model.match(/(opus|sonnet|haiku)-([\d]+(?:-[\d]+)*)/i);
   if (match) return `${match[1].toLowerCase()}-${match[2]}`;
   const parts = model.split('-').filter(Boolean);
   return parts.length > 2 ? parts.slice(-3, -1).join('-') : model;
