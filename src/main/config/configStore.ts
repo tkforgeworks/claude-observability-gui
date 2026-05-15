@@ -62,7 +62,15 @@ export function updateSettings(partial: Partial<AppSettings>): AppSettings {
 }
 
 export function loadDashboard(): DashboardConfig {
-  return readJsonFile(getDashboardPath(), DEFAULT_DASHBOARD);
+  const config = readJsonFile<DashboardConfig>(getDashboardPath(), DEFAULT_DASHBOARD);
+  // Merge in any new views added in code but missing from the user's saved config
+  const existingIds = new Set(config.views.map(v => v.id));
+  for (const defaultView of DEFAULT_DASHBOARD.views) {
+    if (!existingIds.has(defaultView.id)) {
+      config.views.push(defaultView);
+    }
+  }
+  return config;
 }
 
 export function saveDashboard(config: DashboardConfig): void {

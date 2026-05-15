@@ -341,6 +341,7 @@ const VIEW_LABELS: Record<ViewId, string> = {
   cowork: 'Cowork Sessions',
   code: 'Code Sessions',
   chat: 'Chat History',
+  projects: 'Projects',
   trends: 'Trends',
   heatmap: 'Heatmap',
   settings: 'Settings',

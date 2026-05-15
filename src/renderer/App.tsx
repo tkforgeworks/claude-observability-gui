@@ -16,6 +16,7 @@ import CoworkSessionsView from './views/CoworkSessionsView';
 import CodeSessionsView from './views/CodeSessionsView';
 import ChatHistoryView from './views/ChatHistoryView';
 import TrendsView from './views/TrendsView';
+import ProjectsView from './views/ProjectsView';
 import HeatmapView from './views/HeatmapView';
 import SettingsView from './views/SettingsView';
 import { DashboardConfigProvider, useDashboardConfig } from './contexts/DashboardConfigContext';
@@ -86,6 +87,7 @@ export default function App(): React.JSX.Element {
                     <Route path="/cowork" element={<CoworkSessionsView />} />
                     <Route path="/code" element={<CodeSessionsView />} />
                     <Route path="/chat" element={<ChatHistoryView />} />
+                    <Route path="/projects" element={<ProjectsView />} />
                     <Route path="/trends" element={<TrendsView />} />
                     <Route path="/heatmap" element={<HeatmapView />} />
                     <Route path="/settings" element={<SettingsView />} />

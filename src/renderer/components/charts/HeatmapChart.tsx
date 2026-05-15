@@ -1,4 +1,4 @@
-import React, { useMemo, useState, useCallback } from 'react';
+import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
 
 interface HeatmapDay {
   date: string;
@@ -14,9 +14,8 @@ interface HeatmapChartProps {
   formatValue?: (v: number) => string;
 }
 
-const CELL_SIZE = 14;
+const MIN_CELL_SIZE = 10;
 const CELL_GAP = 3;
-const CELL_RADIUS = 2;
 const DAY_LABEL_WIDTH = 28;
 const MONTH_LABEL_HEIGHT = 18;
 
@@ -118,14 +117,37 @@ export default function HeatmapChart({
   colorScale = 'purple',
   formatValue,
 }: HeatmapChartProps): React.JSX.Element {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [containerWidth, setContainerWidth] = useState(0);
   const [tooltip, setTooltip] = useState<TooltipState>({ visible: false, x: 0, y: 0, date: '', value: 0 });
   const ramp = RAMPS[colorScale];
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const ro = new ResizeObserver(entries => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+    ro.observe(el);
+    setContainerWidth(el.clientWidth);
+    return () => ro.disconnect();
+  }, []);
 
   const { cells, monthLabels, weeksCount } = useMemo(() => buildGrid(data, days), [data, days]);
   const levels = useMemo(() => computeIntensityLevels(cells.map(c => c.value)), [cells]);
 
-  const gridWidth = DAY_LABEL_WIDTH + weeksCount * (CELL_SIZE + CELL_GAP);
-  const gridHeight = MONTH_LABEL_HEIGHT + 7 * (CELL_SIZE + CELL_GAP);
+  const cellSize = useMemo(() => {
+    if (containerWidth === 0 || weeksCount === 0) return MIN_CELL_SIZE;
+    const available = containerWidth - DAY_LABEL_WIDTH;
+    const computed = Math.floor(available / weeksCount) - CELL_GAP;
+    return Math.max(MIN_CELL_SIZE, computed);
+  }, [containerWidth, weeksCount]);
+
+  const cellRadius = cellSize <= 16 ? 2 : Math.round(cellSize * 0.15);
+  const gridWidth = DAY_LABEL_WIDTH + weeksCount * (cellSize + CELL_GAP);
+  const gridHeight = MONTH_LABEL_HEIGHT + 7 * (cellSize + CELL_GAP);
 
   const handleMouseEnter = useCallback((e: React.MouseEvent, cell: CellData) => {
     setTooltip({ visible: true, x: e.clientX + 12, y: e.clientY - 40, date: cell.date, value: cell.value });
@@ -140,68 +162,66 @@ export default function HeatmapChart({
   }, []);
 
   return (
-    <div>
-      <div style={{ overflow: 'auto' }}>
-        <svg width={gridWidth} height={gridHeight} style={{ display: 'block' }}>
-          {monthLabels.map((m, i) => (
+    <div ref={containerRef} style={{ width: '100%' }}>
+      <svg width={gridWidth} height={gridHeight} style={{ display: 'block' }}>
+        {monthLabels.map((m, i) => (
+          <text
+            key={i}
+            x={DAY_LABEL_WIDTH + m.weekIndex * (cellSize + CELL_GAP)}
+            y={MONTH_LABEL_HEIGHT - 4}
+            fill="var(--text-tertiary)"
+            fontSize={10}
+            fontFamily='"JetBrains Mono", monospace'
+          >
+            {m.label}
+          </text>
+        ))}
+        {DAY_LABELS.map((label, i) =>
+          label ? (
             <text
               key={i}
-              x={DAY_LABEL_WIDTH + m.weekIndex * (CELL_SIZE + CELL_GAP)}
-              y={MONTH_LABEL_HEIGHT - 4}
+              x={0}
+              y={MONTH_LABEL_HEIGHT + i * (cellSize + CELL_GAP) + cellSize - 2}
               fill="var(--text-tertiary)"
               fontSize={10}
               fontFamily='"JetBrains Mono", monospace'
             >
-              {m.label}
+              {label}
             </text>
-          ))}
-          {DAY_LABELS.map((label, i) =>
-            label ? (
-              <text
-                key={i}
-                x={0}
-                y={MONTH_LABEL_HEIGHT + i * (CELL_SIZE + CELL_GAP) + CELL_SIZE - 2}
-                fill="var(--text-tertiary)"
-                fontSize={10}
-                fontFamily='"JetBrains Mono", monospace'
-              >
-                {label}
-              </text>
-            ) : null
-          )}
-          {cells.map((cell, i) => {
-            const x = DAY_LABEL_WIDTH + cell.weekIndex * (CELL_SIZE + CELL_GAP);
-            const y = MONTH_LABEL_HEIGHT + cell.dayIndex * (CELL_SIZE + CELL_GAP);
-            const level = levels[i];
-            return (
-              <rect
-                key={i}
-                x={x}
-                y={y}
-                width={CELL_SIZE}
-                height={CELL_SIZE}
-                rx={CELL_RADIUS}
-                ry={CELL_RADIUS}
-                fill={ramp[level]}
-                style={{ cursor: 'pointer' }}
-                onMouseEnter={(e) => handleMouseEnter(e, cell)}
-                onMouseMove={handleMouseMove}
-                onMouseLeave={handleMouseLeave}
-              />
-            );
-          })}
-        </svg>
-      </div>
+          ) : null
+        )}
+        {cells.map((cell, i) => {
+          const x = DAY_LABEL_WIDTH + cell.weekIndex * (cellSize + CELL_GAP);
+          const y = MONTH_LABEL_HEIGHT + cell.dayIndex * (cellSize + CELL_GAP);
+          const level = levels[i];
+          return (
+            <rect
+              key={i}
+              x={x}
+              y={y}
+              width={cellSize}
+              height={cellSize}
+              rx={cellRadius}
+              ry={cellRadius}
+              fill={ramp[level]}
+              style={{ cursor: 'pointer' }}
+              onMouseEnter={(e) => handleMouseEnter(e, cell)}
+              onMouseMove={handleMouseMove}
+              onMouseLeave={handleMouseLeave}
+            />
+          );
+        })}
+      </svg>
       <div className="heatmap-legend" style={{ marginTop: 8 }}>
         <span>Less</span>
         {ramp.map((color, i) => (
           <div
             key={i}
             style={{
-              width: CELL_SIZE,
-              height: CELL_SIZE,
+              width: cellSize,
+              height: cellSize,
               backgroundColor: color,
-              borderRadius: CELL_RADIUS,
+              borderRadius: cellRadius,
             }}
           />
         ))}

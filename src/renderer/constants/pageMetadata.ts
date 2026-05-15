@@ -20,7 +20,8 @@ export const PAGE_META: Record<string, PageMeta> = {
   cowork:   { title: 'Cowork sessions',  subtitle: 'INTERACTIVE PAIR SESSIONS',            ranges: ['7d', '30d', '90d', 'All'],            defaultRange: '30d' },
   chat:     { title: 'Chat history',     subtitle: 'CLAUDE.AI CONVERSATIONS',              ranges: ['Monthly', 'Weekly'],                  defaultRange: 'Monthly' },
   code:     { title: 'Claude Code',      subtitle: 'AGENTIC CODING SESSIONS',              ranges: ['7d', '30d', '90d', 'All'],            defaultRange: '30d' },
-  heatmap:  { title: 'Usage heatmap',    subtitle: 'CALENDAR-LEVEL ACTIVITY',              ranges: ['12 months', '6 months', '3 months'],  defaultRange: '12 months' },
+  projects: { title: 'Projects',          subtitle: 'AGGREGATE PROJECT METRICS',             ranges: ['7d', '30d', '90d', '1y', 'All'],     defaultRange: '90d' },
+  heatmap:  { title: 'Usage heatmap',    subtitle: 'CALENDAR-LEVEL ACTIVITY',              ranges: ['3 months', '6 months', '12 months'],  defaultRange: '12 months' },
   settings: { title: 'Settings',         subtitle: 'APPLICATION CONFIGURATION',             ranges: null },
 };
 

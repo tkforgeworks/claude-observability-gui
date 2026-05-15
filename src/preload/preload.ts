@@ -13,6 +13,7 @@ import type {
   CacheEfficiencyData,
   DailyCostData,
   ModelMixDay,
+  ProjectAggregate,
   ProjectTimelineRow,
   SessionDensityDay,
   UsagePatternsData,
@@ -248,6 +249,15 @@ const api: ElectronApi = {
   costs: {
     recalculate(): Promise<void> {
       return ipcRenderer.invoke('costs:recalculate');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // projects
+  // -------------------------------------------------------------------------
+  projects: {
+    getAggregates(days: number): Promise<ProjectAggregate[]> {
+      return ipcRenderer.invoke('projects:getAggregates', days);
     },
   },
 

@@ -35,6 +35,7 @@ import {
   queryModelMix,
   queryProjectTimeline,
   queryUsagePatterns,
+  queryProjectAggregates,
   queryTableCounts,
   queryDatabaseStats,
   recalculateAllCosts,
@@ -345,6 +346,14 @@ export function registerIpcHandlers(db: Database.Database): void {
   });
 
   // -------------------------------------------------------------------------
+  // projects channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('projects:getAggregates', (_event: unknown, days: number) => {
+    return queryProjectAggregates(db, days);
+  });
+
+  // -------------------------------------------------------------------------
   // analytics channels
   // -------------------------------------------------------------------------
 
@@ -418,6 +427,7 @@ export function unregisterIpcHandlers(): void {
     'sync:setToken',
     'sync:testConnection',
     'costs:recalculate',
+    'projects:getAggregates',
     'analytics:getWeeklyActivity',
     'analytics:getHeatmapData',
     'analytics:getCacheEfficiency',

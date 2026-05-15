@@ -34,6 +34,12 @@ export const DEFAULT_DASHBOARD: DashboardConfig = {
       defaultTimeRange: 'week',
     },
     {
+      id: 'projects',
+      visible: true,
+      defaultLanding: false,
+      defaultTimeRange: '90d',
+    },
+    {
       id: 'heatmap',
       visible: true,
       defaultLanding: false,

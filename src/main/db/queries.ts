@@ -30,6 +30,7 @@ import type {
   ChatProject,
   ChatMemoryEntry,
   ChatDayCount,
+  ProjectAggregate,
 } from '../../shared/ipc-types';
 import { getDatabasePath } from './database';
 import * as fs from 'fs';
@@ -1225,6 +1226,137 @@ export function queryChatProjectHeatmap(
     ORDER BY date ASC
   `);
   return stmt.all(days) as ChatDayCount[];
+}
+
+// ---------------------------------------------------------------------------
+// Project Aggregates
+// ---------------------------------------------------------------------------
+
+/**
+ * Returns per-project aggregates combining code_sessions and cowork_sessions
+ * by project_path (case-insensitive on Windows). Includes cost, token totals,
+ * session counts, date range, active days, and model breakdown.
+ */
+export function queryProjectAggregates(
+  db: Database.Database,
+  days: number
+): ProjectAggregate[] {
+  const today = new Date().toISOString().slice(0, 10);
+  const daysBack = `'-${days - 1} days'`;
+
+  // Code session aggregates per project_path (lowercased for Windows)
+  const codeRows = db.prepare<[string, string], {
+    project_key: string;
+    project_path: string;
+    total_cost: number;
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_tokens: number;
+    cache_write_tokens: number;
+    session_count: number;
+    first_seen: string;
+    last_active: string;
+    active_days: number;
+  }>(`
+    SELECT LOWER(project_path) AS project_key,
+           project_path,
+           SUM(COALESCE(cost_usd, 0)) AS total_cost,
+           SUM(COALESCE(input_tokens, 0)) AS input_tokens,
+           SUM(COALESCE(output_tokens, 0)) AS output_tokens,
+           SUM(COALESCE(cache_read_tokens, 0)) AS cache_read_tokens,
+           SUM(COALESCE(cache_creation_tokens, 0)) AS cache_write_tokens,
+           COUNT(*) AS session_count,
+           MIN(started_at) AS first_seen,
+           MAX(COALESCE(ended_at, started_at)) AS last_active,
+           COUNT(DISTINCT DATE(started_at)) AS active_days
+    FROM code_sessions
+    WHERE project_path IS NOT NULL
+      AND DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY project_key
+  `).all(today, today);
+
+  // Cowork session aggregates per project_path (lowercased)
+  const coworkRows = db.prepare<[string, string], {
+    project_key: string;
+    session_count: number;
+    turn_count: number;
+    first_seen: string;
+    last_active: string;
+    active_days: number;
+  }>(`
+    SELECT LOWER(cs.project_path) AS project_key,
+           COUNT(DISTINCT cs.session_id) AS session_count,
+           COUNT(ct.id) AS turn_count,
+           MIN(cs.started_at) AS first_seen,
+           MAX(COALESCE(cs.ended_at, cs.started_at)) AS last_active,
+           COUNT(DISTINCT DATE(cs.started_at)) AS active_days
+    FROM cowork_sessions cs
+    LEFT JOIN cowork_turns ct ON ct.session_id = cs.session_id
+    WHERE cs.project_path IS NOT NULL
+      AND DATE(cs.started_at) >= DATE(?, ${daysBack})
+      AND DATE(cs.started_at) <= DATE(?)
+    GROUP BY project_key
+  `).all(today, today);
+
+  // Model breakdown per project from code_sessions
+  const modelRows = db.prepare<[string, string], {
+    project_key: string;
+    model: string;
+    cnt: number;
+  }>(`
+    SELECT LOWER(project_path) AS project_key,
+           COALESCE(model, 'unknown') AS model,
+           COUNT(*) AS cnt
+    FROM code_sessions
+    WHERE project_path IS NOT NULL
+      AND DATE(started_at) >= DATE(?, ${daysBack})
+      AND DATE(started_at) <= DATE(?)
+    GROUP BY project_key, model
+  `).all(today, today);
+
+  const modelMap = new Map<string, Record<string, number>>();
+  for (const r of modelRows) {
+    if (!modelMap.has(r.project_key)) modelMap.set(r.project_key, {});
+    modelMap.get(r.project_key)![r.model] = r.cnt;
+  }
+
+  const coworkMap = new Map(coworkRows.map(r => [r.project_key, r]));
+
+  // Merge code + cowork data
+  const projectKeys = new Set<string>();
+  const codeMap = new Map(codeRows.map(r => { projectKeys.add(r.project_key); return [r.project_key, r]; }));
+  for (const r of coworkRows) projectKeys.add(r.project_key);
+
+  const results: ProjectAggregate[] = [];
+  for (const key of projectKeys) {
+    const code = codeMap.get(key);
+    const cowork = coworkMap.get(key);
+
+    const projectPath = code?.project_path ?? cowork?.project_key ?? key;
+    const firstSeen = [code?.first_seen, cowork?.first_seen].filter(Boolean).sort()[0] ?? '';
+    const lastActive = [code?.last_active, cowork?.last_active].filter(Boolean).sort().reverse()[0] ?? '';
+
+    results.push({
+      projectPath,
+      displayName: formatProjectPath(projectPath),
+      totalCostUsd: Math.round((code?.total_cost ?? 0) * 10000) / 10000,
+      inputTokens: code?.input_tokens ?? 0,
+      outputTokens: code?.output_tokens ?? 0,
+      cacheReadTokens: code?.cache_read_tokens ?? 0,
+      cacheWriteTokens: code?.cache_write_tokens ?? 0,
+      codeSessionCount: code?.session_count ?? 0,
+      coworkSessionCount: cowork?.session_count ?? 0,
+      coworkTurnCount: cowork?.turn_count ?? 0,
+      firstSeenAt: firstSeen,
+      lastActiveAt: lastActive,
+      activeDays: Math.max(code?.active_days ?? 0, cowork?.active_days ?? 0),
+      models: modelMap.get(key) ?? {},
+    });
+  }
+
+  results.sort((a, b) => (b.lastActiveAt > a.lastActiveAt ? 1 : -1));
+  return results;
 }
 
 // ---------------------------------------------------------------------------

@@ -117,7 +117,7 @@ export interface AppSettings {
 // Dashboard Config
 // ---------------------------------------------------------------------------
 
-export type ViewId = 'today' | 'cowork' | 'code' | 'chat' | 'trends' | 'heatmap' | 'settings';
+export type ViewId = 'today' | 'cowork' | 'code' | 'chat' | 'projects' | 'trends' | 'heatmap' | 'settings';
 
 export type TrendsWidgetId =
   | 'cacheEfficiency'
@@ -313,6 +313,27 @@ export interface DailyActivity {
 }
 
 // ---------------------------------------------------------------------------
+// Project Aggregates
+// ---------------------------------------------------------------------------
+
+export interface ProjectAggregate {
+  projectPath: string;         // raw path for grouping
+  displayName: string;         // shortened display name (last 2 segments)
+  totalCostUsd: number;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  codeSessionCount: number;
+  coworkSessionCount: number;
+  coworkTurnCount: number;
+  firstSeenAt: string;         // ISO 8601
+  lastActiveAt: string;        // ISO 8601
+  activeDays: number;
+  models: Record<string, number>; // model name → session count
+}
+
+// ---------------------------------------------------------------------------
 // Heatmap
 // ---------------------------------------------------------------------------
 
@@ -448,6 +469,9 @@ export interface ElectronApi {
   };
   costs: {
     recalculate(): Promise<void>;
+  };
+  projects: {
+    getAggregates(days: number): Promise<ProjectAggregate[]>;
   };
   analytics: {
     getWeeklyActivity(): Promise<DailyActivity[]>;

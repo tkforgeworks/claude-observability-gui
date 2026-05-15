@@ -35,6 +35,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'code', label: 'Code', icon: 'code' },
       { id: 'chat', label: 'Chat', icon: 'chat' },
+      { id: 'projects', label: 'Projects', icon: 'projects' },
     ],
   },
 ];
@@ -83,10 +84,13 @@ export default function Sidebar(): React.JSX.Element {
     });
   }, []);
 
-  const visibleIds = new Set<ViewId>(
+  const hiddenIds = new Set<ViewId>(
     config
-      ? config.views.filter(v => v.visible).map(v => v.id)
-      : ['today', 'cowork', 'code', 'chat', 'trends', 'heatmap']
+      ? config.views.filter(v => !v.visible).map(v => v.id)
+      : []
+  );
+  const visibleIds = new Set<ViewId>(
+    NAV_SECTIONS.flatMap(s => s.items).map(i => i.id).filter(id => !hiddenIds.has(id))
   );
 
   return (

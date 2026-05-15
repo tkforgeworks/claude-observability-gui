@@ -5,9 +5,9 @@ import HeatmapChart from '../components/charts/HeatmapChart';
 import { useTopbar } from '../contexts/TopbarContext';
 
 const RANGE_MAP: Record<string, number> = {
-  '12 months': 365,
-  '6 months': 182,
   '3 months': 91,
+  '6 months': 182,
+  '12 months': 365,
 };
 
 function formatTokenCount(n: number): string {
