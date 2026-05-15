@@ -1,51 +1,135 @@
 # Claude Usage Monitor
 
-A desktop application for tracking and analyzing Claude AI usage across Claude Code and Claude Desktop (Cowork). Built with Electron, React, and SQLite.
+A free, local-first desktop app that tracks your Claude AI usage across **Claude Code**, **Claude Desktop (Cowork)**, and **claude.ai chat exports**. All data stays on your machine in a local SQLite database — nothing is sent anywhere.
 
-## Current Status
+Built with Electron, React, TypeScript, and better-sqlite3.
 
-**v0.9.0 — First public installer.** The app ships as a Windows NSIS installer with a CI pipeline that publishes tagged releases to GitHub. Feature-complete for the 1.0 milestone: automatic JSONL import from Claude Code, live `main.log` tailing for Claude Desktop (Cowork), claude.ai chat history import, cost tracking, analytics, a dark-themed UI, system tray with live stats, database backup, and launch-on-startup. A 1.0.0 release will follow once an initial tester round is complete.
+> **Windows only for now.** Pre-built installers are available for 64-bit Windows. See [Platform Support](#platform-support) for details.
 
-### What works
+## Why this exists
 
-- **Today Dashboard** — Rolling 24-hour summary with metric cards (Sessions, Cowork Turns, Code Cost, Active Time) and session timeline. Three display states: no data, partial data (code only), and full data. Auto-refreshes on JSONL scan and LogWatcher events.
-- **Claude Code Sessions** — Sortable table of all sessions parsed from `~/.claude/projects/` JSONL files. Columns: Project, Model, Input/Output/Cache Write/Cache Read tokens, Cost, Date. Summary bar with aggregate totals. Date range filter (7d / 30d / 90d / All). Cleanup warning banner when `cleanupPeriodDays` is 30 or fewer. Live scan status indicator.
-- **Cowork Sessions** — Claude Desktop session tracking via LogWatcher tailing `main.log`. Sortable session table with expandable turn rows, plus a today-summary card. Sessions and turns are deduped on restart via a persisted offset.
-- **Chat History** — claude.ai export ZIP importer with conversation-count charts (weekly/monthly), projects table, memories view, and conversation/project heatmaps. Stale-import banner + tray notification when data is older than `chatStalenessDays`.
-- **Trends** — Seven analytics widgets (Usage Patterns, Cost Velocity, Cache Efficiency, Turn Duration, Session Density, Project Activity Timeline, Model Migration) with a shared time-range selector (7d/30d/90d/1y).
-- **Heatmap** — 365-day GitHub-style activity visualization.
-- **JSONL Importer** — Scans `~/.claude/projects/` on startup and every 5 minutes, parsing session JSONL files into SQLite. Emits scan events to the renderer for real-time UI updates.
-- **LogWatcher** — Tails Claude Desktop `main.log` for Cowork sessions, turns, app launches, and window focus heartbeats. Persists its read offset so it skips already-processed lines on restart.
-- **Cost Engine** — Per-session cost calculation using a tiered pricing table covering Claude models (Opus/Sonnet/Haiku across 3.x and 4.x families) with separate cache write/read pricing. Unit tested.
-- **Settings Panel** — Tabbed layout (General, Notifications, Dashboard, Data). Drag-to-reorder dashboard views and default landing selection. Data tab shows live database size, oldest record per table, and one-click SQLite backup. Config file paths with one-click folder access.
-- **Application Shell** — Dark-themed UI with fixed sidebar navigation. System tray with live session count + today's cost, minimize-to-tray on close, and deep-link navigation from notifications.
-- **SQLite with WAL mode** — Local data store with automatic schema migrations on startup. Backup API handles WAL checkpointing automatically.
-- **IPC Contract** — Fully typed channels between renderer, preload, and main process via contextBridge.
+Claude doesn't give you a single place to see how much you're spending, which projects eat the most tokens, or how your usage patterns look over time. This app fills that gap by pulling data from the sources Claude already writes to disk and turning it into dashboards you can actually use.
 
-### Database tables
+## Quick start
 
-| Table | Status | Purpose |
-|-------|--------|---------|
-| `code_sessions` | Active | Claude Code sessions from JSONL files |
-| `cowork_sessions` | Active | Cowork session tracking from LogWatcher |
-| `cowork_turns` | Active | Individual turns within Cowork sessions |
-| `app_sessions` | Active | Claude Desktop app launches |
-| `app_focus_events` | Active | Window focus heartbeats from `main.log` |
-| `chat_conversations` | Active | Desktop chat history from claude.ai export |
-| `chat_projects` | Active | Chat projects from claude.ai export |
-| `chat_memories` | Active | Memory entries from claude.ai export |
+1. Download the latest `.exe` from the [Releases page](../../releases).
+2. Run the installer. Windows SmartScreen will warn you because the binary is unsigned — click **More info → Run anyway** (see [Known Limitations](#known-limitations)).
+3. The app installs per-user (no admin needed) and starts importing data automatically.
 
-## Installation
+That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
 
-> **Windows only.** The installer is built for 64-bit Windows. macOS and Linux builds are not currently produced.
+## Features
 
-1. Download the latest `Claude Usage Monitor Setup X.Y.Z.exe` from the [Releases page](../../releases).
-2. Double-click the installer.
-3. **Windows SmartScreen warning:** because the installer is not yet code-signed, Windows will show a blue *"Windows protected your PC"* dialog. Click **More info**, then **Run anyway**. This is expected — once a signing certificate is added in a future release, the warning will go away.
-4. Follow the installer prompts. The app installs per-user (no admin required) to `%LOCALAPPDATA%\Programs\claude-usage-monitor` and creates Start Menu and desktop shortcuts.
-5. User data (settings, dashboard config, usage database) lives in `%APPDATA%\Claude Usage Monitor\ClaudeUsageMonitor\` and is preserved across upgrades and uninstalls.
+### Today Dashboard
 
-To enable auto-launch on Windows sign-in, open the app → **Settings → General → Startup** and check the box.
+A rolling 24-hour summary showing session counts, cowork turns, code cost, and active time. Includes a session timeline visualizing when you were active throughout the day. Auto-refreshes as new data arrives.
+
+### Claude Code Sessions
+
+Every Claude Code session parsed from the JSONL files in `~/.claude/projects/`. The view includes:
+- Sortable table with project, model, token breakdown (input/output/cache write/cache read), cost, and timestamp
+- Aggregate stat cards and summary bar
+- Cost-by-project horizontal bar chart and model distribution donut chart
+- Date range filter (7d / 30d / 90d / All)
+- A warning banner if your `cleanupPeriodDays` setting is 30 days or fewer (meaning old JSONL files are being deleted)
+
+Data is scanned on startup and every 5 minutes. You'll see a live scan indicator in the view when an import is running.
+
+### Cowork Sessions (Claude Desktop)
+
+Tracks interactive pair-programming sessions in Claude Desktop by tailing the `main.log` file. Shows:
+- Session table with turn counts and average turn duration
+- Expandable turn-level detail per session
+- Persisted read offset so restarts don't re-process old log lines
+
+The sidebar shows a live "watcher live" / "watcher offline" indicator. If the log path can't be found, a banner appears with a retry button and a link to configure the path manually in Settings.
+
+### Projects
+
+Aggregates metrics across both Claude Code and Cowork sessions, grouped by project path. Shows:
+- Per-project total cost, token breakdown, code/cowork session counts, active days, and model usage
+- Sortable table with click-to-expand detail panels
+- Summary stat cards with cross-project totals
+- Time range filter (7d / 30d / 90d / 1y / All)
+
+Projects are matched by filesystem path (case-insensitive on Windows), so Code and Cowork sessions for the same project directory are rolled up together automatically.
+
+### Chat History (claude.ai Export)
+
+Import your claude.ai conversation history from a data export ZIP. Once imported, the view shows:
+- Conversation count charts (weekly or monthly)
+- Projects table with per-project conversation counts and lifespan
+- Memories extracted from the export
+- Conversation and project activity heatmaps
+- Staleness banner when your imported data is older than a configurable threshold
+
+To import: go to [claude.ai](https://claude.ai) → Settings → Account → Export Data. Download the ZIP, then use the import button in the Chat History view.
+
+### Trends
+
+Seven analytics widgets with a shared time-range selector (7d / 30d / 90d / 1y):
+
+| Widget | What it shows |
+|--------|--------------|
+| **Usage Patterns** | 8-stat summary card grid + 24-hour activity heatbar |
+| **Cost Velocity** | Daily cost bar chart with 7-day moving average line |
+| **Cache Efficiency** | Per-project cache reuse ratios with expandable token breakdown |
+| **Turn Duration** | Daily average Cowork turn duration with trend line |
+| **Session Density** | Sessions per active hour, showing how packed your working sessions are |
+| **Project Activity Timeline** | Gantt-style swimlane showing when each project was active |
+| **Model Migration** | Stacked area chart tracking which models you use over time |
+
+### Heatmap
+
+A GitHub-style activity heatmap showing your Claude usage intensity over time. Three layers:
+- Cowork session count
+- Input + output tokens
+- Cache read + write tokens
+
+Supports 3-month, 6-month, and 12-month views. Cells scale to fill the available width at any time range.
+
+### Settings
+
+Tabbed configuration panel:
+- **General** — Log file path override, Claude Code data path override, launch on startup, minimize to tray, tray notifications
+- **Dashboard** — Drag-to-reorder sidebar views, toggle visibility, set default landing view, show/hide individual Trends widgets
+- **Data** — Live database stats (size, oldest records per table), one-click SQLite backup, open data folder
+
+### System Tray
+
+The app runs in the system tray with a context menu showing live session count and today's cost. Closing the window minimizes to tray by default (configurable in Settings). Tray notifications fire for stale chat imports.
+
+## Data sources
+
+| Source | How it's collected | Automatic? |
+|--------|-------------------|------------|
+| **Claude Code** | Parses JSONL session files from `~/.claude/projects/` | Yes — scans on startup + every 5 min |
+| **Claude Desktop (Cowork)** | Tails `main.log` from Claude Desktop's app data directory | Yes — starts on app launch |
+| **claude.ai chat history** | Imports from a manually downloaded data export ZIP | No — one-time manual import per export |
+
+All data is stored locally in a SQLite database at `%APPDATA%\Claude Usage Monitor\ClaudeUsageMonitor\usage.db`. Nothing leaves your machine.
+
+## Platform support
+
+**Windows is the only platform with pre-built installers today.** The release pipeline produces an NSIS installer for 64-bit Windows.
+
+macOS and Linux builds are not currently produced, but the codebase has no Windows-specific runtime dependencies. If you're on another platform and want to try it, you can build from source (see [Development](#development)).
+
+If there's interest in macOS or Linux builds, open an issue and let me know.
+
+## Known limitations
+
+- **Unsigned installer.** The Windows build is not code-signed, so SmartScreen will show a warning on first install. Click *More info → Run anyway*. This will be addressed when a signing certificate is added.
+- **Cowork tracking requires Claude Desktop.** The LogWatcher tails Claude Desktop's `main.log`. If you don't use Claude Desktop, the Cowork-related views will be empty. Claude Code sessions are tracked independently.
+- **Chat import is manual.** There's no API to pull claude.ai history automatically. You need to request a data export from claude.ai, download the ZIP, and import it each time you want updated chat data.
+- **No remote sync.** The Remote Sync feature (push data to InfluxDB) is stubbed but not yet implemented. All data is local only.
+- **Cost accuracy depends on the pricing table.** The built-in pricing covers current Claude models (Opus 4.6/4.7, Sonnet 4.6, Haiku 4.5). If Anthropic changes pricing or you use a model not in the table, costs may be inaccurate. A cost recalculation button is available in Settings if the pricing table is updated in a new release.
+- **Claude Desktop log format changes.** The LogWatcher parses specific patterns from `main.log`. If Anthropic changes the log format, Cowork tracking may break until a parser update is released. The app shows a health warning banner if it detects parsing issues.
+- **JSONL cleanup period.** Claude Code can be configured to delete old session files. If `cleanupPeriodDays` is set low, historical data is lost before the app can import it. A banner warns you if this is set to 30 days or fewer.
+
+## Feedback and issues
+
+This is in active development and I'm looking for feedback. If you find a bug, have a feature request, or something doesn't work the way you'd expect, please [open an issue](../../issues). Screenshots and reproduction steps are always appreciated.
 
 ## Development
 
@@ -65,16 +149,14 @@ npx electron-rebuild
 
 | Command | Description |
 |---------|-------------|
-| `npm run build` | Build main + renderer |
-| `npm run build:main` | Compile main process TypeScript |
-| `npm run build:renderer` | Bundle renderer with webpack |
 | `npm run dev` | Run main and renderer in watch mode |
+| `npm run build` | Build main + renderer |
 | `npm start` | Launch the built Electron app |
 | `npm run compile` | Type-check only (no emit) |
 | `npm test` | Run unit tests (Jest + ts-jest) |
 | `npm run dist` | Package for distribution via electron-builder |
 
-### Project Structure
+### Project structure
 
 ```
 src/
@@ -83,19 +165,19 @@ src/
     db/              # SQLite database, migrations, queries
     importers/       # JSONL importer, chat ZIP importer, cost calculator
     ipc/             # IPC handler registration
-    services/        # LogWatcher, log line parser, log path discovery, launch-on-startup
+    services/        # LogWatcher, log line parser, log path discovery
     tray.ts          # System tray
     main.ts          # Entry point
   preload/           # contextBridge API exposure
   renderer/          # React UI
-    components/      # Shared components (MetricCard, EmptyState, etc.)
+    components/      # Shared components (charts, cards, layout)
     views/           # Page-level views
     App.tsx          # Router and layout shell
   shared/            # Types shared across all processes
     ipc-types.ts     # IPC channel types, ElectronApi interface
 ```
 
-## Tech Stack
+## Tech stack
 
 - **Runtime:** Electron 41
 - **Language:** TypeScript
@@ -107,70 +189,9 @@ src/
 
 ## Releases
 
-Tagged releases are built and published automatically via GitHub Actions:
+Tagged releases are built and published automatically via GitHub Actions. The installer appears under [Releases](../../releases) once the build finishes (~5-10 min).
 
-- **`.github/workflows/ci.yml`** — runs typecheck + unit tests on every push to `main` and every PR (Ubuntu runner).
-- **`.github/workflows/release.yml`** — runs on any tag matching `v*`, builds the NSIS installer on a Windows runner, and publishes it to a GitHub Release with auto-generated notes from commits since the previous tag. Tags containing a hyphen (e.g. `v0.9.0-rc.1`) are automatically flagged as pre-releases.
-
-The installer appears under [Releases](../../releases) once the build finishes (~5-10 min). Builds are currently **unsigned** — Windows SmartScreen will show a warning that users can bypass via *More info → Run anyway*. See the Installation section above.
-
-### Cutting a release
-
-> **Note:** the command for version bumping is `npm version`, not `npm publish`. `npm publish` pushes to the public npm registry — do not run it for this project.
-
-`npm version` in one step updates `package.json`, creates a commit, and creates an annotated `v<version>` git tag. Pushing that tag triggers the release workflow.
-
-**Standard bump:**
-
-```bash
-npm version patch   # 0.9.0 → 0.9.1
-npm version minor   # 0.9.0 → 0.10.0
-npm version major   # 0.9.0 → 1.0.0
-git push --follow-tags
-```
-
-`--follow-tags` pushes the commit and any annotated tags reachable from it in one shot. Without it, `git push` alone will not push the new tag.
-
-**Pre-release / release-candidate tags:**
-
-```bash
-npm version 1.0.0-rc.1                # explicit
-npm version prerelease --preid=rc     # auto-increment: 0.9.0 → 0.9.1-rc.0 → 0.9.1-rc.1 → ...
-git push --follow-tags
-```
-
-Any tag containing a hyphen is automatically flagged as a GitHub pre-release by the workflow.
-
-**First tag on a version that already exists in `package.json`:**
-
-`npm version <x.y.z>` refuses to set the version to what it already is. For the very first tag on a fresh `package.json` version, tag manually:
-
-```bash
-git tag v0.9.0
-git push origin main --follow-tags
-```
-
-**Gotcha — dirty working tree:**
-
-`npm version` refuses to run if there are modified tracked files in the working tree (untracked files are fine). If you hit `Git working directory not clean`, either commit/stash the pending changes first, or bypass the check with:
-
-```bash
-npm version patch --force
-```
-
-`git tag` (used for the manual first-tag path above) does not enforce this check.
-
-## Roadmap
-
-| Version | Epic | Status |
-|---------|------|--------|
-| v0.1.0 | Foundation — JSONL import, Code sessions table, Today dashboard, cost engine | Complete |
-| v0.2.0 | Live Cowork Tracking — Claude Desktop log watcher, cowork session/turn tracking | Complete |
-| v0.3.0 | Trends & Analytics — 7 analytics widgets, heatmap, dashboard config | Complete |
-| v0.4.0 | Chat Import — claude.ai ZIP importer, Chat History view | Complete |
-| v0.5.0 | Polish & Packaging — Tray notifications, DB backup, status banners, UI polish | Complete |
-| **v0.9.0** | **First public installer — NSIS installer, launch-on-startup, CI/CD pipeline, GitHub Releases** | **Current** |
-| v1.0.0 | First stable release — code signing, tester feedback incorporated | Planned |
+Tags containing a hyphen (e.g. `v1.0.0-rc.1`) are automatically flagged as pre-releases.
 
 ## License
 
