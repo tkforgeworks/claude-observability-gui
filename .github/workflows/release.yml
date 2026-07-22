@@ -9,31 +9,12 @@ permissions:
   contents: write
 
 jobs:
-  # Generates the release body from commit subjects since the previous tag
-  # (previous STABLE tag for final releases), with CGUI-* Jira links.
-  # Ported from tkforgeworks/anvil.
+  # TK ForgeWorks standard release-notes generation — canonical script and
+  # workflow live in tkforgeworks/.github
   release-notes:
-    runs-on: ubuntu-latest
-    outputs:
-      body: ${{ steps.notes.outputs.body }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '22'
-
-      - id: notes
-        run: |
-          BODY=$(node scripts/generate-release-notes.js)
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          echo "$BODY" >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
-        env:
-          JIRA_BASE_URL: ${{ vars.JIRA_BASE_URL }}
-          RELEASE_VERSION: ${{ github.ref_name }}
+    uses: tkforgeworks/.github/.github/workflows/release-notes.yml@main
+    with:
+      ticket-prefix: CGUI
 
   build-windows:
     runs-on: windows-latest
