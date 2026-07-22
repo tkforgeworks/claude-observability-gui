@@ -105,7 +105,7 @@ export default function Sidebar(): React.JSX.Element {
       <div className="sidebar-brand">
         <div className="logo">TK</div>
         <div className="name">
-          Claude Observe
+          COG
           <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>
         </div>
       </div>
