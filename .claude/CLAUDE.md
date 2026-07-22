@@ -36,12 +36,13 @@ src/shared/      → Type-only definitions (ipc-types.ts, models.ts)
 
 ### Main process (`src/main/`)
 
-- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, tray refresh loop, and chat import staleness notification
+- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, UsageLimitWatcher, tray refresh loop, and chat import staleness notification
 - **Launch on startup:** `services/launchOnStartup.ts` — wraps `app.setLoginItemSettings`. Applied once on startup from `loadSettings().launchOnStartup`, re-applied inside the `settings:update` IPC handler whenever the flag is present in the patch
 - **Database:** `db/database.ts` — better-sqlite3 with WAL mode. Schema migrations in `db/migrations/` (versioned, cumulative, never modify existing ones). Queries in `db/queries.ts`
 - **JSONL Importer:** `importers/jsonlImporter.ts` — scans `~/.claude/projects/` on startup and every 5 minutes, parses session files, calculates costs via `importers/costCalculator.ts`, upserts to SQLite
 - **Chat Importer:** `importers/chatImporter.ts` — parses claude.ai export ZIPs (`conversations.json`, `projects.json`, `users.json`) into `chat_conversations` and related tables
 - **LogWatcher:** `services/logWatcher.ts` — tails Claude Desktop `main.log`, parses lines via `services/logLineParser.ts`, persists events to `cowork_sessions`, `cowork_turns`, `app_sessions`, and `app_focus_events`. Uses a persisted offset/timestamp to skip already-processed lines on restart
+- **UsageLimitWatcher:** `services/usageLimitWatcher.ts` — polls `~/.claude/projects/*/cship/*-usage-limits` files on a configurable interval (default 60s — must stay at or below the ~60s file TTL or polls will always find expired files), reads the most recently modified file, parses `five_hour_pct`/`seven_day_pct` subscription usage data, persists to `usage_snapshots` table, and prunes old data per retention setting. Files carry an `expires_at` (epoch seconds, ~60s TTL after each cship refresh); expired files are skipped entirely — stale data means "unknown", never "0%". cship only refreshes these files while a Claude Code session is active, so snapshots are captured only when a poll lands within the TTL window; the Usage view shows a staleness notice when the latest snapshot is >15 min old
 - **IPC Handlers:** `ipc/handlers.ts` — all channels typed via `ElectronApi` interface in `shared/ipc-types.ts`
 - **Config:** `config/configStore.ts` (settings + dashboard load/save), `config/pricing.ts` (per-model token rates), `config/defaultSettings.ts` — JSON files in `%APPDATA%\ClaudeUsageMonitor\`
 
@@ -63,6 +64,7 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
     5. Session Density — sessions per active hour line chart
     6. Project Activity Timeline — Gantt-style swimlane grid, expandable project list
     7. Model Migration — stacked area chart with auto-discovered model series
+  - `UsageView` — subscription usage limit tracking with stat cards (5-hour and 7-day usage percentages with reset countdowns), sparklines, and historical area chart with range selector (24h/7d/30d/90d). Subscribes to `onUsageSnapshot` for live updates
   - `HeatmapView` — 365-day GitHub-style usage heatmap
   - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
   - `SettingsView` — tabbed config (General, Remote Sync, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API. Supports deep-linking to a specific tab via `navigate('/settings', { state: { tab: 'general' } })` — reads `location.state.tab` and syncs to `activeTab` on mount and on subsequent location changes
@@ -86,7 +88,7 @@ Jest + ts-jest, test environment: node. Tests live in `src/main/__tests__/`. Con
 
 ## Data storage
 
-App data lives in `%APPDATA%\ClaudeUsageMonitor\`:
+App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path (dev: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`; packaged: `%APPDATA%\<productName>\ClaudeUsageMonitor\`):
 - `settings.json` — user preferences
 - `dashboard.json` — view/widget configuration
 - `usage.db` — SQLite database (+ WAL files)
@@ -138,6 +140,16 @@ The Chat History view uses these `chat:*` channels, backed by the claude.ai ZIP 
 | `chat:getConversationHeatmap` | Daily conversation counts for heatmap |
 | `chat:getProjectHeatmap` | Daily project-activity counts for heatmap |
 
+## Usage Snapshots IPC channels
+
+The Usage view uses these `usageSnapshots:*` channels:
+
+| Channel | Query function | Returns |
+|---------|---------------|---------|
+| `usageSnapshots:getLatest` | `queryLatestUsageSnapshot` | Most recent usage snapshot or null |
+| `usageSnapshots:getRecent` | `queryUsageSnapshots` | Snapshots within last N hours |
+| `usageSnapshots:getRange` | `queryUsageSnapshotRange` | Snapshots in a date range |
+
 ## Push events (main → renderer)
 
 Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe function:
@@ -146,6 +158,7 @@ Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe functi
 - `onLogWatcherConnection` — LogWatcher connection state (log path found/lost); paired with `logWatcher.retry()` request channel which re-runs path discovery and restarts the watcher
 - `onScanStarted` / `onImportComplete` — JSONL importer scan lifecycle
 - `onSyncStatusChanged` — remote sync state (stub)
+- `onUsageSnapshot` — new usage limit snapshot captured by UsageLimitWatcher
 - `onNavigate` — main-process navigation commands (used by the stale-chat Notification click handler to deep-link to `/chat`)
 
 ## Jira

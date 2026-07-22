@@ -108,6 +108,11 @@ export interface AppSettings {
   // Notifications
   chatStalenessDays: number;          // Days before chat import is considered stale (default 14)
 
+  // Usage Limit Polling
+  usageLimitPollingEnabled: boolean;
+  usageLimitPollIntervalMs: number;   // Default 300_000 (5 minutes)
+  usageLimitRetentionDays: number;    // Default 90
+
   // Import history
   lastChatImportAt: string | null;
   lastJsonlScanAt: string | null;
@@ -117,7 +122,7 @@ export interface AppSettings {
 // Dashboard Config
 // ---------------------------------------------------------------------------
 
-export type ViewId = 'today' | 'cowork' | 'code' | 'chat' | 'projects' | 'trends' | 'heatmap' | 'settings';
+export type ViewId = 'today' | 'cowork' | 'code' | 'chat' | 'projects' | 'trends' | 'heatmap' | 'usage' | 'settings';
 
 export type TrendsWidgetId =
   | 'cacheEfficiency'
@@ -207,6 +212,19 @@ export interface ChatMemoryEntry {
 export interface ChatDayCount {
   date: string; // YYYY-MM-DD
   count: number;
+}
+
+// ---------------------------------------------------------------------------
+// Usage Snapshots
+// ---------------------------------------------------------------------------
+
+export interface UsageSnapshot {
+  id: number;
+  captured_at: string;
+  five_hour_pct: number;
+  seven_day_pct: number;
+  five_hour_resets_at: string | null;
+  seven_day_resets_at: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -399,6 +417,9 @@ export interface LogEvent {
 // ---------------------------------------------------------------------------
 
 export interface ElectronApi {
+  app: {
+    getVersion(): Promise<string>;
+  };
   windowControls: {
     minimize(): void;
     maximize(): void;
@@ -484,6 +505,11 @@ export interface ElectronApi {
     getProjectTimeline(days: number): Promise<{ rows: ProjectTimelineRow[]; dateRange: string[] }>;
     getUsagePatterns(days: number): Promise<UsagePatternsData>;
   };
+  usageSnapshots: {
+    getLatest(): Promise<UsageSnapshot | null>;
+    getRecent(hours: number): Promise<UsageSnapshot[]>;
+    getRange(range: DateRange): Promise<UsageSnapshot[]>;
+  };
   // Push event subscriptions
   onMaximizeChange(callback: (isMaximized: boolean) => void): () => void;
   onLogWatcherEvent(callback: (event: LogEvent) => void): () => void;
@@ -492,6 +518,7 @@ export interface ElectronApi {
   onScanStarted(callback: () => void): () => void;
   onImportComplete(callback: (summary: ImportSummary) => void): () => void;
   onSyncStatusChanged(callback: (status: SyncStatus) => void): () => void;
+  onUsageSnapshot(callback: (snapshot: UsageSnapshot) => void): () => void;
   onNavigate(callback: (path: string) => void): () => void;
 }
 

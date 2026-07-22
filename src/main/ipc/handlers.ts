@@ -46,6 +46,9 @@ import {
   queryChatMemories,
   queryChatConversationHeatmap,
   queryChatProjectHeatmap,
+  queryLatestUsageSnapshot,
+  queryUsageSnapshots,
+  queryUsageSnapshotRange,
 } from '../db/queries';
 import {
   loadSettings,
@@ -147,6 +150,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // -------------------------------------------------------------------------
   // configPaths channels
   // -------------------------------------------------------------------------
+
+  ipcMain.handle('app:getVersion', (): string => {
+    const { app: electronApp } = require('electron');
+    return electronApp.getVersion();
+  });
 
   ipcMain.handle('configPaths:get', (): ConfigPaths => {
     const { app: electronApp } = require('electron');
@@ -392,6 +400,22 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getUsagePatterns', (_event: unknown, days: number) => {
     return queryUsagePatterns(db, days);
   });
+
+  // -------------------------------------------------------------------------
+  // usageSnapshots channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('usageSnapshots:getLatest', () => {
+    return queryLatestUsageSnapshot(db);
+  });
+
+  ipcMain.handle('usageSnapshots:getRecent', (_event: unknown, hours: number) => {
+    return queryUsageSnapshots(db, hours);
+  });
+
+  ipcMain.handle('usageSnapshots:getRange', (_event: unknown, range: DateRange) => {
+    return queryUsageSnapshotRange(db, range);
+  });
 }
 
 /**
@@ -401,6 +425,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 export function unregisterIpcHandlers(): void {
   const channels = [
     'dev:clearDatabase',
+    'app:getVersion',
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
@@ -437,6 +462,9 @@ export function unregisterIpcHandlers(): void {
     'analytics:getModelMix',
     'analytics:getProjectTimeline',
     'analytics:getUsagePatterns',
+    'usageSnapshots:getLatest',
+    'usageSnapshots:getRecent',
+    'usageSnapshots:getRange',
   ];
 
   for (const channel of channels) {

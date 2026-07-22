@@ -11,6 +11,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   launchOnStartup: false,
   showTrayNotifications: true,
   chatStalenessDays: 14,
+  usageLimitPollingEnabled: true,
+  // Must be <= the ~60s TTL of cship usage-limits files, or polls will
+  // almost always find the newest file already expired and skip it.
+  usageLimitPollIntervalMs: 60_000,
+  usageLimitRetentionDays: 90,
   syncEnabled: false,
   activeProfileId: null,
   connectionProfiles: [],

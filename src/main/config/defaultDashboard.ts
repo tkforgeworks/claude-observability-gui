@@ -51,6 +51,12 @@ export const DEFAULT_DASHBOARD: DashboardConfig = {
       defaultLanding: false,
       defaultTimeRange: '30d',
     },
+    {
+      id: 'usage',
+      visible: true,
+      defaultLanding: false,
+      defaultTimeRange: '24h',
+    },
   ],
   trendsWidgets: [
     { id: 'cacheEfficiency',          visible: true, order: 0 },

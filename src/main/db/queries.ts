@@ -24,6 +24,7 @@ import type {
   TimelineEntry,
   TurnDurationDay,
   UsagePatternsData,
+  UsageSnapshot,
   DateRange,
   ChatConversationCount,
   ChatStats,
@@ -1357,6 +1358,73 @@ export function queryProjectAggregates(
 
   results.sort((a, b) => (b.lastActiveAt > a.lastActiveAt ? 1 : -1));
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Usage Snapshots
+// ---------------------------------------------------------------------------
+
+interface UsageSnapshotRow {
+  id: number;
+  captured_at: string;
+  five_hour_pct: number;
+  seven_day_pct: number;
+  five_hour_resets_at: string | null;
+  seven_day_resets_at: string | null;
+}
+
+export function insertUsageSnapshot(
+  db: Database.Database,
+  snapshot: Omit<UsageSnapshot, 'id'> & { source_file?: string; expires_at?: number }
+): void {
+  db.prepare(`
+    INSERT INTO usage_snapshots (captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at, source_file, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    snapshot.captured_at,
+    snapshot.five_hour_pct,
+    snapshot.seven_day_pct,
+    snapshot.five_hour_resets_at,
+    snapshot.seven_day_resets_at,
+    snapshot.source_file ?? null,
+    snapshot.expires_at ?? null
+  );
+}
+
+export function queryLatestUsageSnapshot(db: Database.Database): UsageSnapshot | null {
+  const row = db.prepare<[], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    ORDER BY captured_at DESC
+    LIMIT 1
+  `).get();
+  return row ?? null;
+}
+
+export function queryUsageSnapshots(db: Database.Database, hours: number): UsageSnapshot[] {
+  return db.prepare<[string], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    WHERE captured_at >= datetime('now', '-' || ? || ' hours')
+    ORDER BY captured_at ASC
+  `).all(String(hours)) as UsageSnapshot[];
+}
+
+export function queryUsageSnapshotRange(db: Database.Database, range: DateRange): UsageSnapshot[] {
+  return db.prepare<[string, string], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    WHERE captured_at >= ? AND captured_at <= ?
+    ORDER BY captured_at ASC
+  `).all(range.from, range.to) as UsageSnapshot[];
+}
+
+export function pruneOldUsageSnapshots(db: Database.Database, retentionDays: number): number {
+  const result = db.prepare(`
+    DELETE FROM usage_snapshots
+    WHERE captured_at < datetime('now', '-' || ? || ' days')
+  `).run(String(retentionDays));
+  return result.changes;
 }
 
 // ---------------------------------------------------------------------------

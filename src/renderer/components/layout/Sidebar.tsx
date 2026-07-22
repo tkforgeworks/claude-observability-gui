@@ -21,6 +21,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { id: 'today', label: 'Today', icon: 'today' },
       { id: 'cowork', label: 'Cowork', icon: 'cowork' },
+      { id: 'usage', label: 'Usage', icon: 'gauge' },
     ],
   },
   {
@@ -77,11 +78,16 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
+  const [appVersion, setAppVersion] = useState('');
 
   useEffect(() => {
     return window.api.onLogWatcherConnection((status) => {
       setWatcherConnected(status.connected);
     });
+  }, []);
+
+  useEffect(() => {
+    window.api.app.getVersion().then(setAppVersion).catch(() => {});
   }, []);
 
   const hiddenIds = new Set<ViewId>(
@@ -100,7 +106,7 @@ export default function Sidebar(): React.JSX.Element {
         <div className="logo">TK</div>
         <div className="name">
           Claude Observe
-          <span className="sub">v0.9.0 · local</span>
+          <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>
         </div>
       </div>
 

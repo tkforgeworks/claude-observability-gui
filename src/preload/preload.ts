@@ -17,6 +17,7 @@ import type {
   ProjectTimelineRow,
   SessionDensityDay,
   UsagePatternsData,
+  UsageSnapshot,
   TurnDurationDay,
   DailyActivity,
   HeatmapDay,
@@ -39,6 +40,15 @@ import type {
 } from '../shared/ipc-types';
 
 const api: ElectronApi = {
+  // -------------------------------------------------------------------------
+  // app
+  // -------------------------------------------------------------------------
+  app: {
+    getVersion(): Promise<string> {
+      return ipcRenderer.invoke('app:getVersion');
+    },
+  },
+
   // -------------------------------------------------------------------------
   // windowControls
   // -------------------------------------------------------------------------
@@ -295,6 +305,21 @@ const api: ElectronApi = {
   },
 
   // -------------------------------------------------------------------------
+  // usageSnapshots
+  // -------------------------------------------------------------------------
+  usageSnapshots: {
+    getLatest(): Promise<UsageSnapshot | null> {
+      return ipcRenderer.invoke('usageSnapshots:getLatest');
+    },
+    getRecent(hours: number): Promise<UsageSnapshot[]> {
+      return ipcRenderer.invoke('usageSnapshots:getRecent', hours);
+    },
+    getRange(range: DateRange): Promise<UsageSnapshot[]> {
+      return ipcRenderer.invoke('usageSnapshots:getRange', range);
+    },
+  },
+
+  // -------------------------------------------------------------------------
   // Push event subscriptions (main → renderer)
   // Returns an unsubscribe function for cleanup.
   // -------------------------------------------------------------------------
@@ -346,6 +371,13 @@ const api: ElectronApi = {
       callback(data);
     ipcRenderer.on('sync:statusChanged', handler);
     return () => ipcRenderer.removeListener('sync:statusChanged', handler);
+  },
+
+  onUsageSnapshot(callback: (snapshot: UsageSnapshot) => void): () => void {
+    const handler = (_event: Electron.IpcRendererEvent, data: UsageSnapshot) =>
+      callback(data);
+    ipcRenderer.on('usageLimitWatcher:snapshot', handler);
+    return () => ipcRenderer.removeListener('usageLimitWatcher:snapshot', handler);
   },
 
   onNavigate(callback: (path: string) => void): () => void {

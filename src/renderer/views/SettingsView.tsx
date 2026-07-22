@@ -324,6 +324,110 @@ function GeneralTab(): React.JSX.Element {
       <LaunchOnStartupSection />
 
       <NotificationsSection />
+
+      <UsagePollingSection />
+    </div>
+  );
+}
+
+const POLL_INTERVAL_OPTIONS = [
+  { label: '1 minute',   value: 60_000 },
+  { label: '2 minutes',  value: 120_000 },
+  { label: '5 minutes',  value: 300_000 },
+  { label: '10 minutes', value: 600_000 },
+  { label: '15 minutes', value: 900_000 },
+  { label: '30 minutes', value: 1_800_000 },
+];
+
+function UsagePollingSection(): React.JSX.Element {
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [interval, setInterval] = useState<number>(300_000);
+  const [retention, setRetention] = useState<number>(90);
+
+  useEffect(() => {
+    window.api.settings.get().then((s) => {
+      setEnabled(s.usageLimitPollingEnabled);
+      setInterval(s.usageLimitPollIntervalMs);
+      setRetention(s.usageLimitRetentionDays);
+    });
+  }, []);
+
+  const handleToggle = async () => {
+    const newValue = !enabled;
+    setEnabled(newValue);
+    await window.api.settings.update({ usageLimitPollingEnabled: newValue });
+  };
+
+  const handleIntervalChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const val = Number(e.target.value);
+    setInterval(val);
+    await window.api.settings.update({ usageLimitPollIntervalMs: val });
+  };
+
+  const handleRetentionChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = Math.max(1, Number(e.target.value) || 90);
+    setRetention(val);
+    await window.api.settings.update({ usageLimitRetentionDays: val });
+  };
+
+  const selectStyle: React.CSSProperties = {
+    padding: '4px 8px',
+    backgroundColor: 'var(--background-light)',
+    border: '1px solid var(--border)',
+    borderRadius: 4,
+    color: 'var(--text-primary)',
+    fontSize: 13,
+    fontFamily: '"Poppins", sans-serif',
+  };
+
+  const inputStyle: React.CSSProperties = {
+    ...selectStyle,
+    width: 60,
+    textAlign: 'right',
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
+        Usage Limit Polling
+      </h3>
+      {enabled !== null && (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', fontFamily: '"Poppins", sans-serif' }}>
+            <input
+              type="checkbox"
+              checked={enabled}
+              onChange={handleToggle}
+              style={{ accentColor: 'var(--purple-primary)' }}
+            />
+            Enable usage limit tracking
+          </label>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
+            <span>Poll interval:</span>
+            <select value={interval} onChange={handleIntervalChange} style={selectStyle} disabled={!enabled}>
+              {POLL_INTERVAL_OPTIONS.map(opt => (
+                <option key={opt.value} value={opt.value}>{opt.label}</option>
+              ))}
+            </select>
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
+            <span>Data retention:</span>
+            <input
+              type="number"
+              value={retention}
+              onChange={handleRetentionChange}
+              min={1}
+              max={365}
+              style={inputStyle}
+              disabled={!enabled}
+            />
+            <span>days</span>
+          </div>
+          <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0, paddingLeft: 24, fontFamily: '"Poppins", sans-serif' }}>
+            Interval and toggle changes take effect on next app restart.
+          </p>
+        </div>
+      )}
     </div>
   );
 }
@@ -344,6 +448,7 @@ const VIEW_LABELS: Record<ViewId, string> = {
   projects: 'Projects',
   trends: 'Trends',
   heatmap: 'Heatmap',
+  usage: 'Usage Limits',
   settings: 'Settings',
 };
 

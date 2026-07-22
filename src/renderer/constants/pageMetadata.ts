@@ -22,6 +22,7 @@ export const PAGE_META: Record<string, PageMeta> = {
   code:     { title: 'Claude Code',      subtitle: 'AGENTIC CODING SESSIONS',              ranges: ['7d', '30d', '90d', 'All'],            defaultRange: '30d' },
   projects: { title: 'Projects',          subtitle: 'AGGREGATE PROJECT METRICS',             ranges: ['7d', '30d', '90d', '1y', 'All'],     defaultRange: '90d' },
   heatmap:  { title: 'Usage heatmap',    subtitle: 'CALENDAR-LEVEL ACTIVITY',              ranges: ['3 months', '6 months', '12 months'],  defaultRange: '12 months' },
+  usage:    { title: 'Usage Limits',     subtitle: 'SUBSCRIPTION CAPACITY',                ranges: ['24h', '7d', '30d', '90d', 'All'],     defaultRange: '24h' },
   settings: { title: 'Settings',         subtitle: 'APPLICATION CONFIGURATION',             ranges: null },
 };
 
