@@ -393,6 +393,23 @@ export interface BackupResult {
   error?: string;
 }
 
+export interface DataImportSummary {
+  totalImported: number;
+  totalSkipped: number;
+  tables: Record<string, { imported: number; skipped: number }>;
+  settingsApplied: boolean;
+  dashboardApplied: boolean;
+  sourceHostname: string | null;
+  sourceExportedAt: string | null;
+}
+
+export interface ImportAllResult {
+  success: boolean;
+  canceled?: boolean;
+  error?: string;
+  summary?: DataImportSummary;
+}
+
 // ---------------------------------------------------------------------------
 // Push events (main → renderer)
 // ---------------------------------------------------------------------------
@@ -442,6 +459,8 @@ export interface ElectronApi {
     getStats(): Promise<DatabaseStats>;
     backup(): Promise<BackupResult>;
     openFolder(): void;
+    exportAll(): Promise<BackupResult>;
+    importAll(): Promise<ImportAllResult>;
   };
   dev: {
     clearDatabase(): Promise<void>;

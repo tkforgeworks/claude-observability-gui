@@ -326,6 +326,86 @@ function GeneralTab(): React.JSX.Element {
       <NotificationsSection />
 
       <UsagePollingSection />
+
+      <DataMigrationSection />
+    </div>
+  );
+}
+
+function DataMigrationSection(): React.JSX.Element {
+  const [busy, setBusy] = useState<'export' | 'import' | null>(null);
+  const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
+
+  const showStatus = (text: string, ok: boolean) => {
+    setStatus({ text, ok });
+    setTimeout(() => setStatus(null), 10_000);
+  };
+
+  const handleExport = async () => {
+    setBusy('export');
+    setStatus(null);
+    try {
+      const result = await window.api.data.exportAll();
+      if (result.success) {
+        showStatus(`Exported to ${result.path}`, true);
+      } else if (result.error) {
+        showStatus(`Export failed: ${result.error}`, false);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const handleImport = async () => {
+    const confirmed = window.confirm(
+      'Import adds history from a previously exported bundle and applies its preferences. ' +
+      'Existing data is never overwritten or deleted.\n\nContinue?'
+    );
+    if (!confirmed) return;
+
+    setBusy('import');
+    setStatus(null);
+    try {
+      const result = await window.api.data.importAll();
+      if (result.success && result.summary) {
+        const s = result.summary;
+        const from = s.sourceHostname ? ` from ${s.sourceHostname}` : '';
+        showStatus(
+          `Imported ${s.totalImported} new record${s.totalImported === 1 ? '' : 's'}${from} ` +
+          `(${s.totalSkipped} already present). Restart the app to apply imported preferences.`,
+          true
+        );
+      } else if (result.error) {
+        showStatus(`Import failed: ${result.error}`, false);
+      }
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
+        Moving to a new computer?
+      </h3>
+      <p style={{ fontSize: 12, color: 'var(--text-secondary)', margin: '0 0 12px', fontFamily: '"Poppins", sans-serif', maxWidth: 520 }}>
+        Export all your data — usage history, preferences, and dashboard layout — into a
+        single file, then import it on another install. Importing merges histories without
+        overwriting anything, so it also works for combining data from two machines.
+      </p>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <button style={actionButtonStyles} onClick={handleExport} disabled={busy !== null}>
+          {busy === 'export' ? 'Exporting...' : 'Export All Data'}
+        </button>
+        <button style={actionButtonStyles} onClick={handleImport} disabled={busy !== null}>
+          {busy === 'import' ? 'Importing...' : 'Import Data'}
+        </button>
+      </div>
+      {status && (
+        <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: status.ok ? 'var(--success)' : 'var(--error)', marginTop: 8, maxWidth: 520 }}>
+          {status.text}
+        </p>
+      )}
     </div>
   );
 }

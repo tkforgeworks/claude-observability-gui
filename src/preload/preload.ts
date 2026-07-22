@@ -116,6 +116,12 @@ const api: ElectronApi = {
     openFolder() {
       ipcRenderer.invoke('data:openFolder');
     },
+    exportAll() {
+      return ipcRenderer.invoke('data:exportAll');
+    },
+    importAll() {
+      return ipcRenderer.invoke('data:importAll');
+    },
   },
 
   // -------------------------------------------------------------------------
