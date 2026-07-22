@@ -70,7 +70,7 @@ function injectResetPoints(snapshots: UsageSnapshot[], isShortRange: boolean): C
     const sevenDayAtCapture = effectivePctAtCapture(curr.seven_day_pct, curr.seven_day_resets_at, curr.captured_at);
 
     points.push({
-      time: curr.captured_at,
+      t: Date.parse(curr.captured_at),
       label: fmt(curr.captured_at),
       fiveHour: fiveHourAtCapture,
       sevenDay: sevenDayAtCapture,
@@ -107,7 +107,7 @@ function injectResetPoints(snapshots: UsageSnapshot[], isShortRange: boolean): C
       else sevenDay = 0;
 
       points.push({
-        time: reset.time,
+        t: Date.parse(reset.time),
         label: fmt(reset.time),
         fiveHour,
         sevenDay,
@@ -116,14 +116,39 @@ function injectResetPoints(snapshots: UsageSnapshot[], isShortRange: boolean): C
     }
   }
 
-  return points;
+  return insertGapBreaks(points);
+}
+
+/**
+ * Snapshots only exist while a Claude Code session is actively refreshing
+ * the usage-limits file, so long gaps are normal. A null point between
+ * samples further apart than GAP_BREAK_MS stops the Area from drawing an
+ * interpolated line across periods where usage is simply unknown.
+ */
+const GAP_BREAK_MS = 10 * 60_000;
+
+function insertGapBreaks(points: ChartPoint[]): ChartPoint[] {
+  const out: ChartPoint[] = [];
+  for (let i = 0; i < points.length; i++) {
+    if (i > 0 && points[i].t - points[i - 1].t > GAP_BREAK_MS) {
+      out.push({
+        t: points[i - 1].t + Math.floor((points[i].t - points[i - 1].t) / 2),
+        label: '',
+        fiveHour: null,
+        sevenDay: null,
+        polled: false,
+      });
+    }
+    out.push(points[i]);
+  }
+  return out;
 }
 
 interface ChartPoint {
-  time: string;
+  t: number; // epoch ms
   label: string;
-  fiveHour: number;
-  sevenDay: number;
+  fiveHour: number | null;
+  sevenDay: number | null;
   polled: boolean;
   fiveHourDot?: number;
   sevenDayDot?: number;
@@ -139,6 +164,7 @@ interface TooltipEntry {
 function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipEntry[] }) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
+  if (point.fiveHour === null || point.sevenDay === null) return null; // gap-break point
   return (
     <div style={{
       background: 'var(--surface)',
@@ -225,12 +251,24 @@ export default function UsageView(): React.JSX.Element {
   const fiveHourMeta = latest ? formatResetCountdown(latest.five_hour_resets_at) : '';
   const sevenDayMeta = latest ? formatResetCountdown(latest.seven_day_resets_at) : '';
 
-  const recentPoints = chartData.slice(-20);
-  const fiveHourSpark = recentPoints.map(p => p.fiveHour);
-  const sevenDaySpark = recentPoints.map(p => p.sevenDay);
+  const dataPoints = chartData.filter(p => p.fiveHour !== null && p.sevenDay !== null);
+  const recentPoints = dataPoints.slice(-20);
+  const fiveHourSpark = recentPoints.map(p => p.fiveHour as number);
+  const sevenDaySpark = recentPoints.map(p => p.sevenDay as number);
+
+  const now = Date.now();
+  // "All" starts at the first data point; fixed ranges pin the axis to the
+  // full selected window ending at now, regardless of where data exists.
+  const xDomain: [number | 'dataMin', number] = rangeLabel === 'All'
+    ? ['dataMin', now]
+    : [now - hours * 3_600_000, now];
+  const xTickFmt = (ms: number) =>
+    hours <= 24
+      ? formatTime(new Date(ms).toISOString())
+      : formatDateTime(new Date(ms).toISOString());
 
   const maxPct = Math.max(
-    ...chartData.map(d => Math.max(d.fiveHour, d.sevenDay)),
+    ...dataPoints.map(d => Math.max(d.fiveHour as number, d.sevenDay as number)),
     10,
   );
   const yMax = Math.min(Math.ceil(maxPct / 5) * 5, 100);
@@ -281,7 +319,7 @@ export default function UsageView(): React.JSX.Element {
       )}
 
       {/* History chart */}
-      {chartData.length > 1 && (
+      {dataPoints.length > 0 && (
         <div className="card" style={{ padding: 20 }}>
           <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
             Usage History
@@ -300,11 +338,13 @@ export default function UsageView(): React.JSX.Element {
               </defs>
               <CartesianGrid stroke="var(--border-soft)" strokeDasharray="3 3" vertical={false} />
               <XAxis
-                dataKey="label"
+                dataKey="t"
+                type="number"
+                domain={xDomain}
+                tickFormatter={xTickFmt}
                 tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
                 tickLine={false}
                 axisLine={false}
-                interval="preserveStartEnd"
               />
               <YAxis
                 domain={[0, yMax]}
@@ -325,6 +365,7 @@ export default function UsageView(): React.JSX.Element {
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 3, strokeWidth: 0 }}
+                connectNulls={false}
               />
               <Area
                 type="monotone"
@@ -335,6 +376,7 @@ export default function UsageView(): React.JSX.Element {
                 strokeWidth={2}
                 dot={false}
                 activeDot={{ r: 3, strokeWidth: 0 }}
+                connectNulls={false}
               />
               <Scatter
                 dataKey="fiveHourDot"
