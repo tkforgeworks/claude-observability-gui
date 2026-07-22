@@ -31,10 +31,17 @@ jobs:
       - name: Build installer
         run: npm run dist -- --publish never
 
-      - name: Publish GitHub Release
+      # Immutable releases lock assets at publish time, so the release must be
+      # created as a draft, assets uploaded, and only then published.
+      - name: Create draft release with assets
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.exe
           generate_release_notes: true
-          draft: false
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit ${{ github.ref_name }} --draft=false
