@@ -1,14 +1,4 @@
 import React, { useEffect, useState, useCallback, useMemo } from 'react';
-import {
-  ComposedChart,
-  Area,
-  Scatter,
-  XAxis,
-  YAxis,
-  Tooltip,
-  ResponsiveContainer,
-  CartesianGrid,
-} from 'recharts';
 import type { UsageSnapshot } from '../../shared/ipc-types';
 import StatCard from '../components/common/StatCard';
 import EmptyState from '../components/common/EmptyState';
@@ -34,11 +24,6 @@ function formatResetCountdown(resetsAt: string | null): string {
   return `resets ${m}m`;
 }
 
-function formatTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
-}
-
 function formatDateTime(iso: string): string {
   const d = new Date(iso);
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
@@ -55,132 +40,52 @@ function effectivePctAtCapture(pct: number, resetsAt: string | null, capturedAt:
   return resetsAt <= capturedAt ? 0 : pct;
 }
 
-function injectResetPoints(snapshots: UsageSnapshot[], isShortRange: boolean): ChartPoint[] {
-  if (snapshots.length === 0) return [];
-
-  const points: ChartPoint[] = [];
-  const nowIso = new Date().toISOString();
-  const fmt = isShortRange ? formatTime : formatDateTime;
-
-  for (let i = 0; i < snapshots.length; i++) {
-    const curr = snapshots[i];
-    const nextCapturedAt = i < snapshots.length - 1 ? snapshots[i + 1].captured_at : nowIso;
-
-    const fiveHourAtCapture = effectivePctAtCapture(curr.five_hour_pct, curr.five_hour_resets_at, curr.captured_at);
-    const sevenDayAtCapture = effectivePctAtCapture(curr.seven_day_pct, curr.seven_day_resets_at, curr.captured_at);
-
-    points.push({
-      t: Date.parse(curr.captured_at),
-      label: fmt(curr.captured_at),
-      fiveHour: fiveHourAtCapture,
-      sevenDay: sevenDayAtCapture,
-      polled: true,
-      fiveHourDot: fiveHourAtCapture,
-      sevenDayDot: sevenDayAtCapture,
-    });
-
-    const resets: Array<{ time: string; which: 'fiveHour' | 'sevenDay' }> = [];
-
-    if (curr.five_hour_resets_at
-        && curr.five_hour_resets_at > curr.captured_at
-        && curr.five_hour_resets_at < nextCapturedAt
-        && fiveHourAtCapture > 0) {
-      resets.push({ time: curr.five_hour_resets_at, which: 'fiveHour' });
-    }
-
-    if (curr.seven_day_resets_at
-        && curr.seven_day_resets_at > curr.captured_at
-        && curr.seven_day_resets_at < nextCapturedAt
-        && sevenDayAtCapture > 0) {
-      resets.push({ time: curr.seven_day_resets_at, which: 'sevenDay' });
-    }
-
-    if (resets.length === 0) continue;
-
-    resets.sort((a, b) => a.time.localeCompare(b.time));
-
-    let fiveHour = fiveHourAtCapture;
-    let sevenDay = sevenDayAtCapture;
-
-    for (const reset of resets) {
-      if (reset.which === 'fiveHour') fiveHour = 0;
-      else sevenDay = 0;
-
-      points.push({
-        t: Date.parse(reset.time),
-        label: fmt(reset.time),
-        fiveHour,
-        sevenDay,
-        polled: false,
-      });
-    }
-  }
-
-  return insertGapBreaks(points);
+interface HistoryRow {
+  snapshot: UsageSnapshot;
+  fiveHour: number;
+  sevenDay: number;
 }
+
+interface ResetRow {
+  t: number; // epoch ms
+  which: 'fiveHour' | 'sevenDay';
+  resetsAt: string;
+}
+
+type TableEntry =
+  | { key: string; t: number; kind: 'snapshot'; row: HistoryRow }
+  | { key: string; t: number; kind: 'reset'; reset: ResetRow };
 
 /**
- * Snapshots only exist while a Claude Code session is actively refreshing
- * the usage-limits file, so long gaps are normal. A null point between
- * samples further apart than GAP_BREAK_MS stops the Area from drawing an
- * interpolated line across periods where usage is simply unknown.
+ * Derives historical window-reset markers from the resets_at each snapshot
+ * reported. Only resets already in the past are emitted (never future ones),
+ * deduped to a single row per window reset. Consecutive real resets of the
+ * same window are ≥5h (or 7d) apart, so reported times closer together than
+ * RESET_DEDUP_MS are the same reset with polling jitter — the first-seen
+ * time wins. Recomputed on every load, so a reset that passed while the app
+ * was closed appears after restart.
  */
-const GAP_BREAK_MS = 10 * 60_000;
+const RESET_DEDUP_MS = 60 * 60_000;
 
-function insertGapBreaks(points: ChartPoint[]): ChartPoint[] {
-  const out: ChartPoint[] = [];
-  for (let i = 0; i < points.length; i++) {
-    if (i > 0 && points[i].t - points[i - 1].t > GAP_BREAK_MS) {
-      out.push({
-        t: points[i - 1].t + Math.floor((points[i].t - points[i - 1].t) / 2),
-        label: '',
-        fiveHour: null,
-        sevenDay: null,
-        polled: false,
-      });
+function deriveResetRows(rows: HistoryRow[], nowMs: number): ResetRow[] {
+  const lastEmitted: Record<ResetRow['which'], number> = { fiveHour: -Infinity, sevenDay: -Infinity };
+  const out: ResetRow[] = [];
+  for (const { snapshot: s, fiveHour, sevenDay } of rows) {
+    const candidates: Array<{ which: ResetRow['which']; at: string | null; pct: number }> = [
+      { which: 'fiveHour', at: s.five_hour_resets_at, pct: fiveHour },
+      { which: 'sevenDay', at: s.seven_day_resets_at, pct: sevenDay },
+    ];
+    for (const c of candidates) {
+      if (!c.at || c.pct <= 0) continue; // nothing to reset
+      if (c.at <= s.captured_at) continue; // already past at capture
+      const t = Date.parse(c.at);
+      if (t > nowMs) continue; // never show future resets
+      if (Math.abs(t - lastEmitted[c.which]) < RESET_DEDUP_MS) continue; // jitter on an already-emitted reset
+      lastEmitted[c.which] = t;
+      out.push({ t, which: c.which, resetsAt: c.at });
     }
-    out.push(points[i]);
   }
   return out;
-}
-
-interface ChartPoint {
-  t: number; // epoch ms
-  label: string;
-  fiveHour: number | null;
-  sevenDay: number | null;
-  polled: boolean;
-  fiveHourDot?: number;
-  sevenDayDot?: number;
-}
-
-interface TooltipEntry {
-  payload: ChartPoint;
-  color: string;
-  name: string;
-  value: number;
-}
-
-function CustomTooltip({ active, payload }: { active?: boolean; payload?: TooltipEntry[] }) {
-  if (!active || !payload?.length) return null;
-  const point = payload[0].payload;
-  if (point.fiveHour === null || point.sevenDay === null) return null; // gap-break point
-  return (
-    <div style={{
-      background: 'var(--surface)',
-      border: '1px solid var(--border-soft)',
-      borderRadius: 'var(--radius-md)',
-      padding: '8px 12px',
-      fontSize: 12,
-      fontFamily: '"JetBrains Mono", monospace',
-    }}>
-      <div style={{ color: 'var(--text-secondary)', marginBottom: 4 }}>
-        {point.label}{!point.polled ? ' (inferred)' : ''}
-      </div>
-      <div style={{ color: 'var(--chart-1)' }}>5h: {point.fiveHour.toFixed(1)}%</div>
-      <div style={{ color: 'var(--chart-4)' }}>7d: {point.sevenDay.toFixed(1)}%</div>
-    </div>
-  );
 }
 
 export default function UsageView(): React.JSX.Element {
@@ -221,9 +126,15 @@ export default function UsageView(): React.JSX.Element {
     });
   }, [fetchData]);
 
-  const chartData: ChartPoint[] = useMemo(
-    () => injectResetPoints(snapshots, hours <= 24),
-    [snapshots, hours]
+  // Oldest-first, matching getRecent ordering; pct zeroed when the window
+  // had already reset at capture time (stale resets_at in the source file).
+  const historyRows: HistoryRow[] = useMemo(
+    () => snapshots.map(s => ({
+      snapshot: s,
+      fiveHour: effectivePctAtCapture(s.five_hour_pct, s.five_hour_resets_at, s.captured_at),
+      sevenDay: effectivePctAtCapture(s.seven_day_pct, s.seven_day_resets_at, s.captured_at),
+    })),
+    [snapshots]
   );
 
   if (loading) {
@@ -251,29 +162,32 @@ export default function UsageView(): React.JSX.Element {
   const fiveHourMeta = latest ? formatResetCountdown(latest.five_hour_resets_at) : '';
   const sevenDayMeta = latest ? formatResetCountdown(latest.seven_day_resets_at) : '';
 
-  const dataPoints = chartData.filter(p => p.fiveHour !== null && p.sevenDay !== null);
-  const recentPoints = dataPoints.slice(-20);
-  const fiveHourSpark = recentPoints.map(p => p.fiveHour as number);
-  const sevenDaySpark = recentPoints.map(p => p.sevenDay as number);
+  const recentRows = historyRows.slice(-20);
+  const fiveHourSpark = recentRows.map(r => r.fiveHour);
+  const sevenDaySpark = recentRows.map(r => r.sevenDay);
 
-  const now = Date.now();
-  // "All" starts at the first data point; fixed ranges pin the axis to the
-  // full selected window ending at now, regardless of where data exists.
-  const xDomain: [number | 'dataMin', number] = rangeLabel === 'All'
-    ? ['dataMin', now]
-    : [now - hours * 3_600_000, now];
-  const xTickFmt = (ms: number) =>
-    hours <= 24
-      ? formatTime(new Date(ms).toISOString())
-      : formatDateTime(new Date(ms).toISOString());
+  const resetRows = deriveResetRows(historyRows, Date.now());
+  const tableEntries: TableEntry[] = [
+    ...historyRows.map((row): TableEntry => ({
+      key: `s${row.snapshot.id}`,
+      t: Date.parse(row.snapshot.captured_at),
+      kind: 'snapshot',
+      row,
+    })),
+    ...resetRows.map((reset): TableEntry => ({
+      key: `r-${reset.which}-${reset.resetsAt}`,
+      t: reset.t,
+      kind: 'reset',
+      reset,
+    })),
+  ].sort((a, b) => b.t - a.t);
 
-  const maxPct = Math.max(
-    ...dataPoints.map(d => Math.max(d.fiveHour as number, d.sevenDay as number)),
-    10,
-  );
-  const yMax = Math.min(Math.ceil(maxPct / 5) * 5, 100);
-  const yTicks: number[] = [];
-  for (let v = 0; v <= yMax; v += 5) yTicks.push(v);
+  const stickyHeader: React.CSSProperties = {
+    position: 'sticky',
+    top: 0,
+    background: 'var(--surface)',
+    zIndex: 1,
+  };
 
   return (
     <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
@@ -318,82 +232,60 @@ export default function UsageView(): React.JSX.Element {
         </div>
       )}
 
-      {/* History chart */}
-      {dataPoints.length > 0 && (
+      {/* History table */}
+      {historyRows.length > 0 && (
         <div className="card" style={{ padding: 20 }}>
-          <h3 style={{ margin: '0 0 16px', fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
-            Usage History
-          </h3>
-          <ResponsiveContainer width="100%" height={280}>
-            <ComposedChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-              <defs>
-                <linearGradient id="grad5h" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--chart-1)" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="var(--chart-1)" stopOpacity={0} />
-                </linearGradient>
-                <linearGradient id="grad7d" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="var(--chart-4)" stopOpacity={0.3} />
-                  <stop offset="100%" stopColor="var(--chart-4)" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid stroke="var(--border-soft)" strokeDasharray="3 3" vertical={false} />
-              <XAxis
-                dataKey="t"
-                type="number"
-                domain={xDomain}
-                tickFormatter={xTickFmt}
-                tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
-                tickLine={false}
-                axisLine={false}
-              />
-              <YAxis
-                domain={[0, yMax]}
-                ticks={yTicks}
-                tick={{ fontSize: 11, fill: 'var(--text-tertiary)' }}
-                tickLine={false}
-                axisLine={false}
-                tickFormatter={(v: number) => `${v}%`}
-                width={42}
-              />
-              <Tooltip content={<CustomTooltip />} />
-              <Area
-                type="monotone"
-                dataKey="fiveHour"
-                name="5-Hour"
-                stroke="var(--chart-1)"
-                fill="url(#grad5h)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 3, strokeWidth: 0 }}
-                connectNulls={false}
-              />
-              <Area
-                type="monotone"
-                dataKey="sevenDay"
-                name="7-Day"
-                stroke="var(--chart-4)"
-                fill="url(#grad7d)"
-                strokeWidth={2}
-                dot={false}
-                activeDot={{ r: 3, strokeWidth: 0 }}
-                connectNulls={false}
-              />
-              <Scatter
-                dataKey="fiveHourDot"
-                name="5h polled"
-                fill="var(--chart-1)"
-                r={3}
-                isAnimationActive={false}
-              />
-              <Scatter
-                dataKey="sevenDayDot"
-                name="7d polled"
-                fill="var(--chart-4)"
-                r={3}
-                isAnimationActive={false}
-              />
-            </ComposedChart>
-          </ResponsiveContainer>
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
+            <h3 style={{ margin: 0, fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>
+              Usage History
+            </h3>
+            <span style={{ fontSize: 11, color: 'var(--text-tertiary)' }}>
+              {historyRows.length} snapshot{historyRows.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div style={{ maxHeight: 440, overflow: 'auto' }}>
+            <table className="data">
+              <thead>
+                <tr>
+                  <th style={stickyHeader}>Captured</th>
+                  <th className="num" style={stickyHeader}>5-Hour</th>
+                  <th style={stickyHeader}>5h Resets</th>
+                  <th className="num" style={stickyHeader}>7-Day</th>
+                  <th style={stickyHeader}>7d Resets</th>
+                </tr>
+              </thead>
+              <tbody>
+                {tableEntries.map(entry => {
+                  if (entry.kind === 'reset') {
+                    return (
+                      <tr key={entry.key}>
+                        <td style={{ color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                          {formatDateTime(entry.reset.resetsAt)}
+                        </td>
+                        <td colSpan={4} style={{ fontSize: 12, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
+                          ↻ {entry.reset.which === 'fiveHour' ? '5-hour' : '7-day'} window reset (inferred)
+                        </td>
+                      </tr>
+                    );
+                  }
+                  const { snapshot: s, fiveHour, sevenDay } = entry.row;
+                  return (
+                    <tr key={entry.key}>
+                      <td>{formatDateTime(s.captured_at)}</td>
+                      <td className="num" style={{ color: 'var(--chart-1)' }}>{fiveHour.toFixed(1)}%</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {s.five_hour_resets_at ? formatDateTime(s.five_hour_resets_at) : '—'}
+                      </td>
+                      <td className="num" style={{ color: 'var(--chart-4)' }}>{sevenDay.toFixed(1)}%</td>
+                      <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
+                        {s.seven_day_resets_at ? formatDateTime(s.seven_day_resets_at) : '—'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </div>
