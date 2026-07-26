@@ -82,7 +82,7 @@ Push events flow main → renderer via `webContents.send()` with corresponding `
 
 ### Cost calculation
 
-`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. Formula: `(inputTokens/1M * inputRate) + (outputTokens/1M * outputRate) + (cacheRead/1M * cacheReadRate) + (cacheWrite/1M * cacheWriteRate)`. The pricing table covers Opus 4.6, Sonnet 4.6, and Haiku 4.5 with both 5-min and 1-hour cache write rates.
+`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. Formula: `(inputTokens/1M * inputRate) + (outputTokens/1M * outputRate) + (cacheRead/1M * cacheReadRate) + (cacheWrite/1M * cacheWriteRate)`. The pricing table covers Fable 5, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5 (introductory $2/$10 rates — bump to $3/$15 after 2026-08-31, see comment in pricing.ts), Sonnet 4.6, and Haiku 4.5, each with both 5-min and 1-hour cache write rates. When a new model releases, add its entry to `PRICING_TABLE` and extend `__tests__/pricing.test.ts`; unknown models fall back to a warning rather than $0.00 costs.
 
 ## Testing
 

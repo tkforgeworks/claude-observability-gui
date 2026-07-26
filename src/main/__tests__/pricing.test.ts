@@ -4,6 +4,7 @@ describe('PRICING_TABLE', () => {
   it('should contain entries for all expected models', () => {
     expect(Object.keys(PRICING_TABLE)).toEqual(
       expect.arrayContaining([
+        'claude-opus-5',
         'claude-opus-4-6',
         'claude-sonnet-4-6',
         'claude-haiku-4-5-20251001',
@@ -28,6 +29,16 @@ describe('getPricing', () => {
       expect(pricing!.cacheWritePerMillion).toBe(3.75);
       expect(pricing!.cacheReadPerMillion).toBe(0.3);
       expect(pricing!.cacheWrite1hPerMillion).toBe(6.0);
+    });
+
+    it('should return pricing for claude-opus-5', () => {
+      const pricing = getPricing('claude-opus-5');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputPerMillion).toBe(5.0);
+      expect(pricing!.outputPerMillion).toBe(25.0);
+      expect(pricing!.cacheWritePerMillion).toBe(6.25);
+      expect(pricing!.cacheReadPerMillion).toBe(0.5);
+      expect(pricing!.cacheWrite1hPerMillion).toBe(10.0);
     });
 
     it('should return pricing for claude-opus-4-6', () => {
