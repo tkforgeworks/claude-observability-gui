@@ -166,6 +166,11 @@ export default function UsageView(): React.JSX.Element {
   const fiveHourSpark = recentRows.map(r => r.fiveHour);
   const sevenDaySpark = recentRows.map(r => r.sevenDay);
 
+  // Highest value seen across the selected range, from the same
+  // effective-at-capture values the history table shows.
+  const fiveHourPeak = historyRows.length > 0 ? Math.max(...historyRows.map(r => r.fiveHour)) : null;
+  const sevenDayPeak = historyRows.length > 0 ? Math.max(...historyRows.map(r => r.sevenDay)) : null;
+
   const resetRows = deriveResetRows(historyRows, Date.now());
   const tableEntries: TableEntry[] = [
     ...historyRows.map((row): TableEntry => ({
@@ -197,6 +202,7 @@ export default function UsageView(): React.JSX.Element {
           label="5-Hour Usage"
           value={effectiveFiveHour !== null ? `${effectiveFiveHour.toFixed(1)}%` : '—'}
           meta={fiveHourMeta}
+          subMeta={fiveHourPeak !== null ? `Peak usage in window: ${fiveHourPeak.toFixed(1)}%` : undefined}
           icon={Icons.bolt}
           sparkData={fiveHourSpark}
           sparkColor="var(--chart-1)"
@@ -205,6 +211,7 @@ export default function UsageView(): React.JSX.Element {
           label="7-Day Usage"
           value={effectiveSevenDay !== null ? `${effectiveSevenDay.toFixed(1)}%` : '—'}
           meta={sevenDayMeta}
+          subMeta={sevenDayPeak !== null ? `Peak usage in window: ${sevenDayPeak.toFixed(1)}%` : undefined}
           icon={Icons.clock}
           sparkData={sevenDaySpark}
           sparkColor="var(--chart-4)"

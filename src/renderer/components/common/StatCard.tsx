@@ -11,6 +11,7 @@ interface StatCardProps {
   unit?: string;
   delta?: number;
   meta?: string;
+  subMeta?: string;
   icon?: IconComponent;
   sparkData?: number[];
   sparkColor?: string;
@@ -23,6 +24,7 @@ export default function StatCard({
   unit,
   delta,
   meta,
+  subMeta,
   icon: Icon,
   sparkData,
   sparkColor,
@@ -43,6 +45,11 @@ export default function StatCard({
         <div className="meta">
           {delta !== undefined && <DeltaChip value={delta} />}
           {meta && <span>{meta}</span>}
+        </div>
+      )}
+      {variant !== 'minimal' && subMeta && (
+        <div className="meta" style={{ marginTop: 2 }}>
+          <span>{subMeta}</span>
         </div>
       )}
       {sparkData && sparkData.length >= 2 && (
