@@ -35,6 +35,7 @@ export const Icons = {
   user:     icon(<><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-8 8-8s8 3.6 8 8"/></>),
   flame:    icon(<path d="M12 2s5 5 5 10a5 5 0 01-10 0c0-2 1-3 1-5 2 1 3 3 4 5 0-3-1-7 0-10z"/>),
   refresh:  icon(<><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/><path d="M3 21v-5h5"/></>),
+  gauge:    icon(<><path d="M12 15a1 1 0 100-2 1 1 0 000 2z"/><path d="M12 12V8"/><path d="M5.6 19A9 9 0 1121 12"/><path d="M3 12a9 9 0 012.6 7"/></>),
 } as const;
 
 export type IconName = keyof typeof Icons;

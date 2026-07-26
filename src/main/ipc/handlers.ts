@@ -16,6 +16,7 @@ import type {
   DashboardConfig,
   SyncStatus,
   ImportSummary,
+  ImportAllResult,
   ConfigPaths,
   LogPathStatus,
 } from '../../shared/ipc-types';
@@ -46,6 +47,9 @@ import {
   queryChatMemories,
   queryChatConversationHeatmap,
   queryChatProjectHeatmap,
+  queryLatestUsageSnapshot,
+  queryUsageSnapshots,
+  queryUsageSnapshotRange,
 } from '../db/queries';
 import {
   loadSettings,
@@ -57,6 +61,7 @@ import {
   getDashboardPath,
 } from '../config/configStore';
 import { getDatabasePath } from '../db/database';
+import { exportAllData, importAllData } from '../services/dataExportImport';
 import { getLogPathStatus } from '../services/logPathDiscovery';
 import { applyLaunchOnStartup } from '../services/launchOnStartup';
 import { ChatExportImporter } from '../importers/chatExportImporter';
@@ -148,6 +153,11 @@ export function registerIpcHandlers(db: Database.Database): void {
   // configPaths channels
   // -------------------------------------------------------------------------
 
+  ipcMain.handle('app:getVersion', (): string => {
+    const { app: electronApp } = require('electron');
+    return electronApp.getVersion();
+  });
+
   ipcMain.handle('configPaths:get', (): ConfigPaths => {
     const { app: electronApp } = require('electron');
     return {
@@ -204,6 +214,46 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('data:openFolder', () => {
     shell.showItemInFolder(getDatabasePath());
+  });
+
+  ipcMain.handle('data:exportAll', async () => {
+    const { app: electronApp } = require('electron');
+    const now = new Date().toISOString().slice(0, 10);
+    const result = await dialog.showSaveDialog({
+      title: 'Export All Data',
+      defaultPath: `claude-usage-monitor-export-${now}.zip`,
+      filters: [{ name: 'Export Bundle', extensions: ['zip'] }],
+    });
+    if (result.canceled || !result.filePath) {
+      return { success: false };
+    }
+    try {
+      await exportAllData(db, result.filePath, electronApp.getVersion());
+      return { success: true, path: result.filePath };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[ipc] data:exportAll failed:', message);
+      return { success: false, error: message };
+    }
+  });
+
+  ipcMain.handle('data:importAll', async (): Promise<ImportAllResult> => {
+    const result = await dialog.showOpenDialog({
+      title: 'Import Data',
+      properties: ['openFile'],
+      filters: [{ name: 'Export Bundle', extensions: ['zip'] }],
+    });
+    if (result.canceled || result.filePaths.length === 0) {
+      return { success: false, canceled: true };
+    }
+    try {
+      const summary = importAllData(db, result.filePaths[0]);
+      return { success: true, summary };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error('[ipc] data:importAll failed:', message);
+      return { success: false, error: message };
+    }
   });
 
   // -------------------------------------------------------------------------
@@ -392,6 +442,22 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('analytics:getUsagePatterns', (_event: unknown, days: number) => {
     return queryUsagePatterns(db, days);
   });
+
+  // -------------------------------------------------------------------------
+  // usageSnapshots channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('usageSnapshots:getLatest', () => {
+    return queryLatestUsageSnapshot(db);
+  });
+
+  ipcMain.handle('usageSnapshots:getRecent', (_event: unknown, hours: number) => {
+    return queryUsageSnapshots(db, hours);
+  });
+
+  ipcMain.handle('usageSnapshots:getRange', (_event: unknown, range: DateRange) => {
+    return queryUsageSnapshotRange(db, range);
+  });
 }
 
 /**
@@ -401,6 +467,7 @@ export function registerIpcHandlers(db: Database.Database): void {
 export function unregisterIpcHandlers(): void {
   const channels = [
     'dev:clearDatabase',
+    'app:getVersion',
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
@@ -408,6 +475,8 @@ export function unregisterIpcHandlers(): void {
     'data:getStats',
     'data:backup',
     'data:openFolder',
+    'data:exportAll',
+    'data:importAll',
     'codeSessions:getAll',
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',
@@ -437,6 +506,9 @@ export function unregisterIpcHandlers(): void {
     'analytics:getModelMix',
     'analytics:getProjectTimeline',
     'analytics:getUsagePatterns',
+    'usageSnapshots:getLatest',
+    'usageSnapshots:getRecent',
+    'usageSnapshots:getRange',
   ];
 
   for (const channel of channels) {

@@ -5,6 +5,7 @@
 
 import { app, Menu, Tray, BrowserWindow, nativeImage } from 'electron';
 import path from 'path';
+import type { UsageSnapshot } from '../shared/ipc-types';
 
 let tray: Tray | null = null;
 
@@ -53,12 +54,10 @@ export function createTray(mainWindow: BrowserWindow): Tray {
  */
 export function updateTrayMenu(
   mainWindow: BrowserWindow,
-  stats?: { sessionCount?: number; costUsd?: number; syncOk?: boolean }
+  stats?: { sessionCount?: number; costUsd?: number; syncOk?: boolean; usageSnapshot?: UsageSnapshot }
 ): void {
   if (!tray) return;
 
-  // TODO: replace placeholder labels with real values from stats parameter
-  // once queryTodaySummary() and InfluxSync.getStatus() are implemented
   const sessionLabel = stats?.sessionCount != null
     ? `Today: ${stats.sessionCount} session${stats.sessionCount !== 1 ? 's' : ''}`
     : 'Today: loading...';
@@ -66,6 +65,9 @@ export function updateTrayMenu(
   const costLabel = stats?.costUsd != null
     ? `Cost:  $${stats.costUsd.toFixed(2)}`
     : 'Cost:  loading...';
+
+  const fiveHourLabel = formatUsageLabel('5h', stats?.usageSnapshot?.five_hour_pct, stats?.usageSnapshot?.five_hour_resets_at);
+  const sevenDayLabel = formatUsageLabel('7d', stats?.usageSnapshot?.seven_day_pct, stats?.usageSnapshot?.seven_day_resets_at);
 
   const syncLabel = stats?.syncOk != null
     ? (stats.syncOk ? 'Sync: ● OK' : 'Sync: ● Offline')
@@ -79,6 +81,8 @@ export function updateTrayMenu(
     { type: 'separator' },
     { label: sessionLabel, enabled: false },
     { label: costLabel, enabled: false },
+    { label: fiveHourLabel, enabled: false },
+    { label: sevenDayLabel, enabled: false },
     { type: 'separator' },
     { label: syncLabel, enabled: false },
     { type: 'separator' },
@@ -91,6 +95,24 @@ export function updateTrayMenu(
   ]);
 
   tray.setContextMenu(contextMenu);
+}
+
+function formatUsageLabel(prefix: string, pct?: number, resetsAt?: string | null): string {
+  if (pct == null) return `${prefix}: --`;
+  if (!resetsAt) return `${prefix}: ${pct.toFixed(1)}% · no limit`;
+  const resetMs = new Date(resetsAt).getTime() - Date.now();
+  const effectivePct = resetMs <= 0 ? 0 : pct;
+  const pctStr = `${prefix}: ${effectivePct.toFixed(1)}%`;
+  if (resetMs <= 0) return `${pctStr} · reset`;
+  return `${pctStr} · resets ${formatDuration(resetMs)}`;
+}
+
+function formatDuration(ms: number): string {
+  const totalMinutes = Math.floor(ms / 60_000);
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
 }
 
 /**

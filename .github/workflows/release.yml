@@ -9,8 +9,37 @@ permissions:
   contents: write
 
 jobs:
+  # TK ForgeWorks standard release-notes generation — canonical script and
+  # workflow live in tkforgeworks/.github
+  release-notes:
+    uses: tkforgeworks/.github/.github/workflows/release-notes.yml@main
+    with:
+      ticket-prefix: CGUI
+
+  # Gate the build: no release is cut if type-check or tests fail. Mirrors
+  # ci.yml, which doesn't run on tag pushes (or release/* branches) on its own.
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test
+
   build-windows:
     runs-on: windows-latest
+    needs: [release-notes, typecheck-and-test]
     steps:
       - uses: actions/checkout@v4
 
@@ -31,10 +60,17 @@ jobs:
       - name: Build installer
         run: npm run dist -- --publish never
 
-      - name: Publish GitHub Release
+      # Immutable releases lock assets at publish time, so the release must be
+      # created as a draft, assets uploaded, and only then published.
+      - name: Create draft release with assets
         uses: softprops/action-gh-release@v2
         with:
           files: release/*.exe
-          generate_release_notes: true
-          draft: false
+          body: ${{ needs.release-notes.outputs.body }}
+          draft: true
           prerelease: ${{ contains(github.ref_name, '-') }}
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit ${{ github.ref_name }} --draft=false

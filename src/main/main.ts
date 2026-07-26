@@ -19,13 +19,16 @@ import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
 import { LogWatcher } from './services/logWatcher';
+import { UsageLimitWatcher } from './services/usageLimitWatcher';
 import { applyLaunchOnStartup } from './services/launchOnStartup';
+import { queryLatestUsageSnapshot } from './db/queries';
 
 let mainWindow: BrowserWindow | null = null;
 let isQuitting = false;
 let importerInterval: ReturnType<typeof setInterval> | null = null;
 let stalenessInterval: ReturnType<typeof setInterval> | null = null;
 let logWatcher: LogWatcher | null = null;
+let usageLimitWatcher: UsageLimitWatcher | null = null;
 let stalenessNotified = false;
 
 // ---------------------------------------------------------------------------
@@ -132,13 +135,15 @@ app.whenReady().then(() => {
   // Discover Claude Desktop log path (MSIX auto-discovery)
   discoverLogPath();
 
-  // Tray menu refresh helper — updates session count and cost
+  // Tray menu refresh helper — updates session count, cost, and usage
   const refreshTray = () => {
     try {
       const today = queryTodaySummary(db);
+      const usage = queryLatestUsageSnapshot(db);
       updateTrayMenu(win, {
         sessionCount: today.sessionCount,
         costUsd: today.codeCostUsd ?? undefined,
+        usageSnapshot: usage ?? undefined,
       });
     } catch (err) {
       console.error('[main] Tray refresh failed:', err);
@@ -213,6 +218,20 @@ app.whenReady().then(() => {
   runScan();
   importerInterval = setInterval(runScan, 5 * 60 * 1000);
 
+  // Start UsageLimitWatcher — polls Claude Code's cached usage-limit files
+  const settings = loadSettings();
+  if (settings.usageLimitPollingEnabled) {
+    usageLimitWatcher = new UsageLimitWatcher(db);
+    usageLimitWatcher.on('snapshot', (snapshot) => {
+      sendToRenderer('usageLimitWatcher:snapshot', snapshot);
+      refreshTray();
+    });
+    usageLimitWatcher.on('error', (err) => {
+      console.error('[main] Usage limit poll error:', err);
+    });
+    usageLimitWatcher.start(settings.usageLimitPollIntervalMs);
+  }
+
   // Chat import staleness notification
   const checkChatStaleness = () => {
     if (stalenessNotified) return;
@@ -266,6 +285,7 @@ app.on('will-quit', () => {
   if (importerInterval) clearInterval(importerInterval);
   if (stalenessInterval) clearInterval(stalenessInterval);
   if (logWatcher) logWatcher.stop();
+  if (usageLimitWatcher) usageLimitWatcher.stop();
   ipcMain.removeHandler('logWatcher:retry');
   ipcMain.removeHandler('window:isMaximized');
   ipcMain.removeAllListeners('window:minimize');

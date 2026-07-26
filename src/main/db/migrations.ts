@@ -172,6 +172,40 @@ export const MIGRATIONS: Migration[] = [
       UPDATE chat_memories SET project_id = '' WHERE project_id IS NULL;
     `,
   },
+  {
+    version: 6,
+    sql: `
+      CREATE TABLE IF NOT EXISTS usage_snapshots (
+        id                    INTEGER PRIMARY KEY AUTOINCREMENT,
+        captured_at           TEXT NOT NULL,
+        five_hour_pct         REAL NOT NULL,
+        seven_day_pct         REAL NOT NULL,
+        five_hour_resets_at   TEXT,
+        seven_day_resets_at   TEXT,
+        source_file           TEXT,
+        expires_at            INTEGER
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_usage_snapshots_captured_at
+        ON usage_snapshots (captured_at);
+    `,
+  },
+  {
+    version: 7,
+    sql: `
+      -- -----------------------------------------------------------------------
+      -- v7: Remove snapshots captured from already-expired usage-limits files.
+      -- The watcher used to zero out percentages from stale source files,
+      -- recording 0/0 when the real state was "unknown". Expired-at-capture
+      -- rows are junk data. CAST is required: strftime returns TEXT, and in
+      -- SQLite an INTEGER always compares less than any TEXT value.
+      -- -----------------------------------------------------------------------
+
+      DELETE FROM usage_snapshots
+      WHERE expires_at IS NOT NULL
+        AND CAST(strftime('%s', captured_at) AS INTEGER) > expires_at;
+    `,
+  },
 ];
 
 /**

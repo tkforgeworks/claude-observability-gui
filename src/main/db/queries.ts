@@ -24,6 +24,7 @@ import type {
   TimelineEntry,
   TurnDurationDay,
   UsagePatternsData,
+  UsageSnapshot,
   DateRange,
   ChatConversationCount,
   ChatStats,
@@ -34,6 +35,19 @@ import type {
 } from '../../shared/ipc-types';
 import { getDatabasePath } from './database';
 import * as fs from 'fs';
+
+/**
+ * YYYY-MM-DD in the machine's local timezone. All date-grouped analytics
+ * bucket by local calendar day, matching SQLite's 'localtime' modifier in
+ * the corresponding queries. Never use toISOString() for day keys — it
+ * buckets by UTC, which shifts evening sessions onto the next day (CGUI-52).
+ */
+export function localDateStr(d: Date = new Date()): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 // ---------------------------------------------------------------------------
 // Code Sessions
@@ -439,22 +453,22 @@ export function closeAllOpenCoworkSessions(
  * to avoid JOIN pitfalls between unrelated tables.
  */
 export function queryWeeklyActivity(db: Database.Database): DailyActivity[] {
-  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+  const today = localDateStr(); // YYYY-MM-DD, local timezone
 
   const codeDays = db.prepare<[string, string], { date: string; cnt: number; cost: number | null }>(`
-    SELECT DATE(started_at) as date, COUNT(*) as cnt, SUM(cost_usd) as cost
+    SELECT DATE(started_at, 'localtime') as date, COUNT(*) as cnt, SUM(cost_usd) as cost
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, '-6 days')
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, '-6 days')
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
   `).all(today, today);
 
   const coworkDays = db.prepare<[string, string], { date: string; cnt: number; turns: number | null }>(`
-    SELECT DATE(started_at) as date, COUNT(*) as cnt, SUM(turn_count) as turns
+    SELECT DATE(started_at, 'localtime') as date, COUNT(*) as cnt, SUM(turn_count) as turns
     FROM cowork_sessions
-    WHERE DATE(started_at) >= DATE(?, '-6 days')
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, '-6 days')
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
   `).all(today, today);
 
   // Build a map for all 7 days, filling gaps with zeros
@@ -465,7 +479,7 @@ export function queryWeeklyActivity(db: Database.Database): DailyActivity[] {
   for (let i = 6; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const code = codeMap.get(dateStr);
     const cowork = coworkMap.get(dateStr);
     result.push({
@@ -488,7 +502,7 @@ export function queryHeatmapData(
   db: Database.Database,
   days: number = 365
 ): HeatmapDay[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   const codeDays = db.prepare<[string, string], {
@@ -496,23 +510,23 @@ export function queryHeatmapData(
     input_tok: number | null; output_tok: number | null;
     cache_read_tok: number | null; cache_create_tok: number | null;
   }>(`
-    SELECT DATE(started_at) as date, COUNT(*) as cnt,
+    SELECT DATE(started_at, 'localtime') as date, COUNT(*) as cnt,
            SUM(COALESCE(input_tokens, 0)) as input_tok,
            SUM(COALESCE(output_tokens, 0)) as output_tok,
            SUM(COALESCE(cache_read_tokens, 0)) as cache_read_tok,
            SUM(COALESCE(cache_creation_tokens, 0)) as cache_create_tok
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
   `).all(today, today);
 
   const coworkDays = db.prepare<[string, string], { date: string; cnt: number }>(`
-    SELECT DATE(started_at) as date, COUNT(*) as cnt
+    SELECT DATE(started_at, 'localtime') as date, COUNT(*) as cnt
     FROM cowork_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
   `).all(today, today);
 
   const codeMap = new Map(codeDays.map(r => [r.date, r]));
@@ -522,7 +536,7 @@ export function queryHeatmapData(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const code = codeMap.get(dateStr);
     const cowork = coworkMap.get(dateStr);
     result.push({
@@ -559,7 +573,7 @@ export function queryCacheEfficiency(
   db: Database.Database,
   days: number = 30
 ): CacheEfficiencyData[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   // Aggregate token totals per project
@@ -576,8 +590,8 @@ export function queryCacheEfficiency(
            SUM(COALESCE(input_tokens, 0)) as input,
            COUNT(*) as cnt
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
     GROUP BY project_path
     HAVING (cache_read + input) > 0
     ORDER BY CASE WHEN cache_write > 0
@@ -602,8 +616,8 @@ export function queryCacheEfficiency(
              END
            ) as savings
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
     GROUP BY project_path
   `).all(today, today);
 
@@ -645,7 +659,7 @@ export function queryTurnDurationTrend(
   db: Database.Database,
   days: number = 30
 ): TurnDurationDay[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   const rows = db.prepare<[string, string], {
@@ -653,15 +667,15 @@ export function queryTurnDurationTrend(
     avg_dur: number;
     cnt: number;
   }>(`
-    SELECT DATE(started_at) as date,
+    SELECT DATE(started_at, 'localtime') as date,
            AVG(duration_seconds) as avg_dur,
            COUNT(*) as cnt
     FROM cowork_turns
     WHERE ended_at != ''
       AND duration_seconds > 0
-      AND DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+      AND DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
     ORDER BY date ASC
   `).all(today, today);
 
@@ -671,7 +685,7 @@ export function queryTurnDurationTrend(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const row = dataMap.get(dateStr);
     result.push({
       date: dateStr,
@@ -696,7 +710,7 @@ export function queryDailyCosts(
   days: number = 30
 ): DailyCostData[] {
   const totalDays = days + 7; // extra week for prior-period comparison
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${totalDays - 1} days'`;
 
   const rows = db.prepare<[string, string], {
@@ -704,13 +718,13 @@ export function queryDailyCosts(
     cost: number;
     cnt: number;
   }>(`
-    SELECT DATE(started_at) as date,
+    SELECT DATE(started_at, 'localtime') as date,
            SUM(COALESCE(cost_usd, 0)) as cost,
            COUNT(*) as cnt
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
     ORDER BY date ASC
   `).all(today, today);
 
@@ -720,7 +734,7 @@ export function queryDailyCosts(
   for (let i = totalDays - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const row = dataMap.get(dateStr);
     result.push({
       date: dateStr,
@@ -745,7 +759,7 @@ export function querySessionDensity(
   db: Database.Database,
   days: number = 30
 ): SessionDensityDay[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   // Combine code and cowork session timestamps, then compute span per day
@@ -757,11 +771,11 @@ export function querySessionDensity(
   }>(`
     SELECT date, COUNT(*) as cnt, MIN(started_at) as earliest, MAX(started_at) as latest
     FROM (
-      SELECT DATE(started_at) as date, started_at FROM code_sessions
-      WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+      SELECT DATE(started_at, 'localtime') as date, started_at FROM code_sessions
+      WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
       UNION ALL
-      SELECT DATE(started_at) as date, started_at FROM cowork_sessions
-      WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+      SELECT DATE(started_at, 'localtime') as date, started_at FROM cowork_sessions
+      WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
     )
     GROUP BY date
     ORDER BY date ASC
@@ -781,7 +795,7 @@ export function querySessionDensity(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const row = dataMap.get(dateStr);
     result.push({
       date: dateStr,
@@ -807,7 +821,7 @@ export function queryModelMix(
   db: Database.Database,
   days: number = 30
 ): { days: ModelMixDay[]; models: string[] } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   const rows = db.prepare<[string, string], {
@@ -815,13 +829,13 @@ export function queryModelMix(
     model: string | null;
     cnt: number;
   }>(`
-    SELECT DATE(started_at) as date,
+    SELECT DATE(started_at, 'localtime') as date,
            COALESCE(model, 'unknown') as model,
            COUNT(*) as cnt
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY DATE(started_at), model
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime'), model
     ORDER BY date ASC
   `).all(today, today);
 
@@ -843,7 +857,7 @@ export function queryModelMix(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
+    const dateStr = localDateStr(d);
     const entry = dayMap.get(dateStr) ?? {};
     const day: ModelMixDay = { date: dateStr };
     for (const m of models) {
@@ -869,18 +883,18 @@ export function queryProjectTimeline(
   db: Database.Database,
   days: number = 30
 ): { rows: ProjectTimelineRow[]; dateRange: string[] } {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   const rows = db.prepare<[string, string], {
     project_path: string | null;
     date: string;
   }>(`
-    SELECT project_path, DATE(started_at) as date
+    SELECT project_path, DATE(started_at, 'localtime') as date
     FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
-    GROUP BY project_path, DATE(started_at)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY project_path, DATE(started_at, 'localtime')
     ORDER BY project_path, date
   `).all(today, today);
 
@@ -908,7 +922,7 @@ export function queryProjectTimeline(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    dateRange.push(d.toISOString().slice(0, 10));
+    dateRange.push(localDateStr(d));
   }
 
   return { rows: projectRows, dateRange };
@@ -927,7 +941,7 @@ export function queryUsagePatterns(
   db: Database.Database,
   days: number = 30
 ): UsagePatternsData {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   // All session timestamps and costs within range
@@ -936,10 +950,10 @@ export function queryUsagePatterns(
     cost: number;
   }>(`
     SELECT started_at, COALESCE(cost_usd, 0) as cost FROM code_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
     UNION ALL
     SELECT started_at, 0 as cost FROM cowork_sessions
-    WHERE DATE(started_at) >= DATE(?, ${daysBack}) AND DATE(started_at) <= DATE(?)
+    WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
   `).all(today, today, today, today);
 
   // Hourly distribution (0-23)
@@ -984,7 +998,7 @@ export function queryUsagePatterns(
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
-    allDates.push(d.toISOString().slice(0, 10));
+    allDates.push(localDateStr(d));
   }
 
   for (const dateStr of allDates) {
@@ -1125,8 +1139,8 @@ export function queryChatConversationCounts(
 ): ChatConversationCount[] {
   const dateTrunc =
     groupBy === 'week'
-      ? "date(created_at, 'weekday 1', '-7 days')"
-      : "date(created_at, 'start of month')";
+      ? "date(created_at, 'localtime', 'weekday 1', '-7 days')"
+      : "date(created_at, 'localtime', 'start of month')";
 
   const stmt = db.prepare(`
     SELECT ${dateTrunc} AS period, COUNT(*) AS count
@@ -1201,10 +1215,10 @@ export function queryChatConversationHeatmap(
   days: number
 ): ChatDayCount[] {
   const stmt = db.prepare(`
-    SELECT date(created_at) AS date, COUNT(*) AS count
+    SELECT date(created_at, 'localtime') AS date, COUNT(*) AS count
     FROM chat_conversations
-    WHERE created_at >= date('now', '-' || ? || ' days')
-    GROUP BY date(created_at)
+    WHERE date(created_at, 'localtime') >= date('now', 'localtime', '-' || ? || ' days')
+    GROUP BY date(created_at, 'localtime')
     ORDER BY date ASC
   `);
   return stmt.all(days) as ChatDayCount[];
@@ -1219,10 +1233,10 @@ export function queryChatProjectHeatmap(
   days: number
 ): ChatDayCount[] {
   const stmt = db.prepare(`
-    SELECT date(updated_at) AS date, COUNT(*) AS count
+    SELECT date(updated_at, 'localtime') AS date, COUNT(*) AS count
     FROM chat_projects
-    WHERE updated_at >= date('now', '-' || ? || ' days')
-    GROUP BY date(updated_at)
+    WHERE date(updated_at, 'localtime') >= date('now', 'localtime', '-' || ? || ' days')
+    GROUP BY date(updated_at, 'localtime')
     ORDER BY date ASC
   `);
   return stmt.all(days) as ChatDayCount[];
@@ -1241,7 +1255,7 @@ export function queryProjectAggregates(
   db: Database.Database,
   days: number
 ): ProjectAggregate[] {
-  const today = new Date().toISOString().slice(0, 10);
+  const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
   // Code session aggregates per project_path (lowercased for Windows)
@@ -1268,11 +1282,11 @@ export function queryProjectAggregates(
            COUNT(*) AS session_count,
            MIN(started_at) AS first_seen,
            MAX(COALESCE(ended_at, started_at)) AS last_active,
-           COUNT(DISTINCT DATE(started_at)) AS active_days
+           COUNT(DISTINCT DATE(started_at, 'localtime')) AS active_days
     FROM code_sessions
     WHERE project_path IS NOT NULL
-      AND DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
+      AND DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
     GROUP BY project_key
   `).all(today, today);
 
@@ -1290,12 +1304,12 @@ export function queryProjectAggregates(
            COUNT(ct.id) AS turn_count,
            MIN(cs.started_at) AS first_seen,
            MAX(COALESCE(cs.ended_at, cs.started_at)) AS last_active,
-           COUNT(DISTINCT DATE(cs.started_at)) AS active_days
+           COUNT(DISTINCT DATE(cs.started_at, 'localtime')) AS active_days
     FROM cowork_sessions cs
     LEFT JOIN cowork_turns ct ON ct.session_id = cs.session_id
     WHERE cs.project_path IS NOT NULL
-      AND DATE(cs.started_at) >= DATE(?, ${daysBack})
-      AND DATE(cs.started_at) <= DATE(?)
+      AND DATE(cs.started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(cs.started_at, 'localtime') <= DATE(?)
     GROUP BY project_key
   `).all(today, today);
 
@@ -1310,8 +1324,8 @@ export function queryProjectAggregates(
            COUNT(*) AS cnt
     FROM code_sessions
     WHERE project_path IS NOT NULL
-      AND DATE(started_at) >= DATE(?, ${daysBack})
-      AND DATE(started_at) <= DATE(?)
+      AND DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
     GROUP BY project_key, model
   `).all(today, today);
 
@@ -1357,6 +1371,73 @@ export function queryProjectAggregates(
 
   results.sort((a, b) => (b.lastActiveAt > a.lastActiveAt ? 1 : -1));
   return results;
+}
+
+// ---------------------------------------------------------------------------
+// Usage Snapshots
+// ---------------------------------------------------------------------------
+
+interface UsageSnapshotRow {
+  id: number;
+  captured_at: string;
+  five_hour_pct: number;
+  seven_day_pct: number;
+  five_hour_resets_at: string | null;
+  seven_day_resets_at: string | null;
+}
+
+export function insertUsageSnapshot(
+  db: Database.Database,
+  snapshot: Omit<UsageSnapshot, 'id'> & { source_file?: string; expires_at?: number }
+): void {
+  db.prepare(`
+    INSERT INTO usage_snapshots (captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at, source_file, expires_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    snapshot.captured_at,
+    snapshot.five_hour_pct,
+    snapshot.seven_day_pct,
+    snapshot.five_hour_resets_at,
+    snapshot.seven_day_resets_at,
+    snapshot.source_file ?? null,
+    snapshot.expires_at ?? null
+  );
+}
+
+export function queryLatestUsageSnapshot(db: Database.Database): UsageSnapshot | null {
+  const row = db.prepare<[], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    ORDER BY captured_at DESC
+    LIMIT 1
+  `).get();
+  return row ?? null;
+}
+
+export function queryUsageSnapshots(db: Database.Database, hours: number): UsageSnapshot[] {
+  return db.prepare<[string], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    WHERE captured_at >= datetime('now', '-' || ? || ' hours')
+    ORDER BY captured_at ASC
+  `).all(String(hours)) as UsageSnapshot[];
+}
+
+export function queryUsageSnapshotRange(db: Database.Database, range: DateRange): UsageSnapshot[] {
+  return db.prepare<[string, string], UsageSnapshotRow>(`
+    SELECT id, captured_at, five_hour_pct, seven_day_pct, five_hour_resets_at, seven_day_resets_at
+    FROM usage_snapshots
+    WHERE captured_at >= ? AND captured_at <= ?
+    ORDER BY captured_at ASC
+  `).all(range.from, range.to) as UsageSnapshot[];
+}
+
+export function pruneOldUsageSnapshots(db: Database.Database, retentionDays: number): number {
+  const result = db.prepare(`
+    DELETE FROM usage_snapshots
+    WHERE captured_at < datetime('now', '-' || ? || ' days')
+  `).run(String(retentionDays));
+  return result.changes;
 }
 
 // ---------------------------------------------------------------------------

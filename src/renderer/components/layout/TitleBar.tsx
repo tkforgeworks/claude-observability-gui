@@ -12,6 +12,7 @@ const VIEW_LABELS: Partial<Record<ViewId, string>> = {
   chat: 'Chat',
   trends: 'Trends',
   heatmap: 'Heatmap',
+  usage: 'Usage',
 };
 
 interface MenuItem {

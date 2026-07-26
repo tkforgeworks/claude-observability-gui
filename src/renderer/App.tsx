@@ -18,6 +18,7 @@ import ChatHistoryView from './views/ChatHistoryView';
 import TrendsView from './views/TrendsView';
 import ProjectsView from './views/ProjectsView';
 import HeatmapView from './views/HeatmapView';
+import UsageView from './views/UsageView';
 import SettingsView from './views/SettingsView';
 import { DashboardConfigProvider, useDashboardConfig } from './contexts/DashboardConfigContext';
 import { TopbarProvider, useTopbar } from './contexts/TopbarContext';
@@ -90,6 +91,7 @@ export default function App(): React.JSX.Element {
                     <Route path="/projects" element={<ProjectsView />} />
                     <Route path="/trends" element={<TrendsView />} />
                     <Route path="/heatmap" element={<HeatmapView />} />
+                    <Route path="/usage" element={<UsageView />} />
                     <Route path="/settings" element={<SettingsView />} />
                   </Routes>
                 </div>

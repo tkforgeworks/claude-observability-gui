@@ -36,12 +36,15 @@ src/shared/      → Type-only definitions (ipc-types.ts, models.ts)
 
 ### Main process (`src/main/`)
 
-- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, tray refresh loop, and chat import staleness notification
+- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, UsageLimitWatcher, tray refresh loop, and chat import staleness notification
 - **Launch on startup:** `services/launchOnStartup.ts` — wraps `app.setLoginItemSettings`. Applied once on startup from `loadSettings().launchOnStartup`, re-applied inside the `settings:update` IPC handler whenever the flag is present in the patch
 - **Database:** `db/database.ts` — better-sqlite3 with WAL mode. Schema migrations in `db/migrations/` (versioned, cumulative, never modify existing ones). Queries in `db/queries.ts`
+- **Date bucketing convention (CGUI-52):** all date-grouped analytics bucket by **local** calendar day — SQL uses `DATE(col, 'localtime')` and JS day keys use the exported `localDateStr()` helper in `queries.ts`. Never use bare `DATE(col)` or `toISOString().slice(0, 10)` for day grouping/scaffolds (UTC bucketing shifts evening sessions to the next day). Rolling windows (e.g. the 24h Today cutoff) are exempt — they're duration-based, not calendar-based. Regression tests in `__tests__/timezoneBucketing.test.ts` rely on `TZ=America/New_York`, pinned in `jest.config.js` (never inside a test file — jest copies `process.env` per test file, so in-test TZ assignments silently do nothing) because CI runs UTC where the bug is invisible
 - **JSONL Importer:** `importers/jsonlImporter.ts` — scans `~/.claude/projects/` on startup and every 5 minutes, parses session files, calculates costs via `importers/costCalculator.ts`, upserts to SQLite
 - **Chat Importer:** `importers/chatImporter.ts` — parses claude.ai export ZIPs (`conversations.json`, `projects.json`, `users.json`) into `chat_conversations` and related tables
 - **LogWatcher:** `services/logWatcher.ts` — tails Claude Desktop `main.log`, parses lines via `services/logLineParser.ts`, persists events to `cowork_sessions`, `cowork_turns`, `app_sessions`, and `app_focus_events`. Uses a persisted offset/timestamp to skip already-processed lines on restart
+- **UsageLimitWatcher:** `services/usageLimitWatcher.ts` — polls `~/.claude/projects/*/cship/*-usage-limits` files on a configurable interval (default 60s — must stay at or below the ~60s file TTL or polls will always find expired files), reads the most recently modified file, parses `five_hour_pct`/`seven_day_pct` subscription usage data, persists to `usage_snapshots` table, and prunes old data per retention setting. Files carry an `expires_at` (epoch seconds, ~60s TTL after each cship refresh); expired files are skipped entirely — stale data means "unknown", never "0%". cship only refreshes these files while a Claude Code session is active, so snapshots are captured only when a poll lands within the TTL window; the Usage view shows a staleness notice when the latest snapshot is >15 min old
+- **Data Export/Import:** `services/dataExportImport.ts` (CGUI-49) — "Moving to a new computer?" section in Settings → General. Export bundles a consistent DB snapshot (native `.backup()`), portable settings, and dashboard.json into a zip with a schema-version manifest. Import merges a bundle insert-only (never overwrites/deletes): `INSERT OR IGNORE` on tables with unique keys, NULL-safe composite-key `NOT EXISTS` dedup on the rest (`usage_snapshots` on captured_at, `app_sessions` on launched_at, `cowork_turns` on session_id+started_at, `app_focus_events` on focused_at). Supports repeated bidirectional desktop↔laptop merging. Settings travel via the `PORTABLE_SETTINGS_KEYS` allowlist only — machine paths, connection profiles, and local bookkeeping never enter the bundle. Older-schema bundles are migrated before merge; newer-schema bundles are rejected. IPC: `data:exportAll` / `data:importAll`. Tests in `__tests__/dataExportImport.test.ts` — the DB-backed suite auto-skips locally after `electron-rebuild` (Electron ABI) and runs in CI; run locally via `ELECTRON_RUN_AS_NODE=1 npx electron node_modules/jest/bin/jest.js --testPathPatterns=dataExportImport`
 - **IPC Handlers:** `ipc/handlers.ts` — all channels typed via `ElectronApi` interface in `shared/ipc-types.ts`
 - **Config:** `config/configStore.ts` (settings + dashboard load/save), `config/pricing.ts` (per-model token rates), `config/defaultSettings.ts` — JSON files in `%APPDATA%\ClaudeUsageMonitor\`
 
@@ -63,6 +66,7 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
     5. Session Density — sessions per active hour line chart
     6. Project Activity Timeline — Gantt-style swimlane grid, expandable project list
     7. Model Migration — stacked area chart with auto-discovered model series
+  - `UsageView` — subscription usage limit tracking with stat cards (5-hour and 7-day usage percentages with reset countdowns, plus a "Peak usage in window" sub-line showing the range's highest value via StatCard's optional `subMeta` prop), sparklines, and a Usage History table with range selector (24h/7d/30d/90d/All): one row per collected snapshot (capture timestamp, 5h/7d percentages, upcoming reset times) interleaved with dimmed "window reset (inferred)" rows. Reset markers are derived in the renderer from stored `resets_at` values on every load (restarts backfill resets that passed while closed), never shown for future times, and deduped by proximity (same window type within 60 min = polling jitter, since real resets are ≥5h/7d apart). Subscribes to `onUsageSnapshot` for live updates
   - `HeatmapView` — 365-day GitHub-style usage heatmap
   - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
   - `SettingsView` — tabbed config (General, Remote Sync, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API. Supports deep-linking to a specific tab via `navigate('/settings', { state: { tab: 'general' } })` — reads `location.state.tab` and syncs to `activeTab` on mount and on subsequent location changes
@@ -78,7 +82,7 @@ Push events flow main → renderer via `webContents.send()` with corresponding `
 
 ### Cost calculation
 
-`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. Formula: `(inputTokens/1M * inputRate) + (outputTokens/1M * outputRate) + (cacheRead/1M * cacheReadRate) + (cacheWrite/1M * cacheWriteRate)`. The pricing table covers Opus 4.6, Sonnet 4.6, and Haiku 4.5 with both 5-min and 1-hour cache write rates.
+`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. Formula: `(inputTokens/1M * inputRate) + (outputTokens/1M * outputRate) + (cacheRead/1M * cacheReadRate) + (cacheWrite/1M * cacheWriteRate)`. The pricing table covers Fable 5, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5 (introductory $2/$10 rates — bump to $3/$15 after 2026-08-31, see comment in pricing.ts), Sonnet 4.6, and Haiku 4.5, each with both 5-min and 1-hour cache write rates. When a new model releases, add its entry to `PRICING_TABLE` and extend `__tests__/pricing.test.ts`; unknown models fall back to a warning rather than $0.00 costs.
 
 ## Testing
 
@@ -86,7 +90,7 @@ Jest + ts-jest, test environment: node. Tests live in `src/main/__tests__/`. Con
 
 ## Data storage
 
-App data lives in `%APPDATA%\ClaudeUsageMonitor\`:
+App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path (dev: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`; packaged: `%APPDATA%\<productName>\ClaudeUsageMonitor\`):
 - `settings.json` — user preferences
 - `dashboard.json` — view/widget configuration
 - `usage.db` — SQLite database (+ WAL files)
@@ -105,7 +109,8 @@ App data lives in `%APPDATA%\ClaudeUsageMonitor\`:
 ## CI / Releases
 
 - **`.github/workflows/ci.yml`** — runs on push to `main` and on PRs. Ubuntu runner. Steps: `npm ci` → `npm run compile` → `npm test`. No installer build
-- **`.github/workflows/release.yml`** — runs on tags matching `v*`. Windows runner (required for NSIS). Steps: `npm ci` → `npx electron-rebuild` → `npm run dist` → upload `release/*.exe` via `softprops/action-gh-release@v2` with `generate_release_notes: true`. Tags containing a hyphen (e.g. `v1.0.0-rc.1`) are auto-flagged as pre-releases. Uses the default `GITHUB_TOKEN` via `permissions: contents: write`
+- **`.github/workflows/release.yml`** — runs on tags matching `v*`. Three jobs: `release-notes` (ubuntu) generates the release body, `typecheck-and-test` (ubuntu) mirrors CI (`npm run compile` + `npm test`) as a **release gate** — no build is cut if type-check or tests fail (needed because ci.yml doesn't trigger on tag pushes or `release/*` branches), then `build-windows` (required for NSIS, `needs` both) runs `npm ci` → `npx electron-rebuild` → `npm run dist` → creates the release as a **draft** with `release/*.exe` attached, then publishes via `gh release edit` (immutable releases lock assets at publish time — never publish before uploading). Tags containing a hyphen (e.g. `v1.0.0-rc.1`) are auto-flagged as pre-releases. Uses the default `GITHUB_TOKEN` via `permissions: contents: write`
+- **Release notes** (TK ForgeWorks standard): the `release-notes` job consumes the reusable workflow `tkforgeworks/.github/.github/workflows/release-notes.yml@main` (`ticket-prefix: CGUI`) — the canonical script lives in the org standards repo, not here. Body derives from commit subjects since the previous tag: version-bump commits filtered, subjects split into Changes vs Bug Fixes (bug-fix commit subjects must start with `Fix` or `CGUI-N: Fix ...`), `CGUI-*` keys auto-linked via the `JIRA_BASE_URL` repo variable. Stable releases diff against the previous *stable* tag so final notes span all RCs. Write commit subjects knowing they become changelog lines
 - **Release cadence:** `npm version patch|minor|major` bumps `package.json` and creates the matching `v*` tag atomically. `git push --follow-tags` triggers the release workflow
 - **Builds are unsigned.** Windows SmartScreen will warn users until a code-signing certificate is added. Bypass: *More info → Run anyway*. README Installation section documents this for testers
 
@@ -138,6 +143,16 @@ The Chat History view uses these `chat:*` channels, backed by the claude.ai ZIP 
 | `chat:getConversationHeatmap` | Daily conversation counts for heatmap |
 | `chat:getProjectHeatmap` | Daily project-activity counts for heatmap |
 
+## Usage Snapshots IPC channels
+
+The Usage view uses these `usageSnapshots:*` channels:
+
+| Channel | Query function | Returns |
+|---------|---------------|---------|
+| `usageSnapshots:getLatest` | `queryLatestUsageSnapshot` | Most recent usage snapshot or null |
+| `usageSnapshots:getRecent` | `queryUsageSnapshots` | Snapshots within last N hours |
+| `usageSnapshots:getRange` | `queryUsageSnapshotRange` | Snapshots in a date range |
+
 ## Push events (main → renderer)
 
 Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe function:
@@ -146,6 +161,7 @@ Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe functi
 - `onLogWatcherConnection` — LogWatcher connection state (log path found/lost); paired with `logWatcher.retry()` request channel which re-runs path discovery and restarts the watcher
 - `onScanStarted` / `onImportComplete` — JSONL importer scan lifecycle
 - `onSyncStatusChanged` — remote sync state (stub)
+- `onUsageSnapshot` — new usage limit snapshot captured by UsageLimitWatcher
 - `onNavigate` — main-process navigation commands (used by the stale-chat Notification click handler to deep-link to `/chat`)
 
 ## Jira
