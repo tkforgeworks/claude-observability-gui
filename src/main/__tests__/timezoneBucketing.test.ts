@@ -3,14 +3,14 @@
  * calendar day, not UTC. An evening session in America/New_York (e.g. 9:39 PM
  * EDT Tuesday = 01:39Z Wednesday) must appear under Tuesday.
  *
- * TZ is pinned to America/New_York because CI runs on Ubuntu in UTC, where
- * 'localtime' === UTC and these assertions would pass trivially. Modern Node
- * invalidates its cached timezone when process.env.TZ changes, and SQLite's
- * 'localtime' modifier follows the OS/libc conversion, which respects TZ on
- * Linux. (On Windows the DB-backed suite is skipped anyway — see below.)
+ * TZ is pinned to America/New_York in jest.config.js — NOT here — because CI
+ * runs on Ubuntu in UTC, where 'localtime' === UTC and these assertions would
+ * pass trivially. An in-test `process.env.TZ = ...` does nothing under jest:
+ * jest-environment-node hands each test file a copy of process.env, so the
+ * assignment never reaches Node's real TZ setter and V8 keeps its cached
+ * zone. jest.config.js loads in the real jest process before workers spawn,
+ * so workers inherit TZ at startup.
  */
-
-process.env.TZ = 'America/New_York';
 
 import fs from 'fs';
 import os from 'os';
