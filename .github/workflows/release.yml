@@ -16,9 +16,30 @@ jobs:
     with:
       ticket-prefix: CGUI
 
+  # Gate the build: no release is cut if type-check or tests fail. Mirrors
+  # ci.yml, which doesn't run on tag pushes (or release/* branches) on its own.
+  typecheck-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type-check
+        run: npm run compile
+
+      - name: Run tests
+        run: npm test
+
   build-windows:
     runs-on: windows-latest
-    needs: release-notes
+    needs: [release-notes, typecheck-and-test]
     steps:
       - uses: actions/checkout@v4
 
