@@ -102,7 +102,27 @@ if (!app.isPackaged) {
   app.setPath('userData', app.getPath('userData') + '-dev');
 }
 
+// Single-instance lock (CGUI-63). Must come after the userData override —
+// the lock is scoped to the userData path, which is exactly what lets a dev
+// instance and an installed build run side by side while duplicate launches
+// of the SAME variant hand off to the existing instance instead of fighting
+// over the Chromium cache and usage.db.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Surface the existing window — including when it's hidden to tray
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
+}
+
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
+
   // Create config files with defaults if they don't exist
   ensureConfigFiles();
 
