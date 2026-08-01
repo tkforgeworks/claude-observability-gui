@@ -66,12 +66,16 @@ function createMainWindow(): BrowserWindow {
     mainWindow?.show();
   });
 
-  // Minimize to tray on close instead of quitting
+  // Close behavior (CGUI-62): hide to tray or quit per the user's setting.
+  // Read at close time so a change in Settings applies without a restart.
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+    if (isQuitting) return;
+    if (loadSettings().minimizeToTrayOnClose) {
       event.preventDefault();
       mainWindow?.hide();
-      // TODO: check settings.minimizeToTrayOnClose — if false, allow quit
+    } else {
+      // Let the close proceed as a full quit, same as tray Quit
+      isQuitting = true;
     }
   });
 
@@ -90,10 +94,47 @@ function createMainWindow(): BrowserWindow {
 // app's own identity and picks up the BrowserWindow icon instead of electron.exe's
 // embedded default. Must match the `appId` in package.json's electron-builder config.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor');
+  // Dev gets a '.dev' suffix (CGUI-64): with the packaged AUMID, Windows
+  // matches dev windows to the installed app's Start Menu shortcut, groups
+  // them onto its taskbar button, and shows the shortcut's (old) icon
+  // instead of the window icon. The packaged ID must match build.appId.
+  app.setAppUserModelId(
+    app.isPackaged
+      ? 'com.tkforgeworks.claude-usage-monitor'
+      : 'com.tkforgeworks.claude-usage-monitor.dev'
+  );
+}
+
+// Dev/prod data isolation (CGUI-64): package.json has no top-level
+// productName, so dev and the installed build otherwise resolve the SAME
+// userData directory (%APPDATA%\claude-usage-monitor) and fight over the
+// Chromium cache profile and usage.db. Must run before anything consumes
+// userData (config files, database, window/session).
+if (!app.isPackaged) {
+  app.setPath('userData', app.getPath('userData') + '-dev');
+}
+
+// Single-instance lock (CGUI-63). Must come after the userData override —
+// the lock is scoped to the userData path, which is exactly what lets a dev
+// instance and an installed build run side by side while duplicate launches
+// of the SAME variant hand off to the existing instance instead of fighting
+// over the Chromium cache and usage.db.
+const gotSingleInstanceLock = app.requestSingleInstanceLock();
+if (!gotSingleInstanceLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    // Surface the existing window — including when it's hidden to tray
+    if (!mainWindow) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    mainWindow.show();
+    mainWindow.focus();
+  });
 }
 
 app.whenReady().then(() => {
+  if (!gotSingleInstanceLock) return;
+
   // Create config files with defaults if they don't exist
   ensureConfigFiles();
 

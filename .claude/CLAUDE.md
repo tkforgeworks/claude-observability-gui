@@ -36,7 +36,7 @@ src/shared/      → Type-only definitions (ipc-types.ts, models.ts)
 
 ### Main process (`src/main/`)
 
-- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, UsageLimitWatcher, tray refresh loop, and chat import staleness notification
+- **Entry:** `main.ts` — sets Windows AppUserModelID (must match `build.appId` in `package.json`), appends `-dev` to userData when not packaged (CGUI-64), acquires the single-instance lock (CGUI-63 — a second same-variant launch quits immediately and the `second-instance` event restores/focuses the existing window, including from tray-hidden; the lock is per-userData-path so dev and installed builds still run side by side), applies launch-on-startup preference, creates BrowserWindow with `assets/icon.ico`, initializes DB, registers IPC handlers, starts JSONL scan timer, LogWatcher, UsageLimitWatcher, tray refresh loop, and chat import staleness notification
 - **Launch on startup:** `services/launchOnStartup.ts` — wraps `app.setLoginItemSettings`. Applied once on startup from `loadSettings().launchOnStartup`, re-applied inside the `settings:update` IPC handler whenever the flag is present in the patch
 - **Database:** `db/database.ts` — better-sqlite3 with WAL mode. Schema migrations in `db/migrations/` (versioned, cumulative, never modify existing ones). Queries in `db/queries.ts`
 - **Date bucketing convention (CGUI-52):** all date-grouped analytics bucket by **local** calendar day — SQL uses `DATE(col, 'localtime')` and JS day keys use the exported `localDateStr()` helper in `queries.ts`. Never use bare `DATE(col)` or `toISOString().slice(0, 10)` for day grouping/scaffolds (UTC bucketing shifts evening sessions to the next day). Rolling windows (e.g. the 24h Today cutoff) are exempt — they're duration-based, not calendar-based. Regression tests in `__tests__/timezoneBucketing.test.ts` rely on `TZ=America/New_York`, pinned in `jest.config.js` (never inside a test file — jest copies `process.env` per test file, so in-test TZ assignments silently do nothing) because CI runs UTC where the bug is invisible
@@ -69,7 +69,7 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
   - `UsageView` — subscription usage limit tracking with stat cards (5-hour and 7-day usage percentages with reset countdowns, plus a "Peak usage in window" sub-line showing the range's highest value via StatCard's optional `subMeta` prop), sparklines, and a Usage History table with range selector (24h/7d/30d/90d/All): one row per collected snapshot (capture timestamp, 5h/7d percentages, upcoming reset times) interleaved with dimmed "window reset (inferred)" rows. Reset markers are derived in the renderer from stored `resets_at` values on every load (restarts backfill resets that passed while closed), never shown for future times, and deduped by proximity (same window type within 60 min = polling jitter, since real resets are ≥5h/7d apart). Subscribes to `onUsageSnapshot` for live updates
   - `HeatmapView` — 365-day GitHub-style usage heatmap
   - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
-  - `SettingsView` — tabbed config (General, Remote Sync, Dashboard, Data). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API. Supports deep-linking to a specific tab via `navigate('/settings', { state: { tab: 'general' } })` — reads `location.state.tab` and syncs to `activeTab` on mount and on subsequent location changes
+  - `SettingsView` — tabbed config (General, Remote Sync, Dashboard, Data). General includes launch-on-startup and the CGUI-62 "Window" toggle for `minimizeToTrayOnClose` (the `close` handler reads the setting at close time, so it applies without restart; unchecked = closing the window quits the app). Data tab includes live database stats (size, oldest records per table) and one-click backup via better-sqlite3's native `.backup()` API. Supports deep-linking to a specific tab via `navigate('/settings', { state: { tab: 'general' } })` — reads `location.state.tab` and syncs to `activeTab` on mount and on subsequent location changes
 - **Components:** `components/common/` (chart widgets, MetricCard, EmptyState, StatusBanner, GlobalBanners), `components/layout/` (Sidebar, ContentArea). `GlobalBanners` is rendered inside `ContentArea` (above `<Routes>` in `App.tsx`) and shows persistent warnings for LogWatcher connection loss (non-dismissible, with Retry + Go to General Tab / Open Settings actions) and log-format health issues (dismissible, re-arms on next unhealthy trigger). `StatusBanner` supports an `actions` array for multiple buttons, or a single `action` for backwards compatibility.
 - **Hooks:** `hooks/useApi.ts` — generic async fetching hook with loading/error state
 - **Styling:** Dark theme with inline CSS (background: `#1a1a2e`, text: `#ccccdd`, accent: `#6666cc`). Charts use Recharts library.
@@ -90,10 +90,16 @@ Jest + ts-jest, test environment: node. Tests live in `src/main/__tests__/`. Con
 
 ## Data storage
 
-App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path (dev: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`; packaged: `%APPDATA%\<productName>\ClaudeUsageMonitor\`):
+App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path. `package.json` has no top-level `productName` (the electron-builder `build.productName` is not read by Electron's runtime), so userData derives from `name` in both modes; `main.ts` appends `-dev` when not packaged (CGUI-64) so dev never touches installed-app data:
+- Dev (`npm start`): `%APPDATA%\claude-usage-monitor-dev\ClaudeUsageMonitor\`
+- Packaged/installed: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`
+
+Files:
 - `settings.json` — user preferences
 - `dashboard.json` — view/widget configuration
 - `usage.db` — SQLite database (+ WAL files)
+
+A fresh dev environment starts with an empty DB. Code sessions repopulate automatically on the first JSONL scan; Cowork/LogWatcher history, usage snapshots, chat imports, and settings do not — seed them via Settings → General → data export/import (CGUI-49) or a one-time copy of the `ClaudeUsageMonitor` subfolder from the prod path.
 
 ## Packaging
 
@@ -103,7 +109,7 @@ App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData pat
 - **Settings preservation on upgrade:** `settings.json`, `dashboard.json`, and `usage.db` live in `%APPDATA%` (Electron userData) and are untouched by NSIS install/upgrade. `deleteAppDataOnUninstall: false` is explicit so uninstalling also leaves user data in place
 - **Icon:** `assets/icon.ico` (256×256) — currently a pink/black checkerboard placeholder until final icon lands
 - **Launch on startup:** user-toggleable in Settings → General. Wired via `app.setLoginItemSettings` in `src/main/services/launchOnStartup.ts`, applied on app start (reads `settings.launchOnStartup`) and re-applied inside the `settings:update` IPC handler whenever the flag is included in the patch. Default is `false`
-- **Taskbar icon:** `app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor')` is called at module load in `main.ts` (Windows-only guard) so the Windows taskbar groups the process under the app identity rather than `electron.exe`. **Must match `build.appId` in `package.json`** — if either is changed, update both
+- **Taskbar icon:** `app.setAppUserModelId(...)` is called at module load in `main.ts` (Windows-only guard) so the Windows taskbar groups the process under the app identity rather than `electron.exe`. Packaged uses `com.tkforgeworks.claude-usage-monitor` — **must match `build.appId` in `package.json`**; if either is changed, update both. Dev uses a `.dev` suffix (CGUI-64): with the shared AUMID, Windows matched dev windows to the installed app's Start Menu shortcut, grouped them onto its taskbar button, and showed the shortcut's old icon instead of the window icon
 - **Tray icon:** `src/main/tray.ts` loads `assets/icon.ico` via `nativeImage.createFromPath` and downscales it to 16×16 with `quality: 'best'` for the system tray slot
 
 ## CI / Releases
