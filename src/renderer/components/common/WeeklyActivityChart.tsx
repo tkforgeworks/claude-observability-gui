@@ -150,7 +150,7 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
           />
           <Tooltip
             content={<CustomTooltip />}
-            cursor={{ fill: 'rgba(102, 102, 204, 0.1)' }}
+            cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }}
           />
           <Bar dataKey="codeCount" name="Code" stackId="sessions" fill={COLORS.code} radius={[0, 0, 0, 0]} />
           <Bar dataKey="coworkCount" name="Cowork" stackId="sessions" fill={COLORS.cowork} radius={[3, 3, 0, 0]} />

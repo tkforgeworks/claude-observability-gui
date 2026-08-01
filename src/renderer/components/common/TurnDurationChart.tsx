@@ -1,7 +1,7 @@
 /**
  * Line chart showing daily average Cowork turn duration with 7-day
  * moving average overlay. Summary metrics below with trend direction.
- * @see CGUI-25
+ * @see CGUI-25 (widget), CGUI-67 (token migration)
  */
 
 import React, { useMemo } from 'react';
@@ -16,20 +16,18 @@ import {
   Legend,
 } from 'recharts';
 import type { TurnDurationDay } from '../../../shared/ipc-types';
+import { chartAxisTick, chartGridStroke, chartTooltipStyles } from './chartTheme';
 
 interface TurnDurationChartProps {
   data: TurnDurationDay[];
 }
 
 const COLORS = {
-  daily: '#6688cc',
-  ma7: '#cc6688',
-  grid: '#2a2a3e',
-  axis: '#6666aa',
-  bg: '#16162a',
-  trendUp: '#cc6666',
-  trendDown: '#66cc88',
-  neutral: '#8888aa',
+  daily: 'var(--chart-1)',
+  ma7: 'var(--chart-4)',
+  trendUp: 'var(--error)',
+  trendDown: 'var(--success)',
+  neutral: 'var(--text-secondary)',
 };
 
 function formatDuration(seconds: number): string {
@@ -70,48 +68,25 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   if (!active || !payload?.length) return null;
   const point = payload[0].payload;
   return (
-    <div style={{
-      backgroundColor: '#1a1a2e',
-      border: '1px solid #3a3a5e',
-      borderRadius: 6,
-      padding: '8px 12px',
-      fontSize: 12,
-      lineHeight: 1.6,
-    }}>
-      <div style={{ color: '#ccccdd', fontWeight: 600, marginBottom: 2 }}>{point.label}</div>
+    <div style={chartTooltipStyles}>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 2 }}>{point.label}</div>
       {point.avgDuration != null && (
         <div style={{ color: COLORS.daily }}>Avg: {formatDuration(point.avgDuration)}</div>
       )}
       {point.ma7 != null && (
         <div style={{ color: COLORS.ma7 }}>7d MA: {formatDuration(Math.round(point.ma7))}</div>
       )}
-      <div style={{ color: '#666688' }}>{point.turnCount} turn{point.turnCount !== 1 ? 's' : ''}</div>
+      <div style={{ color: 'var(--text-tertiary)' }}>{point.turnCount} turn{point.turnCount !== 1 ? 's' : ''}</div>
     </div>
   );
 }
-
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 12,
-};
 
 const summaryRowStyles: React.CSSProperties = {
   display: 'flex',
   gap: 24,
   marginTop: 12,
   padding: '8px 4px 4px',
-  borderTop: '1px solid #2a2a3e',
+  borderTop: '1px solid var(--border-soft)',
 };
 
 const summaryItemStyles: React.CSSProperties = {
@@ -122,19 +97,21 @@ const summaryItemStyles: React.CSSProperties = {
 
 const summaryLabelStyles: React.CSSProperties = {
   fontSize: 11,
-  color: '#666688',
+  color: 'var(--text-tertiary)',
   textTransform: 'uppercase' as const,
-  letterSpacing: '0.3px',
+  letterSpacing: '0.04em',
+  fontFamily: '"JetBrains Mono", monospace',
 };
 
 const summaryValueStyles: React.CSSProperties = {
   fontSize: 16,
-  fontWeight: 600,
-  color: '#ccccdd',
+  fontWeight: 500,
+  fontFamily: '"JetBrains Mono", monospace',
+  color: 'var(--text-primary)',
 };
 
 export default function TurnDurationChart({ data }: TurnDurationChartProps): React.JSX.Element | null {
-  const { chartData, todayAvg, avg7d, avg30d } = useMemo(() => {
+  const { chartData, latestAvg, avg7d, avg30d } = useMemo(() => {
     // Build chart data with 7-day moving average
     const points: ChartDataPoint[] = [];
     const durations = data.map(d => d.avgDurationSeconds);
@@ -159,30 +136,26 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
       });
     }
 
-    // Summary averages
+    // Summary averages — "latest" is the last day WITH data, which may not be today
     const daysWithData = data.filter(d => d.turnCount > 0);
-    const todayEntry = daysWithData[daysWithData.length - 1];
-    const todayAvg = todayEntry?.avgDurationSeconds ?? null;
+    const latestEntry = daysWithData[daysWithData.length - 1];
+    const latestAvg = latestEntry?.avgDurationSeconds ?? null;
 
-    const last7 = daysWithData.filter(d => {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 7);
-      return new Date(d.date + 'T00:00:00') >= cutoff;
-    });
+    const cutoff7 = new Date();
+    cutoff7.setDate(cutoff7.getDate() - 7);
+    const last7 = daysWithData.filter(d => new Date(d.date + 'T00:00:00') >= cutoff7);
     const avg7d = last7.length > 0
       ? Math.round(last7.reduce((s, d) => s + d.avgDurationSeconds, 0) / last7.length)
       : null;
 
-    const last30 = daysWithData.filter(d => {
-      const cutoff = new Date();
-      cutoff.setDate(cutoff.getDate() - 30);
-      return new Date(d.date + 'T00:00:00') >= cutoff;
-    });
+    const cutoff30 = new Date();
+    cutoff30.setDate(cutoff30.getDate() - 30);
+    const last30 = daysWithData.filter(d => new Date(d.date + 'T00:00:00') >= cutoff30);
     const avg30d = last30.length > 0
       ? Math.round(last30.reduce((s, d) => s + d.avgDurationSeconds, 0) / last30.length)
       : null;
 
-    return { chartData: points, todayAvg, avg7d, avg30d };
+    return { chartData: points, latestAvg, avg7d, avg30d };
   }, [data]);
 
   const hasAnyData = data.some(d => d.turnCount > 0);
@@ -209,29 +182,29 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
   const tickInterval = data.length > 60 ? 13 : data.length > 14 ? 6 : 1;
 
   return (
-    <div style={containerStyles}>
-      <div style={titleStyles}>Turn Duration Trend</div>
+    <div className="card">
+      <div className="card-head"><h2>Turn Duration Trend</h2></div>
 
       <ResponsiveContainer width="100%" height={220}>
         <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} />
           <XAxis
             dataKey="label"
-            tick={{ fill: COLORS.axis, fontSize: 11 }}
-            axisLine={{ stroke: COLORS.grid }}
+            tick={chartAxisTick}
+            axisLine={{ stroke: chartGridStroke }}
             tickLine={false}
             interval={tickInterval}
           />
           <YAxis
             tickFormatter={(v: number) => formatDuration(v)}
-            tick={{ fill: COLORS.axis, fontSize: 11 }}
+            tick={chartAxisTick}
             axisLine={false}
             tickLine={false}
             width={50}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
-            wrapperStyle={{ fontSize: 11, color: COLORS.axis }}
+            wrapperStyle={{ fontSize: 11, color: 'var(--text-tertiary)' }}
           />
           <Line
             type="monotone"
@@ -256,10 +229,10 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
       </ResponsiveContainer>
 
       <div style={summaryRowStyles}>
-        {todayAvg != null && (
+        {latestAvg != null && (
           <div style={summaryItemStyles}>
-            <span style={summaryLabelStyles}>Today</span>
-            <span style={summaryValueStyles}>{formatDuration(todayAvg)}</span>
+            <span style={summaryLabelStyles}>Latest</span>
+            <span style={summaryValueStyles}>{formatDuration(latestAvg)}</span>
           </div>
         )}
         {avg7d != null && (

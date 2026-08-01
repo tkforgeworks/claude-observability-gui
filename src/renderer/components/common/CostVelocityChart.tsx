@@ -222,11 +222,11 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
             tickLine={false}
             width={50}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(204, 136, 68, 0.1)' }} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }} />
           <Legend wrapperStyle={{ fontSize: 11, color: COLORS.axis }} />
           <Bar dataKey="costUsd" name="Daily cost" radius={[2, 2, 0, 0]}>
             {chartData.map((d, i) => (
-              <Cell key={i} fill={d.costUsd > 0 ? (i % 2 === 0 ? COLORS.bar : COLORS.barAlt) : COLORS.barZero} />
+              <Cell key={i} fill={d.costUsd > 0 ? COLORS.bar : COLORS.barZero} />
             ))}
           </Bar>
           <Line

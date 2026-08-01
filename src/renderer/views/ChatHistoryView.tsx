@@ -402,7 +402,7 @@ export default function ChatHistoryView(): React.JSX.Element {
               allowDecimals={false}
               width={36}
             />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(102, 102, 204, 0.08)' }} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }} />
             <Bar
               dataKey="count"
               radius={[3, 3, 0, 0]}
@@ -539,7 +539,7 @@ function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDro
         fontSize: 13,
         fontFamily: '"Poppins", sans-serif',
         cursor: 'pointer',
-        backgroundColor: dragOver ? 'rgba(102, 102, 204, 0.08)' : 'transparent',
+        backgroundColor: dragOver ? 'rgba(168, 85, 247, 0.08)' : 'transparent',
         transition: 'border-color 0.15s, background-color 0.15s',
       }}
       onClick={onClick}
