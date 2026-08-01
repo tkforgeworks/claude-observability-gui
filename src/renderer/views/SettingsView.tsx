@@ -231,6 +231,39 @@ function LaunchOnStartupSection(): React.JSX.Element {
   );
 }
 
+function WindowBehaviorSection(): React.JSX.Element {
+  const [minimizeToTray, setMinimizeToTray] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    window.api.settings.get().then((s) => setMinimizeToTray(s.minimizeToTrayOnClose));
+  }, []);
+
+  const handleToggle = async () => {
+    const newValue = !minimizeToTray;
+    setMinimizeToTray(newValue);
+    await window.api.settings.update({ minimizeToTrayOnClose: newValue });
+  };
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
+        Window
+      </h3>
+      {minimizeToTray !== null && (
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', cursor: 'pointer', fontFamily: '"Poppins", sans-serif' }}>
+          <input
+            type="checkbox"
+            checked={minimizeToTray}
+            onChange={handleToggle}
+            style={{ accentColor: 'var(--purple-primary)' }}
+          />
+          Keep running in the system tray when I close the window
+        </label>
+      )}
+    </div>
+  );
+}
+
 function NotificationsSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
@@ -322,6 +355,7 @@ function GeneralTab(): React.JSX.Element {
       </div>
 
       <LaunchOnStartupSection />
+      <WindowBehaviorSection />
 
       <NotificationsSection />
 

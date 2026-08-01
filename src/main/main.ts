@@ -66,12 +66,16 @@ function createMainWindow(): BrowserWindow {
     mainWindow?.show();
   });
 
-  // Minimize to tray on close instead of quitting
+  // Close behavior (CGUI-62): hide to tray or quit per the user's setting.
+  // Read at close time so a change in Settings applies without a restart.
   mainWindow.on('close', (event) => {
-    if (!isQuitting) {
+    if (isQuitting) return;
+    if (loadSettings().minimizeToTrayOnClose) {
       event.preventDefault();
       mainWindow?.hide();
-      // TODO: check settings.minimizeToTrayOnClose — if false, allow quit
+    } else {
+      // Let the close proceed as a full quit, same as tray Quit
+      isQuitting = true;
     }
   });
 
