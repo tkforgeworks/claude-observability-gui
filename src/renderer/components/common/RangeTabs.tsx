@@ -13,6 +13,7 @@ export default function RangeTabs({ ranges, active, onChange }: RangeTabsProps):
         <button
           key={r}
           className={'range-tab' + (active === r ? ' active' : '')}
+          aria-pressed={active === r}
           onClick={() => onChange(r)}
         >
           {r}

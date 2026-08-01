@@ -4,6 +4,7 @@ import EmptyState from '../components/common/EmptyState';
 import Loading from '../components/common/Loading';
 import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
@@ -95,8 +96,6 @@ export default function ProjectsView(): React.JSX.Element {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
-
   if (loading && !fetched) {
     return (
       <div className="page">
@@ -149,25 +148,14 @@ export default function ProjectsView(): React.JSX.Element {
           <table className="data">
             <thead>
               <tr>
-                <th onClick={() => handleSort('displayName')} style={{ cursor: 'pointer' }}>
-                  Project{sortIndicator('displayName')}
-                </th>
-                <th className="num" onClick={() => handleSort('totalCostUsd')} style={{ cursor: 'pointer' }}>
-                  Cost{sortIndicator('totalCostUsd')}
-                </th>
-                <th className="num" onClick={() => handleSort('codeSessionCount')} style={{ cursor: 'pointer' }}>
-                  Code{sortIndicator('codeSessionCount')}
-                </th>
-                <th className="num" onClick={() => handleSort('coworkSessionCount')} style={{ cursor: 'pointer' }}>
-                  Cowork{sortIndicator('coworkSessionCount')}
-                </th>
+                <th aria-hidden="true" style={{ width: 24 }} />
+                <SortableTh label="Project" active={sortKey === 'displayName'} dir={sortDir} onSort={() => handleSort('displayName')} />
+                <SortableTh label="Cost" className="num" active={sortKey === 'totalCostUsd'} dir={sortDir} onSort={() => handleSort('totalCostUsd')} />
+                <SortableTh label="Code" className="num" active={sortKey === 'codeSessionCount'} dir={sortDir} onSort={() => handleSort('codeSessionCount')} />
+                <SortableTh label="Cowork" className="num" active={sortKey === 'coworkSessionCount'} dir={sortDir} onSort={() => handleSort('coworkSessionCount')} />
                 <th className="num">Tokens (in/out)</th>
-                <th className="num" onClick={() => handleSort('activeDays')} style={{ cursor: 'pointer' }}>
-                  Active Days{sortIndicator('activeDays')}
-                </th>
-                <th onClick={() => handleSort('lastActiveAt')} style={{ cursor: 'pointer' }}>
-                  Last Active{sortIndicator('lastActiveAt')}
-                </th>
+                <SortableTh label="Active Days" className="num" active={sortKey === 'activeDays'} dir={sortDir} onSort={() => handleSort('activeDays')} />
+                <SortableTh label="Last Active" active={sortKey === 'lastActiveAt'} dir={sortDir} onSort={() => handleSort('lastActiveAt')} />
               </tr>
             </thead>
             <tbody>
@@ -176,9 +164,23 @@ export default function ProjectsView(): React.JSX.Element {
                 return (
                   <React.Fragment key={p.projectPath}>
                     <tr
+                      className={expandedProject === p.projectPath ? 'active' : undefined}
                       onClick={() => setExpandedProject(expandedProject === p.projectPath ? null : p.projectPath)}
                       style={{ cursor: 'pointer' }}
                     >
+                      <td style={{ width: 24, textAlign: 'center' }}>
+                        <button
+                          aria-expanded={expandedProject === p.projectPath}
+                          aria-label={`${expandedProject === p.projectPath ? 'Collapse' : 'Expand'} ${p.displayName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedProject(expandedProject === p.projectPath ? null : p.projectPath);
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                        >
+                          {expandedProject === p.projectPath ? '▾' : '▸'}
+                        </button>
+                      </td>
                       <td>
                         <span className="path">
                           {leaf ? (
@@ -199,7 +201,7 @@ export default function ProjectsView(): React.JSX.Element {
                     </tr>
                     {expandedProject === p.projectPath && (
                       <tr>
-                        <td colSpan={7} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
+                        <td colSpan={8} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
                           <ProjectDetail project={p} />
                         </td>
                       </tr>

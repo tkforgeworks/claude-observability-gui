@@ -4,6 +4,7 @@ import EmptyState from '../components/common/EmptyState';
 import Loading from '../components/common/Loading';
 import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import StatusBanner from '../components/common/StatusBanner';
 import HBar from '../components/charts/HBar';
 import Donut from '../components/charts/Donut';
@@ -171,8 +172,6 @@ export default function CodeSessionsView(): React.JSX.Element {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
-
   if (loading && !fetched) {
     return (
       <div className="page">
@@ -256,14 +255,14 @@ export default function CodeSessionsView(): React.JSX.Element {
           <table className="data">
             <thead>
               <tr>
-                <th onClick={() => handleSort('project_path')} style={{ cursor: 'pointer' }}>Project{sortIndicator('project_path')}</th>
-                <th onClick={() => handleSort('model')} style={{ cursor: 'pointer' }}>Model{sortIndicator('model')}</th>
-                <th className="num" onClick={() => handleSort('input_tokens')} style={{ cursor: 'pointer' }}>Input{sortIndicator('input_tokens')}</th>
-                <th className="num" onClick={() => handleSort('output_tokens')} style={{ cursor: 'pointer' }}>Output{sortIndicator('output_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cache_creation_tokens')} style={{ cursor: 'pointer' }}>Cache W{sortIndicator('cache_creation_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cache_read_tokens')} style={{ cursor: 'pointer' }}>Cache R{sortIndicator('cache_read_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cost_usd')} style={{ cursor: 'pointer' }}>Cost{sortIndicator('cost_usd')}</th>
-                <th onClick={() => handleSort('started_at')} style={{ cursor: 'pointer' }}>Date{sortIndicator('started_at')}</th>
+                <SortableTh label="Project" active={sortKey === 'project_path'} dir={sortDir} onSort={() => handleSort('project_path')} />
+                <SortableTh label="Model" active={sortKey === 'model'} dir={sortDir} onSort={() => handleSort('model')} />
+                <SortableTh label="Input" className="num" active={sortKey === 'input_tokens'} dir={sortDir} onSort={() => handleSort('input_tokens')} />
+                <SortableTh label="Output" className="num" active={sortKey === 'output_tokens'} dir={sortDir} onSort={() => handleSort('output_tokens')} />
+                <SortableTh label="Cache W" className="num" active={sortKey === 'cache_creation_tokens'} dir={sortDir} onSort={() => handleSort('cache_creation_tokens')} />
+                <SortableTh label="Cache R" className="num" active={sortKey === 'cache_read_tokens'} dir={sortDir} onSort={() => handleSort('cache_read_tokens')} />
+                <SortableTh label="Cost" className="num" active={sortKey === 'cost_usd'} dir={sortDir} onSort={() => handleSort('cost_usd')} />
+                <SortableTh label="Date" active={sortKey === 'started_at'} dir={sortDir} onSort={() => handleSort('started_at')} />
               </tr>
             </thead>
             <tbody>

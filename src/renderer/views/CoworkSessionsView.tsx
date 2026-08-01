@@ -4,6 +4,7 @@ import EmptyState from '../components/common/EmptyState';
 import Loading from '../components/common/Loading';
 import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
@@ -184,11 +185,6 @@ export default function CoworkSessionsView(): React.JSX.Element {
     }
   };
 
-  const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return '';
-    return sortDir === 'asc' ? ' ▲' : ' ▼';
-  };
-
   const handleExpand = (sessionId: string) => {
     if (expandedId === sessionId) {
       setExpandedId(null);
@@ -248,12 +244,12 @@ export default function CoworkSessionsView(): React.JSX.Element {
           <table className="data">
             <thead>
               <tr>
-                <th style={{ width: 28 }} />
-                <th onClick={() => handleSort('title')} style={{ cursor: 'pointer' }}>Title{sortIndicator('title')}</th>
-                <th onClick={() => handleSort('started_at')} style={{ cursor: 'pointer' }}>Date{sortIndicator('started_at')}</th>
-                <th className="num" onClick={() => handleSort('turn_count')} style={{ cursor: 'pointer' }}>Turns{sortIndicator('turn_count')}</th>
-                <th className="num" onClick={() => handleSort('duration')} style={{ cursor: 'pointer' }}>Duration{sortIndicator('duration')}</th>
-                <th className="num" onClick={() => handleSort('avg_turn')} style={{ cursor: 'pointer' }}>Avg Turn{sortIndicator('avg_turn')}</th>
+                <th style={{ width: 28 }}><span className="visually-hidden">Expand</span></th>
+                <SortableTh label="Title" active={sortKey === 'title'} dir={sortDir} onSort={() => handleSort('title')} />
+                <SortableTh label="Date" active={sortKey === 'started_at'} dir={sortDir} onSort={() => handleSort('started_at')} />
+                <SortableTh label="Turns" className="num" active={sortKey === 'turn_count'} dir={sortDir} onSort={() => handleSort('turn_count')} />
+                <SortableTh label="Duration" className="num" active={sortKey === 'duration'} dir={sortDir} onSort={() => handleSort('duration')} />
+                <SortableTh label="Avg Turn" className="num" active={sortKey === 'avg_turn'} dir={sortDir} onSort={() => handleSort('avg_turn')} />
               </tr>
             </thead>
             <tbody>
@@ -270,8 +266,18 @@ export default function CoworkSessionsView(): React.JSX.Element {
                       style={{ cursor: 'pointer' }}
                       onClick={() => handleExpand(s.session_id)}
                     >
-                      <td style={{ color: 'var(--text-tertiary)', fontSize: 11, textAlign: 'center' }}>
-                        {isExpanded ? '▾' : '▸'}
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExpand(s.session_id);
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                        >
+                          {isExpanded ? '▾' : '▸'}
+                        </button>
                       </td>
                       <td>
                         <span className="path">

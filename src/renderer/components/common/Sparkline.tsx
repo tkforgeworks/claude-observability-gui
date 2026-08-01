@@ -27,12 +27,14 @@ export default function Sparkline({
   height = 36,
   filled = true,
 }: SparklineProps): React.JSX.Element | null {
-  if (values.length < 2) return null;
+  // Hooks must run unconditionally — calling useId after the early return
+  // throws "Rendered more hooks" when values crosses the threshold (CGUI-68)
   const gradientId = useId();
+  if (values.length < 2) return null;
   const path = buildSparkPath(values, width, height, 2);
   const area = path + ` L${width - 2},${height} L2,${height} Z`;
   return (
-    <svg className="stat-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none">
+    <svg className="stat-spark" viewBox={`0 0 ${width} ${height}`} preserveAspectRatio="none" aria-hidden="true">
       <defs>
         <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor={color} stopOpacity="0.35" />

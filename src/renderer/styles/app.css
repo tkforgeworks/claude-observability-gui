@@ -329,6 +329,20 @@ table.data td {
 }
 table.data tr:last-child td { border-bottom: none; }
 table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
+/* Expanded/selected row highlight (CGUI-68 — the .active class was previously
+   applied by views but had no rule) */
+table.data tr.active td { background: var(--purple-tint-soft); }
+
+/* Screen-reader-only text (CGUI-68) */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .path {
   font-family: "JetBrains Mono", monospace;

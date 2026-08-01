@@ -82,6 +82,8 @@ function DropdownMenu({
   menuBarHover: boolean;
 }): React.JSX.Element {
   const ref = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const popupRef = useRef<HTMLDivElement>(null);
   const [hoveredIndex, setHoveredIndex] = useState(-1);
 
   useEffect(() => {
@@ -95,12 +97,36 @@ function DropdownMenu({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen, onClose]);
 
+  // Escape closes and returns focus; arrows move through the items (CGUI-68)
+  const handleMenuKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      onClose();
+      buttonRef.current?.focus();
+      return;
+    }
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      const items = popupRef.current?.querySelectorAll<HTMLButtonElement>('button');
+      if (!items?.length) return;
+      const focused = Array.from(items).indexOf(document.activeElement as HTMLButtonElement);
+      const delta = e.key === 'ArrowDown' ? 1 : -1;
+      const next = (focused + delta + items.length) % items.length;
+      items[next].focus();
+    }
+  };
+
   return (
-    <div ref={ref} style={{ position: 'relative', WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+    <div ref={ref} style={{ position: 'relative', WebkitAppRegion: 'no-drag' } as React.CSSProperties} onKeyDown={handleMenuKeyDown}>
       <button
+        ref={buttonRef}
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
         onClick={onToggle}
         onMouseEnter={(e) => {
-          if (menuBarHover) onToggle();
+          // Only hand off when hovering a DIFFERENT menu's label — re-entering
+          // the open menu's own button must not toggle it closed (CGUI-68)
+          if (menuBarHover && !isOpen) onToggle();
           (e.currentTarget as HTMLElement).style.backgroundColor = 'var(--border-soft)';
         }}
         onMouseLeave={(e) => {
@@ -114,13 +140,15 @@ function DropdownMenu({
           padding: '0 8px',
           height: TITLE_BAR_HEIGHT,
           cursor: 'default',
-          outline: 'none',
         }}
       >
         {menu.label}
       </button>
       {isOpen && (
         <div
+          ref={popupRef}
+          role="menu"
+          aria-label={menu.label}
           style={{
             position: 'absolute',
             top: TITLE_BAR_HEIGHT,
@@ -140,6 +168,7 @@ function DropdownMenu({
                 <div style={{ height: 1, backgroundColor: 'var(--border)', margin: '4px 0' }} />
               )}
               <button
+                role="menuitem"
                 onClick={() => {
                   item.action();
                   onClose();
@@ -156,7 +185,6 @@ function DropdownMenu({
                   padding: '6px 24px',
                   textAlign: 'left',
                   cursor: 'default',
-                  outline: 'none',
                 }}
               >
                 {item.label}
@@ -204,7 +232,6 @@ function WindowButton({
         color: hovered && hoverColor ? hoverColor : 'var(--text-secondary)',
         border: 'none',
         cursor: 'default',
-        outline: 'none',
       } as React.CSSProperties}
     >
       {children}
@@ -270,12 +297,12 @@ export default function TitleBar(): React.JSX.Element {
       {/* App icon + menus */}
       <div style={{ display: 'flex', alignItems: 'center', flexShrink: 0 }}>
         <span
+          aria-hidden="true"
           style={{
-            WebkitAppRegion: 'no-drag',
             padding: '0 10px',
             fontSize: 14,
             color: 'var(--text-tertiary)',
-          } as React.CSSProperties}
+          }}
         >
           ◈
         </span>
@@ -313,7 +340,7 @@ export default function TitleBar(): React.JSX.Element {
         <WindowButton onClick={() => window.api.windowControls.minimize()} label="Minimize">
           <MinimizeIcon />
         </WindowButton>
-        <WindowButton onClick={() => window.api.windowControls.maximize()} label="Maximize">
+        <WindowButton onClick={() => window.api.windowControls.maximize()} label={isMaximized ? 'Restore' : 'Maximize'}>
           {isMaximized ? <RestoreIcon /> : <MaximizeIcon />}
         </WindowButton>
         <WindowButton

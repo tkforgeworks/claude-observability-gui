@@ -78,17 +78,19 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
 // App mark (CGUI-57): same wireframe-gear geometry as assets/icon.svg, inlined
 // so the sidebar mark matches the installer/taskbar/tray icon exactly.
 function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
+  // useId keeps the gradient unique if the mark ever renders twice (CGUI-68)
+  const gradientId = React.useId();
   return (
     <svg viewBox="0 0 256 256" width={size} height={size} aria-hidden="true">
       <defs>
-        <linearGradient id="gear-mark-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a855f7" />
           <stop offset="100%" stopColor="#6366f1" />
         </linearGradient>
       </defs>
       <g
         fill="none"
-        stroke="url(#gear-mark-gradient)"
+        stroke={`url(#${gradientId})`}
         strokeWidth={24}
         strokeLinejoin="round"
         strokeLinecap="round"

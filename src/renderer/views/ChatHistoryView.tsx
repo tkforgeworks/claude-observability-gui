@@ -13,6 +13,7 @@ import Loading from '../components/common/Loading';
 import ErrorState from '../components/common/ErrorState';
 import StatusBanner from '../components/common/StatusBanner';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import HBar from '../components/charts/HBar';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { Icons } from '../components/common/Icons';
@@ -102,17 +103,16 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
 
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hasMore = sorted.length > COLLAPSED_LIMIT;
-  const arrow = (key: ProjectSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <table className="data">
         <thead>
           <tr>
-            <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>Name{arrow('name')}</th>
-            <th className="num" onClick={() => handleSort('doc_count')} style={{ cursor: 'pointer' }}>Docs{arrow('doc_count')}</th>
-            <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Created{arrow('created_at')}</th>
-            <th className="num" onClick={() => handleSort('lifespan_days')} style={{ cursor: 'pointer' }}>Lifespan{arrow('lifespan_days')}</th>
+            <SortableTh label="Name" active={sortKey === 'name'} dir={sortDir} onSort={() => handleSort('name')} />
+            <SortableTh label="Docs" className="num" active={sortKey === 'doc_count'} dir={sortDir} onSort={() => handleSort('doc_count')} />
+            <SortableTh label="Created" active={sortKey === 'created_at'} dir={sortDir} onSort={() => handleSort('created_at')} />
+            <SortableTh label="Lifespan" className="num" active={sortKey === 'lifespan_days'} dir={sortDir} onSort={() => handleSort('lifespan_days')} />
           </tr>
         </thead>
         <tbody>
@@ -543,11 +543,19 @@ function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDro
         transition: 'border-color 0.15s, background-color 0.15s',
       }}
       onClick={onClick}
+      onKeyDown={(e) => {
+        // role="button" needs Enter/Space to actually activate (CGUI-68)
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       role="button"
       tabIndex={0}
+      aria-busy={importing}
       aria-label="Drop claude.ai export ZIP here or click to browse"
     >
       {importing ? (

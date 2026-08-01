@@ -71,14 +71,33 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [location.key, location.state]);
 
+  // ARIA tabs pattern (CGUI-68): roving tabindex + arrow-key navigation
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    const idx = TABS.findIndex(t => t.id === activeTab);
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = (idx + 1) % TABS.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + TABS.length) % TABS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = TABS.length - 1;
+    if (next != null) {
+      e.preventDefault();
+      const id = TABS[next].id;
+      setActiveTab(id);
+      document.getElementById(`settings-tab-${id}`)?.focus();
+    }
+  };
+
   return (
     <div className="page">
-      <div style={tabBarStyles} role="tablist">
+      <div style={tabBarStyles} role="tablist" aria-label="Settings sections" onKeyDown={handleTabKeyDown}>
         {TABS.map(({ id, label }) => (
           <button
             key={id}
+            id={`settings-tab-${id}`}
             role="tab"
             aria-selected={activeTab === id}
+            aria-controls={`settings-panel-${id}`}
+            tabIndex={activeTab === id ? 0 : -1}
             style={tabButtonStyles(activeTab === id)}
             onClick={() => setActiveTab(id)}
           >
@@ -87,7 +106,7 @@ export default function SettingsView(): React.JSX.Element {
         ))}
       </div>
 
-      <div role="tabpanel">
+      <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
         {activeTab === 'general'    && <GeneralTab />}
         {activeTab === 'remoteSync' && <RemoteSyncTab />}
         {activeTab === 'dashboard'  && <DashboardTab />}
@@ -769,9 +788,11 @@ const secondaryButtonStyles: React.CSSProperties = {
 
 function SortableItem({
   id,
+  label,
   children,
 }: {
   id: string;
+  label: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -783,7 +804,9 @@ function SortableItem({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <span style={dragHandleStyles} {...attributes} {...listeners}>⠿</span>
+      {/* dnd-kit gives the handle button semantics; without a label it
+          announces as the literal "⠿" glyph (CGUI-68) */}
+      <span style={dragHandleStyles} aria-label={`Reorder ${label}`} {...attributes} {...listeners}>⠿</span>
       {children}
     </div>
   );
@@ -923,18 +946,26 @@ function DashboardTab(): React.JSX.Element {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleViewDragEnd}>
         <SortableContext items={localConfig.views.map(v => v.id)} strategy={verticalListSortingStrategy}>
           {localConfig.views.map(v => (
-            <SortableItem key={v.id} id={v.id}>
+            <SortableItem key={v.id} id={v.id} label={VIEW_LABELS[v.id] ?? v.id}>
               <span style={{ flex: 1 }}>{VIEW_LABELS[v.id] ?? v.id}</span>
-              <span
+              <button
+                type="button"
+                role="switch"
+                aria-checked={v.visible}
+                aria-label={`Show ${VIEW_LABELS[v.id] ?? v.id} in sidebar`}
                 title={v.defaultLanding && v.visible ? 'Cannot hide the landing view' : (v.visible ? 'Visible' : 'Hidden')}
-                style={toggleStyles(v.visible)}
+                style={{ ...toggleStyles(v.visible), border: 'none', padding: 0 }}
                 onClick={() => toggleViewVisibility(v.id)}
               >
                 <span style={toggleKnobStyles(v.visible)} />
-              </span>
-              <span
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={v.defaultLanding}
+                aria-label={`Set ${VIEW_LABELS[v.id] ?? v.id} as landing view`}
                 title="Landing view"
-                style={radioStyles(v.defaultLanding)}
+                style={{ ...radioStyles(v.defaultLanding), padding: 0 }}
                 onClick={() => setLandingView(v.id)}
               />
             </SortableItem>
@@ -947,15 +978,19 @@ function DashboardTab(): React.JSX.Element {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWidgetDragEnd}>
         <SortableContext items={localConfig.trendsWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
           {localConfig.trendsWidgets.map(w => (
-            <SortableItem key={w.id} id={w.id}>
+            <SortableItem key={w.id} id={w.id} label={WIDGET_LABELS[w.id] ?? w.id}>
               <span style={{ flex: 1 }}>{WIDGET_LABELS[w.id] ?? w.id}</span>
-              <span
+              <button
+                type="button"
+                role="switch"
+                aria-checked={w.visible}
+                aria-label={`Show ${WIDGET_LABELS[w.id] ?? w.id} widget`}
                 title={w.visible ? 'Visible' : 'Hidden'}
-                style={toggleStyles(w.visible)}
+                style={{ ...toggleStyles(w.visible), border: 'none', padding: 0 }}
                 onClick={() => toggleWidgetVisibility(w.id)}
               >
                 <span style={toggleKnobStyles(w.visible)} />
-              </span>
+              </button>
             </SortableItem>
           ))}
         </SortableContext>
