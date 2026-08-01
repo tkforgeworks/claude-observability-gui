@@ -75,6 +75,31 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
   };
 }
 
+// App mark (CGUI-57): same wireframe-gear geometry as assets/icon.svg, inlined
+// so the sidebar mark matches the installer/taskbar/tray icon exactly.
+function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
+  return (
+    <svg viewBox="0 0 256 256" width={size} height={size} aria-hidden="true">
+      <defs>
+        <linearGradient id="gear-mark-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6366f1" />
+        </linearGradient>
+      </defs>
+      <g
+        fill="none"
+        stroke="url(#gear-mark-gradient)"
+        strokeWidth={24}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        <path d="M105.13 57.62 L109.23 23.68 L146.77 23.68 L150.87 57.62 L177.52 73.01 L208.96 59.58 L227.73 92.09 L200.38 112.61 L200.38 143.39 L227.73 163.91 L208.96 196.42 L177.52 182.99 L150.87 198.38 L146.77 232.32 L109.23 232.32 L105.13 198.38 L78.48 182.99 L47.04 196.42 L28.27 163.91 L55.62 143.39 L55.62 112.61 L28.27 92.09 L47.04 59.58 L78.48 73.01 Z" />
+        <circle cx="128" cy="128" r="34" />
+      </g>
+    </svg>
+  );
+}
+
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
@@ -103,7 +128,7 @@ export default function Sidebar(): React.JSX.Element {
     <nav style={sidebarStyles} aria-label="Main navigation">
       {/* Brand block */}
       <div className="sidebar-brand">
-        <div className="logo">TK</div>
+        <div className="logo"><GearMark size={20} /></div>
         <div className="name">
           COG
           <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>

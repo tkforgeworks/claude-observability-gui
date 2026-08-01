@@ -74,12 +74,12 @@ button { font-family: inherit; cursor: pointer; }
 }
 .sidebar-brand .logo {
   width: 26px; height: 26px;
-  background: var(--purple-primary);
-  color: #0f172a;
+  /* Gear mark is a gradient-stroke SVG (CGUI-57) — transparent tile with a
+     soft border instead of the old solid purple "TK" chip */
+  background: transparent;
+  border: 1px solid var(--purple-tint-soft);
   border-radius: 6px;
   display: grid; place-items: center;
-  font-family: "Poppins"; font-weight: 700; font-size: 12px;
-  letter-spacing: -0.02em;
   flex-shrink: 0;
 }
 .sidebar-brand .name {
