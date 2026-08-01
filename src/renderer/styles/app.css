@@ -20,6 +20,13 @@
   --border:           #334155;
   --border-soft:      #1e293b;
 
+  /* Elevated surface — alias of --background-light, the established
+     card/topbar color (coincidentally equal to --border-soft, which
+     plays a different role). Recessed surface — matches
+     --background-deep, the only existing darker/inset color. */
+  --surface:          #1e293b;
+  --surface-sunken:   #0a0f1f;
+
   --chart-1: #a855f7;
   --chart-2: #8b5cf6;
   --chart-3: #6366f1;
