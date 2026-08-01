@@ -219,6 +219,8 @@ button { font-family: inherit; cursor: pointer; }
   gap: 4px;
   position: relative;
   overflow: hidden;
+  /* Size container so value/unit text can scale with the card (CGUI-59) */
+  container-type: inline-size;
 }
 .stat .label {
   font-size: 10px;
@@ -235,14 +237,16 @@ button { font-family: inherit; cursor: pointer; }
 .stat .value {
   font-family: "JetBrains Mono", monospace;
   font-weight: 500;
-  font-size: 30px;
+  /* Full 30px on comfortable card widths; shrinks with the card below that
+     so value + unit never clip at the 900px window minimum (CGUI-59) */
+  font-size: clamp(18px, 16.5cqw, 30px);
   color: var(--text-primary);
   line-height: 1.15;
   letter-spacing: -0.02em;
   margin-top: 6px;
 }
 .stat .value .unit {
-  font-size: 14px;
+  font-size: clamp(11px, 7.5cqw, 14px);
   color: var(--text-tertiary);
   margin-left: 3px;
   font-weight: 400;
