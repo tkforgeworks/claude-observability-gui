@@ -90,10 +90,16 @@ Jest + ts-jest, test environment: node. Tests live in `src/main/__tests__/`. Con
 
 ## Data storage
 
-App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path (dev: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`; packaged: `%APPDATA%\<productName>\ClaudeUsageMonitor\`):
+App data lives in a `ClaudeUsageMonitor` subdirectory of Electron's userData path. `package.json` has no top-level `productName` (the electron-builder `build.productName` is not read by Electron's runtime), so userData derives from `name` in both modes; `main.ts` appends `-dev` when not packaged (CGUI-64) so dev never touches installed-app data:
+- Dev (`npm start`): `%APPDATA%\claude-usage-monitor-dev\ClaudeUsageMonitor\`
+- Packaged/installed: `%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\`
+
+Files:
 - `settings.json` — user preferences
 - `dashboard.json` — view/widget configuration
 - `usage.db` — SQLite database (+ WAL files)
+
+A fresh dev environment starts with an empty DB. Code sessions repopulate automatically on the first JSONL scan; Cowork/LogWatcher history, usage snapshots, chat imports, and settings do not — seed them via Settings → General → data export/import (CGUI-49) or a one-time copy of the `ClaudeUsageMonitor` subfolder from the prod path.
 
 ## Packaging
 

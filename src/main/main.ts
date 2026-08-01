@@ -93,6 +93,15 @@ if (process.platform === 'win32') {
   app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor');
 }
 
+// Dev/prod data isolation (CGUI-64): package.json has no top-level
+// productName, so dev and the installed build otherwise resolve the SAME
+// userData directory (%APPDATA%\claude-usage-monitor) and fight over the
+// Chromium cache profile and usage.db. Must run before anything consumes
+// userData (config files, database, window/session).
+if (!app.isPackaged) {
+  app.setPath('userData', app.getPath('userData') + '-dev');
+}
+
 app.whenReady().then(() => {
   // Create config files with defaults if they don't exist
   ensureConfigFiles();
