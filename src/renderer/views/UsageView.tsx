@@ -2,8 +2,11 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { UsageSnapshot } from '../../shared/ipc-types';
 import StatCard from '../components/common/StatCard';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
 
 const RANGE_HOURS: Record<string, number> = {
   '24h': 24,
@@ -89,9 +92,6 @@ function deriveResetRows(rows: HistoryRow[], nowMs: number): ResetRow[] {
 }
 
 export default function UsageView(): React.JSX.Element {
-  const [latest, setLatest] = useState<UsageSnapshot | null>(null);
-  const [snapshots, setSnapshots] = useState<UsageSnapshot[]>([]);
-  const [loading, setLoading] = useState(true);
   const { setRangeControls, clearRangeControls } = useTopbar();
   const [rangeLabel, setRangeLabel] = useState('24h');
 
@@ -106,25 +106,21 @@ export default function UsageView(): React.JSX.Element {
 
   const hours = RANGE_HOURS[rangeLabel] ?? 24;
 
-  const fetchData = useCallback(() => {
-    return Promise.all([
-      window.api.usageSnapshots.getLatest().then(setLatest),
-      window.api.usageSnapshots.getRecent(hours).then(setSnapshots),
-    ]).catch(err => {
-      console.error('[UsageView] fetch failed:', err);
-    });
-  }, [hours]);
+  const { data, loading, error, refetch } = useApi(
+    () =>
+      Promise.all([
+        window.api.usageSnapshots.getLatest(),
+        window.api.usageSnapshots.getRecent(hours),
+      ]),
+    [hours]
+  );
+  const [latest, snapshots] = data ?? [null, []];
 
   useEffect(() => {
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
-
-  useEffect(() => {
-    return window.api.onUsageSnapshot((snapshot) => {
-      setLatest(snapshot);
-      fetchData();
+    return window.api.onUsageSnapshot(() => {
+      refetch();
     });
-  }, [fetchData]);
+  }, [refetch]);
 
   // Oldest-first, matching getRecent ordering; pct zeroed when the window
   // had already reset at capture time (stale resets_at in the source file).
@@ -137,8 +133,20 @@ export default function UsageView(): React.JSX.Element {
     [snapshots]
   );
 
-  if (loading) {
-    return <div style={{ padding: 24, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (loading && !data) {
+    return (
+      <div style={{ padding: 24 }}>
+        <Loading label="usage data" compact />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div style={{ padding: 24 }}>
+        <ErrorState what="usage data" error={error} onRetry={refetch} />
+      </div>
+    );
   }
 
   if (!latest && snapshots.length === 0) {

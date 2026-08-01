@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { CoworkSession, CoworkTurn } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
 
 type SortKey = 'title' | 'started_at' | 'turn_count' | 'duration' | 'avg_turn';
 type SortDir = 'asc' | 'desc';
@@ -96,14 +99,13 @@ function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | 
 }
 
 export default function CoworkSessionsView(): React.JSX.Element {
-  const [sessions, setSessions] = useState<CoworkSession[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('30d');
   const [sortKey, setSortKey] = useState<SortKey>('started_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedTurns, setExpandedTurns] = useState<CoworkTurn[]>([]);
   const [turnsLoading, setTurnsLoading] = useState(false);
+  const [turnsError, setTurnsError] = useState<Error | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
   const rangeDays = RANGE_MAP[rangeLabel] ?? 30;
@@ -117,26 +119,22 @@ export default function CoworkSessionsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchSessions = useCallback(() => {
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => {
     const from = daysAgo(rangeDays);
     const to = new Date().toISOString();
-    return window.api.coworkSessions.getAll({ from, to })
-      .then(setSessions)
-      .catch(err => {
-        console.error('[CoworkSessionsView] fetch failed:', err);
-        setSessions([]);
-      });
+    return window.api.coworkSessions.getAll({ from, to });
   }, [rangeDays]);
+  const sessions = fetched ?? [];
 
   useEffect(() => {
-    setLoading(true);
-    fetchSessions().finally(() => setLoading(false));
-  }, [fetchSessions]);
-
-  useEffect(() => {
-    const unsub = window.api.onLogWatcherEvent?.(() => { fetchSessions(); });
+    const unsub = window.api.onLogWatcherEvent?.(() => { refetch(); });
     return () => { unsub?.(); };
-  }, [fetchSessions]);
+  }, [refetch]);
 
   const getSortValue = useCallback((s: CoworkSession, key: SortKey): string | number | null => {
     switch (key) {
@@ -199,19 +197,28 @@ export default function CoworkSessionsView(): React.JSX.Element {
     }
     setExpandedId(sessionId);
     setTurnsLoading(true);
+    setTurnsError(null);
     window.api.coworkSessions.getTurns(sessionId)
       .then(setExpandedTurns)
-      .catch(err => {
-        console.error('[CoworkSessionsView] fetch turns failed:', err);
+      .catch((err: unknown) => {
         setExpandedTurns([]);
+        setTurnsError(err instanceof Error ? err : new Error(String(err)));
       })
       .finally(() => setTurnsLoading(false));
   };
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading sessions...</div>
+        <Loading label="sessions" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="Cowork sessions" error={error} onRetry={refetch} />
       </div>
     );
   }
@@ -290,7 +297,11 @@ export default function CoworkSessionsView(): React.JSX.Element {
                       <tr>
                         <td colSpan={6} style={{ backgroundColor: 'var(--background-light)', padding: '12px 16px', borderBottom: '1px solid var(--border-soft)' }}>
                           {turnsLoading ? (
-                            <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>Loading turns...</span>
+                            <span role="status" style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Loading turns...</span>
+                          ) : turnsError ? (
+                            <span role="alert" style={{ color: 'var(--error)', fontSize: 12 }}>
+                              Couldn&apos;t load turns: {turnsError.message}
+                            </span>
                           ) : expandedTurns.length === 0 ? (
                             <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>No completed turns recorded</span>
                           ) : (

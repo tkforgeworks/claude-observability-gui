@@ -1,8 +1,10 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { HeatmapDay } from '../../shared/ipc-types';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
 
 const RANGE_MAP: Record<string, number> = {
   '3 months': 91,
@@ -17,8 +19,6 @@ function formatTokenCount(n: number): string {
 }
 
 export default function HeatmapView(): React.JSX.Element {
-  const [data, setData] = useState<HeatmapDay[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('12 months');
   const { setRangeControls, clearRangeControls } = useTopbar();
 
@@ -33,19 +33,13 @@ export default function HeatmapView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchData = useCallback(() => {
-    return window.api.analytics.getHeatmapData(rangeDays)
-      .then(setData)
-      .catch(err => {
-        console.error('[HeatmapView] fetch failed:', err);
-        setData([]);
-      });
-  }, [rangeDays]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => window.api.analytics.getHeatmapData(rangeDays), [rangeDays]);
+  const data = fetched ?? [];
 
   const totals = useMemo(() => {
     let activeDays = 0, coworkSessions = 0, codeSessions = 0;
@@ -68,10 +62,18 @@ export default function HeatmapView(): React.JSX.Element {
 
   const hasAnyData = totals.coworkSessions + totals.codeSessions > 0;
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading heatmap data...</div>
+        <Loading label="heatmap data" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="heatmap data" error={error} onRetry={refetch} />
       </div>
     );
   }

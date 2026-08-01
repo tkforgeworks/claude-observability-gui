@@ -1,9 +1,12 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { ProjectAggregate } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
 
 const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, 'All': 3650 };
 
@@ -36,8 +39,6 @@ function shortenModel(model: string): string {
 }
 
 export default function ProjectsView(): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectAggregate[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('90d');
   const [sortKey, setSortKey] = useState<SortKey>('totalCostUsd');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -55,16 +56,13 @@ export default function ProjectsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  useEffect(() => {
-    setLoading(true);
-    window.api.projects.getAggregates(rangeDays)
-      .then(setProjects)
-      .catch(err => {
-        console.error('[ProjectsView] fetch failed:', err);
-        setProjects([]);
-      })
-      .finally(() => setLoading(false));
-  }, [rangeDays]);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => window.api.projects.getAggregates(rangeDays), [rangeDays]);
+  const projects = fetched ?? [];
 
   const totals = useMemo(() => {
     let cost = 0, input = 0, output = 0, codeSessions = 0, coworkSessions = 0;
@@ -99,10 +97,18 @@ export default function ProjectsView(): React.JSX.Element {
 
   const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading projects...</div>
+        <Loading label="projects" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="project aggregates" error={error} onRetry={refetch} />
       </div>
     );
   }

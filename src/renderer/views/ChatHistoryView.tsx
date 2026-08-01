@@ -9,6 +9,8 @@ import {
   CartesianGrid,
 } from 'recharts';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatusBanner from '../components/common/StatusBanner';
 import StatCard from '../components/common/StatCard';
 import HBar from '../components/charts/HBar';
@@ -175,27 +177,27 @@ export default function ChatHistoryView(): React.JSX.Element {
   const [lastSummary, setLastSummary] = useState<ImportSummary | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const { data: counts, loading: countsLoading, refetch: refetchCounts } = useApi(
+  const { data: counts, loading: countsLoading, error: countsError, refetch: refetchCounts } = useApi(
     () => window.api.chat.getConversationCounts(groupBy),
     [groupBy]
   );
-  const { data: stats, refetch: refetchStats } = useApi(
+  const { data: stats, loading: statsLoading, error: statsError, refetch: refetchStats } = useApi(
     () => window.api.chat.getStats(),
     [lastSummary]
   );
-  const { data: projects, refetch: refetchProjects } = useApi(
+  const { data: projects, error: projectsError, refetch: refetchProjects } = useApi(
     () => window.api.chat.getProjects(),
     [lastSummary]
   );
-  const { data: memories, refetch: refetchMemories } = useApi(
+  const { data: memories, error: memoriesError, refetch: refetchMemories } = useApi(
     () => window.api.chat.getMemories(),
     [lastSummary]
   );
-  const { data: convHeatmap, refetch: refetchConvHeatmap } = useApi(
+  const { data: convHeatmap, error: convHeatmapError, refetch: refetchConvHeatmap } = useApi(
     () => window.api.chat.getConversationHeatmap(365),
     [lastSummary]
   );
-  const { data: projHeatmap, refetch: refetchProjHeatmap } = useApi(
+  const { data: projHeatmap, error: projHeatmapError, refetch: refetchProjHeatmap } = useApi(
     () => window.api.chat.getProjectHeatmap(365),
     [lastSummary]
   );
@@ -289,13 +291,35 @@ export default function ChatHistoryView(): React.JSX.Element {
     document.getElementById('chat-drop-zone')?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  if (countsLoading) {
+  // Gate on both queries that decide between empty and populated states, so a
+  // slow getStats doesn't flash the empty state before data arrives (CGUI-66)
+  if (countsLoading || statsLoading) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
+        <Loading label="chat history" />
       </div>
     );
   }
+
+  // A failed stats/counts fetch must not masquerade as "no chat history"
+  if (statsError || countsError) {
+    return (
+      <div className="page">
+        <ErrorState
+          what="chat history"
+          error={statsError ?? countsError}
+          onRetry={refetchAll}
+        />
+      </div>
+    );
+  }
+
+  const sectionErrors: { label: string; error: Error }[] = [
+    projectsError && { label: 'projects', error: projectsError },
+    memoriesError && { label: 'memories', error: memoriesError },
+    convHeatmapError && { label: 'conversation heatmap', error: convHeatmapError },
+    projHeatmapError && { label: 'project heatmap', error: projHeatmapError },
+  ].filter((e): e is { label: string; error: Error } => Boolean(e));
 
   if (!hasData) {
     return (
@@ -321,6 +345,13 @@ export default function ChatHistoryView(): React.JSX.Element {
 
   return (
     <div className="page">
+      {sectionErrors.length > 0 && (
+        <StatusBanner
+          variant="error"
+          message={`Some sections failed to load: ${sectionErrors.map(e => e.label).join(', ')}.`}
+          action={{ label: 'Retry', onClick: refetchAll }}
+        />
+      )}
       {isStale && lastImportAt && (
         <StatusBanner
           variant="warning"

@@ -1,12 +1,15 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { CodeSession, CleanupWarning, ImportSummary } from '../../shared/ipc-types';
+import type { CleanupWarning, ImportSummary } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
 import StatusBanner from '../components/common/StatusBanner';
 import HBar from '../components/charts/HBar';
 import Donut from '../components/charts/Donut';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
 
 type SortKey = 'project_path' | 'model' | 'input_tokens' | 'output_tokens' | 'cache_creation_tokens' | 'cache_read_tokens' | 'cost_usd' | 'started_at';
 type SortDir = 'asc' | 'desc';
@@ -57,8 +60,6 @@ function daysAgo(n: number): string {
 type ScanStatus = 'idle' | 'scanning' | 'complete';
 
 export default function CodeSessionsView(): React.JSX.Element {
-  const [sessions, setSessions] = useState<CodeSession[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('30d');
   const [sortKey, setSortKey] = useState<SortKey>('started_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -79,21 +80,17 @@ export default function CodeSessionsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchSessions = useCallback(() => {
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => {
     const from = daysAgo(rangeDays);
     const to = new Date().toISOString();
-    return window.api.codeSessions.getByDateRange({ from, to })
-      .then(setSessions)
-      .catch(err => {
-        console.error('[CodeSessionsView] fetch failed:', err);
-        setSessions([]);
-      });
+    return window.api.codeSessions.getByDateRange({ from, to });
   }, [rangeDays]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchSessions().finally(() => setLoading(false));
-  }, [fetchSessions]);
+  const sessions = fetched ?? [];
 
   useEffect(() => {
     window.api.codeSessions.getCleanupWarning?.()
@@ -110,14 +107,14 @@ export default function CodeSessionsView(): React.JSX.Element {
       setScanStatus('complete');
       setLastScanSummary(summary);
       setScanFading(false);
-      if (summary.newRecords > 0 || summary.updatedRecords > 0) fetchSessions();
+      if (summary.newRecords > 0 || summary.updatedRecords > 0) refetch();
       setTimeout(() => {
         setScanFading(true);
         setTimeout(() => setScanStatus('idle'), 500);
       }, 5000);
     });
     return () => { unsubStarted?.(); unsubComplete?.(); };
-  }, [fetchSessions]);
+  }, [refetch]);
 
   const sorted = useMemo(() => {
     const copy = [...sessions];
@@ -176,10 +173,18 @@ export default function CodeSessionsView(): React.JSX.Element {
 
   const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading sessions...</div>
+        <Loading label="sessions" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="Code sessions" error={error} onRetry={refetch} />
       </div>
     );
   }

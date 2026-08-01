@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
@@ -146,12 +146,33 @@ const warningBannerStyles: React.CSSProperties = {
   marginTop: 8,
 };
 
+/** Inline error text for settings mutations/fetches (CGUI-66) */
+function SettingError({ message }: { message: string | null }): React.JSX.Element | null {
+  if (!message) return null;
+  return (
+    <div role="alert" style={{ color: 'var(--error)', fontSize: 12, fontFamily: '"Poppins", sans-serif', marginTop: 6 }}>
+      {message}
+    </div>
+  );
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function LogPathSection(): React.JSX.Element {
   const [status, setStatus] = useState<LogPathStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.logPath.getStatus().then(setStatus);
+    window.api.logPath.getStatus()
+      .then(setStatus)
+      .catch((err: unknown) => setLoadError(`Couldn't read log path status: ${errMsg(err)}`));
   }, []);
+
+  if (loadError) {
+    return <SettingError message={loadError} />;
+  }
 
   if (!status) {
     return <span style={placeholderStyles}>Checking log path...</span>;
@@ -200,15 +221,24 @@ function LogPathSection(): React.JSX.Element {
 
 function LaunchOnStartupSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setEnabled(s.launchOnStartup));
+    window.api.settings.get()
+      .then((s) => setEnabled(s.launchOnStartup))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ launchOnStartup: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ launchOnStartup: newValue });
+    } catch (err) {
+      setEnabled(!newValue); // revert — the persisted value didn't change
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -227,21 +257,31 @@ function LaunchOnStartupSection(): React.JSX.Element {
           Launch Claude Usage Monitor when I sign in to Windows
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function WindowBehaviorSection(): React.JSX.Element {
   const [minimizeToTray, setMinimizeToTray] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setMinimizeToTray(s.minimizeToTrayOnClose));
+    window.api.settings.get()
+      .then((s) => setMinimizeToTray(s.minimizeToTrayOnClose))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !minimizeToTray;
     setMinimizeToTray(newValue);
-    await window.api.settings.update({ minimizeToTrayOnClose: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ minimizeToTrayOnClose: newValue });
+    } catch (err) {
+      setMinimizeToTray(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -260,21 +300,31 @@ function WindowBehaviorSection(): React.JSX.Element {
           Keep running in the system tray when I close the window
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function NotificationsSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setEnabled(s.showTrayNotifications));
+    window.api.settings.get()
+      .then((s) => setEnabled(s.showTrayNotifications))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ showTrayNotifications: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ showTrayNotifications: newValue });
+    } catch (err) {
+      setEnabled(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -293,15 +343,19 @@ function NotificationsSection(): React.JSX.Element {
           Show tray notifications (stale chat import)
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function GeneralTab(): React.JSX.Element {
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
+  const [pathsError, setPathsError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.configPaths.get().then(setPaths);
+    window.api.configPaths.get()
+      .then(setPaths)
+      .catch((err: unknown) => setPathsError(`Couldn't load config paths: ${errMsg(err)}`));
   }, []);
 
   return (
@@ -349,6 +403,8 @@ function GeneralTab(): React.JSX.Element {
               </button>
             </div>
           </>
+        ) : pathsError ? (
+          <SettingError message={pathsError} />
         ) : (
           <span style={placeholderStyles}>Loading paths...</span>
         )}
@@ -369,10 +425,22 @@ function GeneralTab(): React.JSX.Element {
 function DataMigrationSection(): React.JSX.Element {
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
   const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+    };
+  }, []);
+
+  // Success messages auto-dismiss; failures persist until the next action so
+  // an error can't silently vanish on a timer (CGUI-66)
   const showStatus = (text: string, ok: boolean) => {
+    if (statusTimer.current) clearTimeout(statusTimer.current);
     setStatus({ text, ok });
-    setTimeout(() => setStatus(null), 10_000);
+    if (ok) {
+      statusTimer.current = setTimeout(() => setStatus(null), 10_000);
+    }
   };
 
   const handleExport = async () => {
@@ -385,6 +453,8 @@ function DataMigrationSection(): React.JSX.Element {
       } else if (result.error) {
         showStatus(`Export failed: ${result.error}`, false);
       }
+    } catch (err) {
+      showStatus(`Export failed: ${errMsg(err)}`, false);
     } finally {
       setBusy(null);
     }
@@ -409,9 +479,15 @@ function DataMigrationSection(): React.JSX.Element {
           `(${s.totalSkipped} already present). Restart the app to apply imported preferences.`,
           true
         );
+      } else if (result.success) {
+        // Success with no summary (shouldn't happen, but don't stay silent)
+        showStatus('Import completed.', true);
       } else if (result.error) {
         showStatus(`Import failed: ${result.error}`, false);
       }
+      // No error + no success = user cancelled the file picker — stay silent
+    } catch (err) {
+      showStatus(`Import failed: ${errMsg(err)}`, false);
     } finally {
       setBusy(null);
     }
@@ -457,31 +533,52 @@ function UsagePollingSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [interval, setInterval] = useState<number>(300_000);
   const [retention, setRetention] = useState<number>(90);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.settings.get().then((s) => {
       setEnabled(s.usageLimitPollingEnabled);
       setInterval(s.usageLimitPollIntervalMs);
       setRetention(s.usageLimitRetentionDays);
-    });
+    }).catch((err: unknown) => setError(`Couldn't load settings: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ usageLimitPollingEnabled: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitPollingEnabled: newValue });
+    } catch (err) {
+      setEnabled(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   const handleIntervalChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const prev = interval;
     const val = Number(e.target.value);
     setInterval(val);
-    await window.api.settings.update({ usageLimitPollIntervalMs: val });
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitPollIntervalMs: val });
+    } catch (err) {
+      setInterval(prev);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   const handleRetentionChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const prev = retention;
     const val = Math.max(1, Number(e.target.value) || 90);
     setRetention(val);
-    await window.api.settings.update({ usageLimitRetentionDays: val });
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitRetentionDays: val });
+    } catch (err) {
+      setRetention(prev);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   const selectStyle: React.CSSProperties = {
@@ -542,6 +639,7 @@ function UsagePollingSection(): React.JSX.Element {
           </p>
         </div>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
@@ -773,21 +871,41 @@ function DashboardTab(): React.JSX.Element {
     setDirty(true);
   }, []);
 
+  const [saveBusy, setSaveBusy] = useState<'save' | 'reset' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = useCallback(async () => {
-    if (!localConfig) return;
-    await window.api.dashboard.save(localConfig);
-    refreshConfig();
-    setDirty(false);
-  }, [localConfig, refreshConfig]);
+    if (!localConfig || saveBusy) return;
+    setSaveBusy('save');
+    setSaveError(null);
+    try {
+      await window.api.dashboard.save(localConfig);
+      refreshConfig();
+      setDirty(false);
+    } catch (err) {
+      setSaveError(`Couldn't save dashboard config: ${errMsg(err)}`);
+    } finally {
+      setSaveBusy(null);
+    }
+  }, [localConfig, refreshConfig, saveBusy]);
 
   const handleReset = useCallback(async () => {
+    if (saveBusy) return;
     const confirmed = window.confirm('Reset dashboard to defaults? This will undo all view and widget customizations.');
     if (!confirmed) return;
-    const fresh = await window.api.dashboard.reset();
-    setLocalConfig(structuredClone(fresh));
-    refreshConfig();
-    setDirty(false);
-  }, [refreshConfig]);
+    setSaveBusy('reset');
+    setSaveError(null);
+    try {
+      const fresh = await window.api.dashboard.reset();
+      setLocalConfig(structuredClone(fresh));
+      refreshConfig();
+      setDirty(false);
+    } catch (err) {
+      setSaveError(`Couldn't reset dashboard config: ${errMsg(err)}`);
+    } finally {
+      setSaveBusy(null);
+    }
+  }, [refreshConfig, saveBusy]);
 
   const handleOpenJson = useCallback(async () => {
     const paths = await window.api.configPaths.get();
@@ -844,16 +962,17 @@ function DashboardTab(): React.JSX.Element {
       </DndContext>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
-        <button style={primaryButtonStyles(!dirty)} onClick={handleSave} disabled={!dirty}>
-          {dirty ? 'Save Changes' : 'Saved'}
+        <button style={primaryButtonStyles(!dirty || saveBusy !== null)} onClick={handleSave} disabled={!dirty || saveBusy !== null}>
+          {saveBusy === 'save' ? 'Saving...' : dirty ? 'Save Changes' : 'Saved'}
         </button>
-        <button style={secondaryButtonStyles} onClick={handleReset}>
-          Reset to Defaults
+        <button style={secondaryButtonStyles} onClick={handleReset} disabled={saveBusy !== null}>
+          {saveBusy === 'reset' ? 'Resetting...' : 'Reset to Defaults'}
         </button>
         <button style={secondaryButtonStyles} onClick={handleOpenJson}>
           Open JSON File
         </button>
       </div>
+      <SettingError message={saveError} />
     </div>
   );
 }
@@ -918,25 +1037,44 @@ function DataTab(): React.JSX.Element {
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const backupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    window.api.data.getTableCounts().then(setTableCounts);
-    window.api.data.getStats().then(setStats);
+    window.api.data.getTableCounts()
+      .then(setTableCounts)
+      .catch((err: unknown) => setStatsError(`Couldn't load database stats: ${errMsg(err)}`));
+    window.api.data.getStats()
+      .then(setStats)
+      .catch((err: unknown) => setStatsError(`Couldn't load database stats: ${errMsg(err)}`));
+    return () => {
+      if (backupTimer.current) clearTimeout(backupTimer.current);
+    };
   }, []);
 
   const handleBackup = async () => {
     setBackingUp(true);
     setBackupStatus(null);
+    if (backupTimer.current) clearTimeout(backupTimer.current);
+    let failed = false;
     try {
       const result: BackupResult = await window.api.data.backup();
       if (result.success) {
         setBackupStatus(`Backed up to ${result.path}`);
       } else if (result.error) {
+        failed = true;
         setBackupStatus(`Backup failed: ${result.error}`);
       }
+    } catch (err) {
+      failed = true;
+      setBackupStatus(`Backup failed: ${errMsg(err)}`);
     } finally {
       setBackingUp(false);
-      setTimeout(() => setBackupStatus(null), 5000);
+      // Success auto-dismisses; failures persist until the next backup (CGUI-66)
+      if (!failed) {
+        backupTimer.current = setTimeout(() => setBackupStatus(null), 5000);
+      }
     }
   };
 
@@ -948,6 +1086,7 @@ function DataTab(): React.JSX.Element {
     if (!confirmed) return;
 
     setClearing(true);
+    setClearError(null);
     try {
       await window.api.dev.clearDatabase();
       setCleared(true);
@@ -956,6 +1095,8 @@ function DataTab(): React.JSX.Element {
       setTableCounts(counts);
       const newStats = await window.api.data.getStats();
       setStats(newStats);
+    } catch (err) {
+      setClearError(`Clear failed: ${errMsg(err)}`);
     } finally {
       setClearing(false);
     }
@@ -963,6 +1104,8 @@ function DataTab(): React.JSX.Element {
 
   return (
     <div style={{ padding: 4 }}>
+      <SettingError message={statsError} />
+      <SettingError message={clearError} />
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Database

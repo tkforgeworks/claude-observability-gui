@@ -1,10 +1,12 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import type { TodaySummary, TimelineEntry, DailyActivity } from '../../shared/ipc-types';
+import React, { useEffect } from 'react';
 import StatCard from '../components/common/StatCard';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 import { Icons } from '../components/common/Icons';
+import { useApi } from '../hooks/useApi';
 
 function formatCost(n: number | null): string {
   if (n == null || n === 0) return '—';
@@ -21,65 +23,65 @@ function formatDuration(seconds: number | null): string {
 }
 
 export default function TodayView(): React.JSX.Element {
-  const [summary, setSummary] = useState<TodaySummary | null>(null);
-  const [timeline, setTimeline] = useState<TimelineEntry[]>([]);
-  const [weeklyActivity, setWeeklyActivity] = useState<DailyActivity[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  const fetchData = useCallback(() => {
-    return Promise.all([
-      window.api.coworkSessions.getSummaryToday().then(setSummary),
-      window.api.coworkSessions.getTimeline().then(setTimeline),
-      window.api.analytics.getWeeklyActivity().then(setWeeklyActivity),
-    ]).catch(err => {
-      console.error('[TodayView] fetch failed:', err);
-      setSummary(null);
-      setTimeline([]);
-      setWeeklyActivity([]);
-    });
-  }, []);
-
-  useEffect(() => {
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
+  const { data, loading, error, refetch } = useApi(() =>
+    Promise.all([
+      window.api.coworkSessions.getSummaryToday(),
+      window.api.coworkSessions.getTimeline(),
+      window.api.analytics.getWeeklyActivity(),
+    ])
+  );
+  const [summary, timeline, weeklyActivity] = data ?? [null, [], []];
 
   useEffect(() => {
     const unsub = window.api.onImportComplete?.((s) => {
       if (s.newRecords > 0 || s.updatedRecords > 0) {
-        fetchData();
+        refetch();
       }
     });
     return () => { unsub?.(); };
-  }, [fetchData]);
+  }, [refetch]);
 
   useEffect(() => {
     const unsub = window.api.onLogWatcherEvent?.(() => {
-      fetchData();
+      refetch();
     });
     return () => { unsub?.(); };
-  }, [fetchData]);
+  }, [refetch]);
 
   const hasAnyData = summary && summary.sessionCount > 0;
   const hasCodeData = summary && summary.codeSessionCount > 0;
   const hasCoworkData = summary && summary.coworkSessionCount > 0;
 
+  // While the first fetch is in flight, don't claim "no data yet" — that reads
+  // as a confirmed empty state before anything has loaded (CGUI-66)
+  const initialLoading = loading && !data;
+  const noDataMeta = initialLoading ? '' : 'no data yet';
+
+  if (error && !data) {
+    return (
+      <div className="page">
+        <ErrorState what="today's activity" error={error} onRetry={refetch} />
+      </div>
+    );
+  }
+
   const sessionMeta = hasAnyData
     ? `${summary.codeSessionCount} code` + (hasCoworkData ? ` · ${summary.coworkSessionCount} cowork` : '')
-    : 'no data yet';
+    : noDataMeta;
 
   const turnsMeta = hasCoworkData
     ? (summary.avgTurnDurationSeconds != null
       ? `avg ${formatDuration(summary.avgTurnDurationSeconds)}`
       : '')
-    : (hasCodeData ? 'no cowork data yet' : 'no data yet');
+    : (hasCodeData ? 'no cowork data yet' : noDataMeta);
 
   const costMeta = hasCodeData
     ? `${summary.codeSessionCount} session${summary.codeSessionCount !== 1 ? 's' : ''}`
-    : 'no data yet';
+    : noDataMeta;
 
   const activeMeta = summary?.lastFocusedAt
     ? `last seen ${new Date(summary.lastFocusedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
-    : (hasCodeData ? 'no cowork data yet' : 'no data yet');
+    : (hasCodeData ? 'no cowork data yet' : noDataMeta);
 
   return (
     <div className="page">
@@ -115,8 +117,8 @@ export default function TodayView(): React.JSX.Element {
         <WeeklyActivityChart data={weeklyActivity} />
       )}
 
-      {loading ? (
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
+      {initialLoading ? (
+        <Loading />
       ) : !hasAnyData ? (
         <EmptyState
           title="No sessions recorded yet"
