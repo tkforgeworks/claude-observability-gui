@@ -324,7 +324,7 @@ export class JsonlImporter {
    * - Only process assistant records with stop_reason set (final chunk per requestId)
    * - Sum token counts across all final chunks
    * - Include subagent token usage in parent session totals
-   * - Model taken from first assistant record
+   * - Model taken from first assistant record with a real (non-'<synthetic>') model
    * - started_at = earliest timestamp, ended_at = latest timestamp
    */
   aggregateSession(
@@ -385,10 +385,13 @@ export class JsonlImporter {
       cacheCreation1hTokens += u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
     }
 
-    // Model from first assistant record with a model field
+    // Model from first assistant record with a real model field.
+    // Claude Code injects locally-generated error records (e.g. a 401 before
+    // /login) with model '<synthetic>' — never a session's actual model, so
+    // they must not win the derivation (CGUI-58).
     let model: string | null = null;
     for (const rec of allAssistant) {
-      if (rec.message?.model) {
+      if (rec.message?.model && rec.message.model !== '<synthetic>') {
         model = rec.message.model;
         break;
       }
