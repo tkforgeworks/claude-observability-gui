@@ -94,7 +94,15 @@ function createMainWindow(): BrowserWindow {
 // app's own identity and picks up the BrowserWindow icon instead of electron.exe's
 // embedded default. Must match the `appId` in package.json's electron-builder config.
 if (process.platform === 'win32') {
-  app.setAppUserModelId('com.tkforgeworks.claude-usage-monitor');
+  // Dev gets a '.dev' suffix (CGUI-64): with the packaged AUMID, Windows
+  // matches dev windows to the installed app's Start Menu shortcut, groups
+  // them onto its taskbar button, and shows the shortcut's (old) icon
+  // instead of the window icon. The packaged ID must match build.appId.
+  app.setAppUserModelId(
+    app.isPackaged
+      ? 'com.tkforgeworks.claude-usage-monitor'
+      : 'com.tkforgeworks.claude-usage-monitor.dev'
+  );
 }
 
 // Dev/prod data isolation (CGUI-64): package.json has no top-level
