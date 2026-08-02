@@ -52,6 +52,24 @@ const MIN_CELL_SIZE = 6;
 const CELL_GAP = 1;
 const LABEL_WIDTH = 130;
 const ROW_GAP = 2;
+const MIN_ROW_HEIGHT = 18;
+// The date-axis row needs a real height. Its cells were unsized, so the row
+// collapsed to 0 and the `bottom: 0` labels painted above it — straight into
+// the scroll container's clip region, which made them invisible at every
+// range. 14px is the 9px font's line box (CGUI-69).
+const AXIS_LABEL_HEIGHT = 14;
+
+// Pins the project-name column while the grid scrolls horizontally, so rows
+// never scroll away from their labels. Background must be opaque and match
+// `.card` so cells slide underneath cleanly (CGUI-69).
+const stickyLabelStyles: React.CSSProperties = {
+  width: LABEL_WIDTH,
+  flexShrink: 0,
+  position: 'sticky',
+  left: 0,
+  zIndex: 1,
+  backgroundColor: 'var(--background)',
+};
 
 export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelineChartProps): React.JSX.Element | null {
   const [visibleCount, setVisibleCount] = useState(INITIAL_ROWS);
@@ -88,13 +106,19 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
   const totalGridWidth = dateRange.length * cellSize + (dateRange.length - 1) * CELL_GAP;
   const needsScroll = totalGridWidth > gridWidth && gridWidth > 0;
 
-  const rowHeight = cellSize + ROW_GAP + 2;
+  // Floor the row height independent of cellSize: at the 1y range cells drop
+  // to MIN_CELL_SIZE, but the project label still occupies a ~16px line box
+  // and adjacent labels collide (CGUI-69).
+  const rowHeight = Math.max(MIN_ROW_HEIGHT, cellSize + ROW_GAP + 2);
 
   // Build lookup sets
   const projectSets = visibleRows.map(r => new Set(r.activeDates));
 
   // Date axis labels — ~7 labels
   const labelInterval = Math.max(1, Math.floor(dateRange.length / 7));
+  // The final tick sits on the last cell, so a left-aligned label would run
+  // past the grid's right edge — anchor that one from the right instead.
+  const lastLabeledIndex = Math.floor((dateRange.length - 1) / labelInterval) * labelInterval;
 
   return (
     <div ref={containerRef} className="card">
@@ -113,8 +137,8 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
           }}
         >
           {/* Date axis header */}
-          <div style={{ display: 'flex', alignItems: 'flex-end', marginBottom: 4, minWidth: needsScroll ? totalGridWidth + LABEL_WIDTH : undefined }}>
-            <div style={{ width: LABEL_WIDTH, flexShrink: 0 }} />
+          <div style={{ display: 'flex', alignItems: 'stretch', height: AXIS_LABEL_HEIGHT, marginBottom: 4, minWidth: needsScroll ? totalGridWidth + LABEL_WIDTH : undefined }}>
+            <div style={stickyLabelStyles} />
             <div style={{ display: 'flex', gap: CELL_GAP }}>
               {dateRange.map((date, i) => (
                 <div
@@ -128,7 +152,7 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
                     <span style={{
                       position: 'absolute',
                       bottom: 0,
-                      left: 0,
+                      ...(i === lastLabeledIndex ? { right: 0 } : { left: 0 }),
                       whiteSpace: 'nowrap',
                       fontSize: 9,
                       color: COLORS.axis,
@@ -153,15 +177,14 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
               }}
             >
               <div style={{
-                width: LABEL_WIDTH,
-                flexShrink: 0,
+                ...stickyLabelStyles,
                 fontSize: 11,
                 color: COLORS.label,
                 overflow: 'hidden',
                 textOverflow: 'ellipsis',
                 whiteSpace: 'nowrap',
                 paddingRight: 8,
-              }}>
+              }} title={row.project}>
                 {row.project}
               </div>
               <div style={{ display: 'flex', gap: CELL_GAP }}>

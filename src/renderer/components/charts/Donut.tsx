@@ -100,7 +100,10 @@ export default function Donut({
           </text>
         )}
       </svg>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+      {/* minWidth: 0 + ellipsis — long model names would otherwise set the
+          legend's min-content width and push the donut out of its column
+          in a narrow layout (CGUI-69). */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 5, minWidth: 0, flex: 1 }}>
         {arcs.map((arc, i) => (
           <div
             key={arc.label}
@@ -113,13 +116,25 @@ export default function Donut({
               cursor: 'pointer',
               opacity: activeIndex !== null && activeIndex !== i ? 0.4 : 1,
               transition: 'opacity 200ms ease',
+              minWidth: 0,
             }}
             onMouseEnter={() => setActiveIndex(i)}
             onMouseLeave={() => setActiveIndex(null)}
           >
             <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: arc.color, flexShrink: 0 }} />
-            <span style={{ color: 'var(--text-primary)' }}>{arc.label}</span>
-            <span style={{ color: 'var(--text-tertiary)' }}>{Math.round(arc.pct * 100)}%</span>
+            <span
+              title={arc.label}
+              style={{
+                color: 'var(--text-primary)',
+                minWidth: 0,
+                overflow: 'hidden',
+                textOverflow: 'ellipsis',
+                whiteSpace: 'nowrap',
+              }}
+            >
+              {arc.label}
+            </span>
+            <span style={{ color: 'var(--text-tertiary)', flexShrink: 0 }}>{Math.round(arc.pct * 100)}%</span>
           </div>
         ))}
       </div>

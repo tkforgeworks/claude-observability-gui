@@ -125,8 +125,12 @@ export default function ProjectsView(): React.JSX.Element {
 
   return (
     <div className="page">
-      {/* Summary stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+      {/* Summary stats — 6-up at the default window, wrapping to 3×2 at the
+          900px minimum rather than squeezing six ~100px cards (CGUI-69).
+          158px is the only track minimum that holds both ends: 6 columns
+          still fit the ~1036px column at 1280px wide, and a 4th column no
+          longer fits the ~656px column at 900px. */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(158px, 100%), 1fr))' }}>
         <StatCard label="Projects" value={totals.projectCount} icon={Icons.projects} variant="minimal" />
         <StatCard label="Total Cost" value={formatCost(totals.cost)} icon={Icons.dollar} variant="minimal" />
         <StatCard label="Code Sessions" value={totals.codeSessions.toLocaleString()} icon={Icons.code} variant="minimal" />

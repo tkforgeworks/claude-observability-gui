@@ -228,14 +228,16 @@ export default function CodeSessionsView(): React.JSX.Element {
         <StatCard label="Cache Tokens" value={formatTokens(totals.cache)} icon={Icons.bolt} variant="minimal" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14 }}>
-        <div className="card">
-          <div className="card-head"><h2>Cost by Project</h2></div>
-          <HBar items={costByProject} />
-        </div>
-        <div className="card">
-          <div className="card-head"><h2>Model Distribution</h2></div>
-          <Donut slices={modelDist} centerLabel="sessions" centerValue={String(totals.count)} />
+      <div className="chart-row">
+        <div className="chart-row-grid">
+          <div className="card">
+            <div className="card-head"><h2>Cost by Project</h2></div>
+            <HBar items={costByProject} />
+          </div>
+          <div className="card">
+            <div className="card-head"><h2>Model Distribution</h2></div>
+            <Donut slices={modelDist} centerLabel="sessions" centerValue={String(totals.count)} />
+          </div>
         </div>
       </div>
 

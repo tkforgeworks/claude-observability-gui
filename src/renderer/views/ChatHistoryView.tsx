@@ -447,10 +447,12 @@ export default function ChatHistoryView(): React.JSX.Element {
         <MemorySection memories={memories} />
       )}
 
-      {/* Heatmaps — side by side when space allows, stacked below ~680px columns.
-          680px ≈ HeatmapChart's minimum 365-day grid width (10px cells × 53 weeks). */}
+      {/* Heatmaps — side by side when space allows, stacked below ~660px columns.
+          The `min(…, 100%)` guard keeps the track from exceeding the container:
+          the content column is only ~656px at the 900px window minimum, so a
+          bare 660px minimum would always overflow (CGUI-69). */}
       {(convHeatmapData.length > 0 || projHeatmapData.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(680px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(660px, 100%), 1fr))', gap: 14 }}>
           {convHeatmapData.length > 0 && (
             <div className="card">
               <div className="card-head"><h2>Conversation Activity</h2></div>

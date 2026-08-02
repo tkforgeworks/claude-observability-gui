@@ -208,6 +208,26 @@ button { font-family: inherit; cursor: pointer; }
   font-family: "JetBrains Mono", monospace;
 }
 
+/* Side-by-side chart cards in an uneven split. Wrap the pair in
+   `.chart-row` and put the cards in `.chart-row > .chart-row-grid`; below
+   820px of column width the split collapses to a single stack so the
+   narrow side stays usable (the content column is only ~656px at the
+   900px window minimum). Queried on the wrapper rather than a viewport
+   media query so the breakpoint is the real column width — no sidebar or
+   scrollbar arithmetic (CGUI-69). */
+.chart-row { container-type: inline-size; }
+.chart-row-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+/* Grid items default to min-width:auto, which lets wide chart legends push
+   a track past its share and overflow the row. */
+.chart-row-grid > * { min-width: 0; }
+@container (min-width: 820px) {
+  .chart-row-grid { grid-template-columns: 1.5fr 1fr; }
+}
+
 /* ---- Stat cards --------------------------------------------- */
 
 .stats-grid {
@@ -297,7 +317,9 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--border-soft);
 }
 .stat.minimal .meta { display: none; }
-.stat.minimal .value { font-size: 24px; font-weight: 500; }
+/* Caps at 24px rather than the base 30px, but keeps the CGUI-59 container
+   scaling — a flat 24px clipped values in narrow minimal cards (CGUI-69) */
+.stat.minimal .value { font-size: clamp(16px, 16.5cqw, 24px); font-weight: 500; }
 .stat.minimal .stat-spark { display: none; }
 
 .stat.sparky { padding-bottom: 56px; }

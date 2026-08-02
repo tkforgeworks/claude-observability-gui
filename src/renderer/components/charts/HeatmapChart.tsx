@@ -163,55 +163,61 @@ export default function HeatmapChart({
 
   return (
     <div ref={containerRef} style={{ width: '100%' }}>
-      <svg width={gridWidth} height={gridHeight} style={{ display: 'block' }}>
-        {monthLabels.map((m, i) => (
-          <text
-            key={i}
-            x={DAY_LABEL_WIDTH + m.weekIndex * (cellSize + CELL_GAP)}
-            y={MONTH_LABEL_HEIGHT - 4}
-            fill="var(--text-tertiary)"
-            fontSize={10}
-            fontFamily='"JetBrains Mono", monospace'
-          >
-            {m.label}
-          </text>
-        ))}
-        {DAY_LABELS.map((label, i) =>
-          label ? (
+      {/* Scroll wrapper, not the measured element: cellSize bottoms out at
+          MIN_CELL_SIZE, so a 365-day grid is ~717px wide and overflows the
+          card at the 900px window minimum. Measuring the outer div keeps the
+          scrollbar out of the width → cellSize feedback loop (CGUI-69). */}
+      <div style={{ overflowX: 'auto', overflowY: 'hidden' }}>
+        <svg width={gridWidth} height={gridHeight} style={{ display: 'block' }}>
+          {monthLabels.map((m, i) => (
             <text
               key={i}
-              x={0}
-              y={MONTH_LABEL_HEIGHT + i * (cellSize + CELL_GAP) + cellSize - 2}
+              x={DAY_LABEL_WIDTH + m.weekIndex * (cellSize + CELL_GAP)}
+              y={MONTH_LABEL_HEIGHT - 4}
               fill="var(--text-tertiary)"
               fontSize={10}
               fontFamily='"JetBrains Mono", monospace'
             >
-              {label}
+              {m.label}
             </text>
-          ) : null
-        )}
-        {cells.map((cell, i) => {
-          const x = DAY_LABEL_WIDTH + cell.weekIndex * (cellSize + CELL_GAP);
-          const y = MONTH_LABEL_HEIGHT + cell.dayIndex * (cellSize + CELL_GAP);
-          const level = levels[i];
-          return (
-            <rect
-              key={i}
-              x={x}
-              y={y}
-              width={cellSize}
-              height={cellSize}
-              rx={cellRadius}
-              ry={cellRadius}
-              fill={ramp[level]}
-              style={{ cursor: 'pointer' }}
-              onMouseEnter={(e) => handleMouseEnter(e, cell)}
-              onMouseMove={handleMouseMove}
-              onMouseLeave={handleMouseLeave}
-            />
-          );
-        })}
-      </svg>
+          ))}
+          {DAY_LABELS.map((label, i) =>
+            label ? (
+              <text
+                key={i}
+                x={0}
+                y={MONTH_LABEL_HEIGHT + i * (cellSize + CELL_GAP) + cellSize - 2}
+                fill="var(--text-tertiary)"
+                fontSize={10}
+                fontFamily='"JetBrains Mono", monospace'
+              >
+                {label}
+              </text>
+            ) : null
+          )}
+          {cells.map((cell, i) => {
+            const x = DAY_LABEL_WIDTH + cell.weekIndex * (cellSize + CELL_GAP);
+            const y = MONTH_LABEL_HEIGHT + cell.dayIndex * (cellSize + CELL_GAP);
+            const level = levels[i];
+            return (
+              <rect
+                key={i}
+                x={x}
+                y={y}
+                width={cellSize}
+                height={cellSize}
+                rx={cellRadius}
+                ry={cellRadius}
+                fill={ramp[level]}
+                style={{ cursor: 'pointer' }}
+                onMouseEnter={(e) => handleMouseEnter(e, cell)}
+                onMouseMove={handleMouseMove}
+                onMouseLeave={handleMouseLeave}
+              />
+            );
+          })}
+        </svg>
+      </div>
       <div className="heatmap-legend" style={{ marginTop: 8 }}>
         <span>Less</span>
         {ramp.map((color, i) => (

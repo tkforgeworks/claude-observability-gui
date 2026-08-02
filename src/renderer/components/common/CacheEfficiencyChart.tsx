@@ -136,34 +136,39 @@ export default function CacheEfficiencyChart({ data }: CacheEfficiencyChartProps
         </BarChart>
       </ResponsiveContainer>
 
-      {/* Detailed token breakdown */}
+      {/* Detailed token breakdown. The 7 columns need ~633px of min-content
+          width, more than the ~610px card interior at the 900px window
+          minimum, so the table scrolls in its own wrapper — the button stays
+          outside it and always visible (CGUI-69). */}
       <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column' }}>
-        <table className="data" style={{ fontSize: 11 }}>
-          <thead>
-            <tr>
-              <th style={{ textAlign: 'left' }}>Project</th>
-              <th style={{ textAlign: 'right' }}>Cache Read</th>
-              <th style={{ textAlign: 'right' }}>Cache Write</th>
-              <th style={{ textAlign: 'right' }}>Input</th>
-              <th style={{ textAlign: 'right' }}>Hit %</th>
-              <th style={{ textAlign: 'right' }}>Reuse</th>
-              <th style={{ textAlign: 'right' }}>Saved</th>
-            </tr>
-          </thead>
-          <tbody>
-            {tableData.map((d) => (
-              <tr key={d.project}>
-                <td>{d.project}</td>
-                <td style={numCellStyles}>{formatTokens(d.cacheReadTokens)}</td>
-                <td style={numCellStyles}>{formatTokens(d.cacheWriteTokens)}</td>
-                <td style={numCellStyles}>{formatTokens(d.inputTokens)}</td>
-                <td style={numCellStyles}>{d.efficiencyPct.toFixed(1)}%</td>
-                <td style={{ ...numCellStyles, color: BAR_COLOR }}>{d.reuseRatio.toFixed(1)}x</td>
-                <td style={{ ...numCellStyles, color: SAVINGS_COLOR }}>{formatCost(d.estimatedSavingsUsd)}</td>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data" style={{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Project</th>
+                <th style={{ textAlign: 'right' }}>Cache Read</th>
+                <th style={{ textAlign: 'right' }}>Cache Write</th>
+                <th style={{ textAlign: 'right' }}>Input</th>
+                <th style={{ textAlign: 'right' }}>Hit %</th>
+                <th style={{ textAlign: 'right' }}>Reuse</th>
+                <th style={{ textAlign: 'right' }}>Saved</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {tableData.map((d) => (
+                <tr key={d.project}>
+                  <td>{d.project}</td>
+                  <td style={numCellStyles}>{formatTokens(d.cacheReadTokens)}</td>
+                  <td style={numCellStyles}>{formatTokens(d.cacheWriteTokens)}</td>
+                  <td style={numCellStyles}>{formatTokens(d.inputTokens)}</td>
+                  <td style={numCellStyles}>{d.efficiencyPct.toFixed(1)}%</td>
+                  <td style={{ ...numCellStyles, color: BAR_COLOR }}>{d.reuseRatio.toFixed(1)}x</td>
+                  <td style={{ ...numCellStyles, color: SAVINGS_COLOR }}>{formatCost(d.estimatedSavingsUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
         {hasMore && (
           <button
             style={showMoreButtonStyles}

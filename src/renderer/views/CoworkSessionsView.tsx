@@ -65,6 +65,14 @@ function daysAgo(n: number): string {
   return d.toISOString();
 }
 
+// The histogram lives in a full-span <td>, which sizes to its content — so a
+// long session used to widen the whole table rather than overflow its cell.
+// Bars are sized against a fixed width budget instead, and the wrapper is
+// capped to it, so past the 2px floor the histogram scrolls on its own and
+// the table's column layout never shifts (CGUI-69).
+const HISTOGRAM_MAX_WIDTH = 560;
+const HISTOGRAM_BAR_GAP = 2;
+
 function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | null {
   const durations = turns
     .map(t => t.duration_seconds)
@@ -72,28 +80,36 @@ function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | 
   if (durations.length === 0) return null;
   const maxDur = Math.max(...durations);
 
+  const gapTotal = (durations.length - 1) * HISTOGRAM_BAR_GAP;
+  const barWidth = Math.max(2, Math.min(20, Math.floor((HISTOGRAM_MAX_WIDTH - gapTotal) / durations.length)));
+
   return (
     <div style={{ marginTop: 8 }}>
       <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: '"Poppins"', fontWeight: 600 }}>
         Turn Duration Distribution
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 40 }}>
-        {durations.map((dur, i) => {
-          const heightPct = Math.max(8, (dur / maxDur) * 100);
-          return (
-            <div
-              key={i}
-              title={`Turn ${i + 1}: ${formatDuration(dur)}`}
-              style={{
-                width: Math.max(6, Math.min(20, 200 / durations.length)),
-                height: `${heightPct}%`,
-                backgroundColor: 'var(--chart-5)',
-                borderRadius: '2px 2px 0 0',
-                opacity: 0.8,
-              }}
-            />
-          );
-        })}
+      {/* Overflow lives on the wrapper, not the 40px bar row, so the
+          scrollbar doesn't eat bar height. */}
+      <div style={{ maxWidth: HISTOGRAM_MAX_WIDTH, overflowX: 'auto', overflowY: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: HISTOGRAM_BAR_GAP, height: 40 }}>
+          {durations.map((dur, i) => {
+            const heightPct = Math.max(8, (dur / maxDur) * 100);
+            return (
+              <div
+                key={i}
+                title={`Turn ${i + 1}: ${formatDuration(dur)}`}
+                style={{
+                  width: barWidth,
+                  flexShrink: 0,
+                  height: `${heightPct}%`,
+                  backgroundColor: 'var(--chart-5)',
+                  borderRadius: '2px 2px 0 0',
+                  opacity: 0.8,
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
