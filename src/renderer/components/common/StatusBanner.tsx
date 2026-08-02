@@ -99,9 +99,11 @@ export default function StatusBanner({
         {VARIANT_ICONS[variant]}
       </span>
       <span style={{ flex: 1 }}>{message}</span>
-      {allActions.map((a) => (
+      {allActions.map((a, i) => (
         <button
-          key={a.label}
+          // Index key: labels change mid-interaction ("Retry" → "Retrying...")
+          // and a label key would remount the focused button (CGUI-68)
+          key={i}
           style={{ ...actionButtonStyles, opacity: a.disabled ? 0.5 : 1, cursor: a.disabled ? 'default' : 'pointer' }}
           onClick={a.onClick}
           disabled={a.disabled}

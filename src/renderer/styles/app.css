@@ -43,11 +43,12 @@
 * { box-sizing: border-box; }
 
 html, body {
+  height: 100%;
   margin: 0;
   padding: 0;
   background: var(--background);
   color: var(--text-primary);
-  font-family: "Poppins", -apple-system, BlinkMacSystemFont, sans-serif;
+  font-family: var(--font-header);
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -78,17 +79,17 @@ button { font-family: inherit; cursor: pointer; }
      soft border instead of the old solid purple "TK" chip */
   background: transparent;
   border: 1px solid var(--purple-tint-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-base);
   display: grid; place-items: center;
   flex-shrink: 0;
 }
 .sidebar-brand .name {
-  font-family: "Poppins"; font-weight: 600; font-size: 13px;
+  font-family: var(--font-header); font-weight: 600; font-size: 13px;
   color: var(--text-primary); letter-spacing: 0.01em;
 }
 .sidebar-brand .name .sub {
   display: block;
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   font-weight: 400; font-size: 10px;
   color: var(--text-tertiary);
   text-transform: uppercase; letter-spacing: 0.12em;
@@ -102,7 +103,7 @@ button { font-family: inherit; cursor: pointer; }
   text-transform: uppercase;
   color: var(--text-tertiary);
   padding: 10px 18px 6px;
-  font-family: "Poppins";
+  font-family: var(--font-header);
 }
 
 /* ---- Topbar ------------------------------------------------- */
@@ -119,7 +120,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .topbar-title h1 {
   margin: 0;
-  font-family: "Poppins"; font-weight: 600;
+  font-family: var(--font-header); font-weight: 600;
   font-size: 18px;
   letter-spacing: -0.005em;
   color: var(--text-primary);
@@ -127,7 +128,7 @@ button { font-family: inherit; cursor: pointer; }
 .topbar-title .sub {
   font-size: 11px;
   color: var(--text-tertiary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   letter-spacing: 0.04em;
 }
 .topbar-right { display: flex; align-items: center; gap: 10px; }
@@ -136,7 +137,7 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   background: var(--background-light);
   border: 1px solid var(--border-soft);
-  border-radius: 6px;
+  border-radius: var(--radius-base);
   padding: 2px;
   gap: 2px;
 }
@@ -145,29 +146,16 @@ button { font-family: inherit; cursor: pointer; }
   border: none;
   background: transparent;
   color: var(--text-secondary);
-  font-family: "Poppins"; font-weight: 500; font-size: 12px;
-  border-radius: 4px;
+  font-family: var(--font-header); font-weight: 500; font-size: 12px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
-  transition: all 200ms ease;
+  transition: all var(--duration) var(--easing);
 }
 .range-tab.active {
   background: var(--purple-tint);
   color: var(--purple-dark);
 }
 .range-tab:hover:not(.active) { color: var(--text-primary); }
-
-.icon-btn {
-  width: 30px; height: 30px;
-  display: grid; place-items: center;
-  background: transparent;
-  border: 1px solid var(--border-soft);
-  border-radius: 6px;
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 200ms ease;
-}
-.icon-btn:hover { border-color: var(--purple-primary); color: var(--purple-primary); }
-.icon-btn svg { width: 14px; height: 14px; }
 
 /* ---- Page container ----------------------------------------- */
 
@@ -185,7 +173,7 @@ button { font-family: inherit; cursor: pointer; }
 .card {
   background: var(--background);
   border: 1px solid var(--purple-tint-soft);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   padding: 20px 22px;
 }
 
@@ -196,7 +184,7 @@ button { font-family: inherit; cursor: pointer; }
 }
 .card-head h2 {
   margin: 0;
-  font-family: "Poppins"; font-weight: 600;
+  font-family: var(--font-header); font-weight: 600;
   font-size: 11px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -205,7 +193,27 @@ button { font-family: inherit; cursor: pointer; }
 .card-head .sub {
   font-size: 11px;
   color: var(--text-tertiary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
+}
+
+/* Side-by-side chart cards in an uneven split. Wrap the pair in
+   `.chart-row` and put the cards in `.chart-row > .chart-row-grid`; below
+   820px of column width the split collapses to a single stack so the
+   narrow side stays usable (the content column is only ~656px at the
+   900px window minimum). Queried on the wrapper rather than a viewport
+   media query so the breakpoint is the real column width — no sidebar or
+   scrollbar arithmetic (CGUI-69). */
+.chart-row { container-type: inline-size; }
+.chart-row-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+/* Grid items default to min-width:auto, which lets wide chart legends push
+   a track past its share and overflow the row. */
+.chart-row-grid > * { min-width: 0; }
+@container (min-width: 820px) {
+  .chart-row-grid { grid-template-columns: 1.5fr 1fr; }
 }
 
 /* ---- Stat cards --------------------------------------------- */
@@ -219,8 +227,10 @@ button { font-family: inherit; cursor: pointer; }
 .stat {
   background: var(--background);
   border: 1px solid var(--purple-tint-soft);
-  border-radius: 8px;
-  padding: 16px 18px 44px;
+  border-radius: var(--radius-md);
+  /* Bottom padding is reserved for the absolutely-positioned sparkline and
+     is only added when one is actually rendered (CGUI-71) */
+  padding: 16px 18px;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -229,6 +239,7 @@ button { font-family: inherit; cursor: pointer; }
   /* Size container so value/unit text can scale with the card (CGUI-59) */
   container-type: inline-size;
 }
+.stat.has-spark { padding-bottom: 44px; }
 .stat .label {
   font-size: 10px;
   font-weight: 600;
@@ -238,11 +249,11 @@ button { font-family: inherit; cursor: pointer; }
   display: flex;
   align-items: center;
   gap: 8px;
-  font-family: "Poppins";
+  font-family: var(--font-header);
 }
 .stat .label svg { width: 12px; height: 12px; opacity: 0.7; }
 .stat .value {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   font-weight: 500;
   /* Full 30px on comfortable card widths; shrinks with the card below that
      so value + unit never clip at the 900px window minimum (CGUI-59) */
@@ -265,7 +276,7 @@ button { font-family: inherit; cursor: pointer; }
   font-size: 11px;
   color: var(--text-tertiary);
   margin-top: 4px;
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
 }
 
 .delta {
@@ -273,10 +284,10 @@ button { font-family: inherit; cursor: pointer; }
   align-items: center;
   gap: 2px;
   padding: 1px 6px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
   font-size: 10px;
   font-weight: 600;
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
 }
 .delta.up   { background: rgba(74, 222, 128, 0.12); color: var(--success); }
 .delta.down { background: rgba(248, 113, 113, 0.12); color: var(--error); }
@@ -297,11 +308,10 @@ button { font-family: inherit; cursor: pointer; }
   border: 1px solid var(--border-soft);
 }
 .stat.minimal .meta { display: none; }
-.stat.minimal .value { font-size: 24px; font-weight: 500; }
+/* Caps at 24px rather than the base 30px, but keeps the CGUI-59 container
+   scaling — a flat 24px clipped values in narrow minimal cards (CGUI-69) */
+.stat.minimal .value { font-size: clamp(16px, 16.5cqw, 24px); font-weight: 500; }
 .stat.minimal .stat-spark { display: none; }
-
-.stat.sparky { padding-bottom: 56px; }
-.stat.sparky .stat-spark { height: 36px; opacity: 0.7; }
 
 /* ---- Tables ------------------------------------------------- */
 
@@ -312,7 +322,7 @@ table.data {
 }
 table.data th {
   text-align: left;
-  font-family: "Poppins"; font-weight: 600;
+  font-family: var(--font-header); font-weight: 600;
   font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
@@ -320,7 +330,7 @@ table.data th {
   padding: 10px 12px;
   border-bottom: 1px solid var(--border-soft);
 }
-table.data th.num, table.data td.num { text-align: right; font-family: "JetBrains Mono", monospace; }
+table.data th.num, table.data td.num { text-align: right; font-family: var(--font-code); }
 table.data td {
   padding: 11px 12px;
   border-bottom: 1px solid var(--border-soft);
@@ -329,15 +339,32 @@ table.data td {
 }
 table.data tr:last-child td { border-bottom: none; }
 table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
+/* Expanded detail rows are panels, not rows you can act on — the hover
+   highlight implied they were clickable (CGUI-70) */
+table.data tr.detail-row:hover td { background: inherit; }
+/* Expanded/selected row highlight (CGUI-68 — the .active class was previously
+   applied by views but had no rule) */
+table.data tr.active td { background: var(--purple-tint-soft); }
+
+/* Screen-reader-only text (CGUI-68) */
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
 
 .path {
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   color: var(--text-secondary);
   font-size: 12px;
 }
 .path .leaf { color: var(--purple-dark); }
 .muted { color: var(--text-tertiary); }
-.mono { font-family: "JetBrains Mono", monospace; }
+.mono { font-family: var(--font-code); }
 
 /* ---- Chips -------------------------------------------------- */
 
@@ -350,7 +377,7 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
   letter-spacing: 0.04em;
   background: var(--purple-tint);
   color: var(--purple-dark);
-  font-family: "Poppins";
+  font-family: var(--font-header);
 }
 .chip.warn  { background: rgba(251, 191, 36, 0.12); color: var(--warning); }
 .chip.ok    { background: rgba(74, 222, 128, 0.12); color: var(--success); }
@@ -362,7 +389,7 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
   padding: 10px 4px 4px;
   font-size: 12px;
   color: var(--text-secondary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
 }
 .summary-row strong { color: var(--text-primary); font-weight: 500; margin-left: 4px; }
 .summary-row .sep { color: var(--border); }
@@ -384,12 +411,12 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
   margin-bottom: 14px;
 }
 .empty h3 {
-  font-family: "Poppins"; font-weight: 600; font-size: 14px;
+  font-family: var(--font-header); font-weight: 600; font-size: 14px;
   color: var(--text-primary);
   margin: 0 0 6px;
 }
 .empty p {
-  font-family: "Source Serif 4", Georgia, serif;
+  font-family: var(--font-body);
   font-size: 13px;
   line-height: 1.6;
   color: var(--text-secondary);
@@ -404,7 +431,7 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
   display: flex; gap: 14px; align-items: center;
   font-size: 11px;
   color: var(--text-secondary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
 }
 .legend .swatch {
   width: 8px; height: 8px; border-radius: 2px;
@@ -415,7 +442,7 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
 .heatmap-legend {
   display: flex; align-items: center; gap: 6px;
   font-size: 10px; color: var(--text-tertiary);
-  font-family: "JetBrains Mono", monospace;
+  font-family: var(--font-code);
   text-transform: uppercase; letter-spacing: 0.1em;
 }
 .heatmap-legend .scale { display: flex; gap: 2px; }
@@ -436,15 +463,30 @@ table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
   outline-offset: 2px;
 }
 
-button:focus-visible { outline-offset: 2px; }
+/* ---- Scrollbar ----------------------------------------------
+   Applied globally rather than via `*[style*="overflow"]`, which matched on a
+   substring of the inline style attribute: it caught overflow:hidden
+   elements, missed every scroller styled by class, and sized only the
+   vertical bar so horizontal ones rendered at the OS default (CGUI-71). */
 
-/* ---- Scrollbar ---------------------------------------------- */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: var(--radius-sm); }
+::-webkit-scrollbar-thumb:hover { background: var(--purple-tint); }
+::-webkit-scrollbar-corner { background: transparent; }
 
-.page::-webkit-scrollbar,
-*[style*="overflow"]::-webkit-scrollbar { width: 8px; }
-.page::-webkit-scrollbar-track,
-*[style*="overflow"]::-webkit-scrollbar-track { background: transparent; }
-.page::-webkit-scrollbar-thumb,
-*[style*="overflow"]::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-.page::-webkit-scrollbar-thumb:hover,
-*[style*="overflow"]::-webkit-scrollbar-thumb:hover { background: var(--purple-tint); }
+
+/* ---- Reduced motion -----------------------------------------
+   Honour the OS preference: the watcher pulse loops indefinitely, and the
+   transitions are decorative rather than load-bearing (CGUI-71). */
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

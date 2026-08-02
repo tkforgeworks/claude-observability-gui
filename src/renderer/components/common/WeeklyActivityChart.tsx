@@ -15,6 +15,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import type { DailyActivity } from '../../../shared/ipc-types';
+import { formatCost, formatDayLabelWithWeekday, formatWeekday } from '../../utils/format';
 
 interface WeeklyActivityChartProps {
   data: DailyActivity[];
@@ -25,28 +26,7 @@ const COLORS = {
   cowork: 'var(--chart-5)',
   grid: 'var(--border-soft)',
   axis: 'var(--text-tertiary)',
-  bg: 'var(--background)',
 };
-
-function formatDayLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00'); // noon to avoid timezone shift
-  return d.toLocaleDateString('en-US', { weekday: 'short' });
-}
-
-function formatDateFull(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
 
 interface TooltipPayloadEntry {
   name: string;
@@ -78,7 +58,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
       lineHeight: 1.6,
     }}>
       <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 4 }}>
-        {formatDateFull(label)}
+        {formatDayLabelWithWeekday(label)}
       </div>
       {codeEntry && codeEntry.value > 0 && (
         <div style={{ color: COLORS.code }}>
@@ -137,7 +117,7 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
           <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} vertical={false} />
           <XAxis
             dataKey="date"
-            tickFormatter={formatDayLabel}
+            tickFormatter={formatWeekday}
             tick={{ fill: COLORS.axis, fontSize: 11 }}
             axisLine={{ stroke: COLORS.grid }}
             tickLine={false}
@@ -150,7 +130,7 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
           />
           <Tooltip
             content={<CustomTooltip />}
-            cursor={{ fill: 'rgba(102, 102, 204, 0.1)' }}
+            cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }}
           />
           <Bar dataKey="codeCount" name="Code" stackId="sessions" fill={COLORS.code} radius={[0, 0, 0, 0]} />
           <Bar dataKey="coworkCount" name="Cowork" stackId="sessions" fill={COLORS.cowork} radius={[3, 3, 0, 0]} />

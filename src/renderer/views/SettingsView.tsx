@@ -1,7 +1,9 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import Loading from '../components/common/Loading';
+import { formatBytes, formatDateFull } from '../utils/format';
 import {
   DndContext,
   closestCenter,
@@ -71,26 +73,102 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [location.key, location.state]);
 
+  // Switching tabs unmounts DashboardTab, which used to throw away an unsaved
+  // draft without a word. The switch is now held until the draft is resolved
+  // (CGUI-70).
+  const dashboardHandle = useRef<DashboardTabHandle | null>(null);
+  const [dashboardDirty, setDashboardDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<SettingsTab | null>(null);
+
+  const handleDashboardHandle = useCallback((h: DashboardTabHandle) => {
+    dashboardHandle.current = h;
+    setDashboardDirty(h.dirty);
+  }, []);
+
+  const requestTab = useCallback((id: SettingsTab) => {
+    if (id === activeTab) return;
+    if (activeTab === 'dashboard' && dashboardDirty) {
+      setPendingTab(id);
+      return;
+    }
+    setActiveTab(id);
+  }, [activeTab, dashboardDirty]);
+
+  const focusTab = (id: SettingsTab) => document.getElementById(`settings-tab-${id}`)?.focus();
+
+  const resolvePending = useCallback(async (action: 'save' | 'discard' | 'cancel') => {
+    const target = pendingTab;
+    if (action === 'cancel' || !target) { setPendingTab(null); return; }
+    if (action === 'save') {
+      await dashboardHandle.current?.save();
+    } else {
+      dashboardHandle.current?.discard();
+    }
+    setPendingTab(null);
+    setDashboardDirty(false);
+    setActiveTab(target);
+    focusTab(target);
+  }, [pendingTab]);
+
+  // ARIA tabs pattern (CGUI-68): roving tabindex + arrow-key navigation
+  const handleTabKeyDown = (e: React.KeyboardEvent) => {
+    const idx = TABS.findIndex(t => t.id === activeTab);
+    let next: number | null = null;
+    if (e.key === 'ArrowRight') next = (idx + 1) % TABS.length;
+    else if (e.key === 'ArrowLeft') next = (idx - 1 + TABS.length) % TABS.length;
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = TABS.length - 1;
+    if (next != null) {
+      e.preventDefault();
+      const id = TABS[next].id;
+      requestTab(id);
+      focusTab(id);
+    }
+  };
+
   return (
     <div className="page">
-      <div style={tabBarStyles} role="tablist">
+      <div style={tabBarStyles} role="tablist" aria-label="Settings sections" onKeyDown={handleTabKeyDown}>
         {TABS.map(({ id, label }) => (
           <button
             key={id}
+            id={`settings-tab-${id}`}
             role="tab"
             aria-selected={activeTab === id}
+            aria-controls={`settings-panel-${id}`}
+            tabIndex={activeTab === id ? 0 : -1}
             style={tabButtonStyles(activeTab === id)}
-            onClick={() => setActiveTab(id)}
+            onClick={() => requestTab(id)}
           >
             {label}
           </button>
         ))}
       </div>
 
-      <div role="tabpanel">
+      {pendingTab && (
+        <div
+          role="alertdialog"
+          aria-label="Unsaved dashboard changes"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            padding: '10px 14px', borderRadius: 6,
+            border: '1px solid var(--warning)',
+            background: 'rgba(251, 191, 36, 0.10)',
+            fontSize: 13, fontFamily: '"Poppins", sans-serif',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 220 }}>You have unsaved dashboard changes.</span>
+          <button style={primaryButtonStyles(false)} onClick={() => void resolvePending('save')}>Save</button>
+          <button style={secondaryButtonStyles} onClick={() => void resolvePending('discard')}>Discard</button>
+          <button style={secondaryButtonStyles} onClick={() => void resolvePending('cancel')}>Cancel</button>
+        </div>
+      )}
+
+      <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
         {activeTab === 'general'    && <GeneralTab />}
         {activeTab === 'remoteSync' && <RemoteSyncTab />}
-        {activeTab === 'dashboard'  && <DashboardTab />}
+        {activeTab === 'dashboard'  && <DashboardTab onHandleChange={handleDashboardHandle} />}
         {activeTab === 'data'       && <DataTab />}
       </div>
     </div>
@@ -146,15 +224,36 @@ const warningBannerStyles: React.CSSProperties = {
   marginTop: 8,
 };
 
+/** Inline error text for settings mutations/fetches (CGUI-66) */
+function SettingError({ message }: { message: string | null }): React.JSX.Element | null {
+  if (!message) return null;
+  return (
+    <div role="alert" style={{ color: 'var(--error)', fontSize: 12, fontFamily: '"Poppins", sans-serif', marginTop: 6 }}>
+      {message}
+    </div>
+  );
+}
+
+function errMsg(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 function LogPathSection(): React.JSX.Element {
   const [status, setStatus] = useState<LogPathStatus | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.logPath.getStatus().then(setStatus);
+    window.api.logPath.getStatus()
+      .then(setStatus)
+      .catch((err: unknown) => setLoadError(`Couldn't read log path status: ${errMsg(err)}`));
   }, []);
 
+  if (loadError) {
+    return <SettingError message={loadError} />;
+  }
+
   if (!status) {
-    return <span style={placeholderStyles}>Checking log path...</span>;
+    return <Loading label="log path" compact />;
   }
 
   const badgeColor = status.valid ? 'green' : status.source === 'not-found' ? 'amber' : 'red';
@@ -200,15 +299,24 @@ function LogPathSection(): React.JSX.Element {
 
 function LaunchOnStartupSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setEnabled(s.launchOnStartup));
+    window.api.settings.get()
+      .then((s) => setEnabled(s.launchOnStartup))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ launchOnStartup: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ launchOnStartup: newValue });
+    } catch (err) {
+      setEnabled(!newValue); // revert — the persisted value didn't change
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -227,21 +335,31 @@ function LaunchOnStartupSection(): React.JSX.Element {
           Launch Claude Usage Monitor when I sign in to Windows
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function WindowBehaviorSection(): React.JSX.Element {
   const [minimizeToTray, setMinimizeToTray] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setMinimizeToTray(s.minimizeToTrayOnClose));
+    window.api.settings.get()
+      .then((s) => setMinimizeToTray(s.minimizeToTrayOnClose))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !minimizeToTray;
     setMinimizeToTray(newValue);
-    await window.api.settings.update({ minimizeToTrayOnClose: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ minimizeToTrayOnClose: newValue });
+    } catch (err) {
+      setMinimizeToTray(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -260,21 +378,31 @@ function WindowBehaviorSection(): React.JSX.Element {
           Keep running in the system tray when I close the window
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function NotificationsSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.settings.get().then((s) => setEnabled(s.showTrayNotifications));
+    window.api.settings.get()
+      .then((s) => setEnabled(s.showTrayNotifications))
+      .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ showTrayNotifications: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ showTrayNotifications: newValue });
+    } catch (err) {
+      setEnabled(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   return (
@@ -293,15 +421,19 @@ function NotificationsSection(): React.JSX.Element {
           Show tray notifications (stale chat import)
         </label>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
 
 function GeneralTab(): React.JSX.Element {
   const [paths, setPaths] = useState<ConfigPaths | null>(null);
+  const [pathsError, setPathsError] = useState<string | null>(null);
 
   useEffect(() => {
-    window.api.configPaths.get().then(setPaths);
+    window.api.configPaths.get()
+      .then(setPaths)
+      .catch((err: unknown) => setPathsError(`Couldn't load config paths: ${errMsg(err)}`));
   }, []);
 
   return (
@@ -349,8 +481,10 @@ function GeneralTab(): React.JSX.Element {
               </button>
             </div>
           </>
+        ) : pathsError ? (
+          <SettingError message={pathsError} />
         ) : (
-          <span style={placeholderStyles}>Loading paths...</span>
+          <Loading label="paths" compact />
         )}
       </div>
 
@@ -369,10 +503,22 @@ function GeneralTab(): React.JSX.Element {
 function DataMigrationSection(): React.JSX.Element {
   const [busy, setBusy] = useState<'export' | 'import' | null>(null);
   const [status, setStatus] = useState<{ text: string; ok: boolean } | null>(null);
+  const statusTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  useEffect(() => {
+    return () => {
+      if (statusTimer.current) clearTimeout(statusTimer.current);
+    };
+  }, []);
+
+  // Success messages auto-dismiss; failures persist until the next action so
+  // an error can't silently vanish on a timer (CGUI-66)
   const showStatus = (text: string, ok: boolean) => {
+    if (statusTimer.current) clearTimeout(statusTimer.current);
     setStatus({ text, ok });
-    setTimeout(() => setStatus(null), 10_000);
+    if (ok) {
+      statusTimer.current = setTimeout(() => setStatus(null), 10_000);
+    }
   };
 
   const handleExport = async () => {
@@ -385,6 +531,8 @@ function DataMigrationSection(): React.JSX.Element {
       } else if (result.error) {
         showStatus(`Export failed: ${result.error}`, false);
       }
+    } catch (err) {
+      showStatus(`Export failed: ${errMsg(err)}`, false);
     } finally {
       setBusy(null);
     }
@@ -409,9 +557,15 @@ function DataMigrationSection(): React.JSX.Element {
           `(${s.totalSkipped} already present). Restart the app to apply imported preferences.`,
           true
         );
+      } else if (result.success) {
+        // Success with no summary (shouldn't happen, but don't stay silent)
+        showStatus('Import completed.', true);
       } else if (result.error) {
         showStatus(`Import failed: ${result.error}`, false);
       }
+      // No error + no success = user cancelled the file picker — stay silent
+    } catch (err) {
+      showStatus(`Import failed: ${errMsg(err)}`, false);
     } finally {
       setBusy(null);
     }
@@ -436,7 +590,7 @@ function DataMigrationSection(): React.JSX.Element {
         </button>
       </div>
       {status && (
-        <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: status.ok ? 'var(--success)' : 'var(--error)', marginTop: 8, maxWidth: 520 }}>
+        <p style={{ fontSize: 12, fontFamily: '"Poppins", sans-serif', color: status.ok ? 'var(--success)' : 'var(--error)', marginTop: 8, maxWidth: 520 }}>
           {status.text}
         </p>
       )}
@@ -444,44 +598,98 @@ function DataMigrationSection(): React.JSX.Element {
   );
 }
 
+/**
+ * cship rewrites the usage-limit files with a ~60s expiry, and expired files
+ * are skipped entirely, so any interval above 60s guarantees most polls land
+ * on an already-expired file and capture nothing. The old set started at 1
+ * minute and defaulted the UI to 5, which meant the default configuration
+ * could not collect data. Sub-minute options are the useful ones; the longer
+ * intervals stay only for deliberately low-power setups (CGUI-70).
+ */
 const POLL_INTERVAL_OPTIONS = [
-  { label: '1 minute',   value: 60_000 },
-  { label: '2 minutes',  value: 120_000 },
-  { label: '5 minutes',  value: 300_000 },
-  { label: '10 minutes', value: 600_000 },
-  { label: '15 minutes', value: 900_000 },
-  { label: '30 minutes', value: 1_800_000 },
+  { label: '30 seconds', value: 30_000 },
+  { label: '60 seconds (recommended)', value: 60_000 },
+  { label: '2 minutes (misses most windows)',  value: 120_000 },
+  { label: '5 minutes (misses most windows)',  value: 300_000 },
+  { label: '15 minutes (misses most windows)', value: 900_000 },
 ];
+
+const POLL_TTL_CAVEAT =
+  'Usage files expire about 60 seconds after Claude Code refreshes them, and ' +
+  'expired files are skipped rather than counted as zero. Intervals longer ' +
+  'than 60 seconds will miss most collection windows.';
+
+const RETENTION_MIN = 1;
+const RETENTION_MAX = 365;
 
 function UsagePollingSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [interval, setInterval] = useState<number>(300_000);
+  // Named pollIntervalMs, not `interval`: the old pair shadowed the global
+  // setInterval inside this component (CGUI-70).
+  const [pollIntervalMs, setPollIntervalMs] = useState<number>(60_000);
   const [retention, setRetention] = useState<number>(90);
+  // Retention is edited as raw text and only parsed on blur. Parsing on every
+  // keystroke made clearing the field snap to 90 mid-edit, and `Number('')
+  // || 90` silently accepted out-of-range values that the max attribute only
+  // enforced in the spinner UI.
+  const [retentionDraft, setRetentionDraft] = useState<string>('90');
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.settings.get().then((s) => {
       setEnabled(s.usageLimitPollingEnabled);
-      setInterval(s.usageLimitPollIntervalMs);
+      setPollIntervalMs(s.usageLimitPollIntervalMs);
       setRetention(s.usageLimitRetentionDays);
-    });
+      setRetentionDraft(String(s.usageLimitRetentionDays));
+    }).catch((err: unknown) => setError(`Couldn't load settings: ${errMsg(err)}`));
   }, []);
 
   const handleToggle = async () => {
     const newValue = !enabled;
     setEnabled(newValue);
-    await window.api.settings.update({ usageLimitPollingEnabled: newValue });
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitPollingEnabled: newValue });
+    } catch (err) {
+      setEnabled(!newValue);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   const handleIntervalChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const prev = pollIntervalMs;
     const val = Number(e.target.value);
-    setInterval(val);
-    await window.api.settings.update({ usageLimitPollIntervalMs: val });
+    setPollIntervalMs(val);
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitPollIntervalMs: val });
+    } catch (err) {
+      setPollIntervalMs(prev);
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
-  const handleRetentionChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = Math.max(1, Number(e.target.value) || 90);
+  // Commit on blur: clamp into range, and fall back to the last saved value
+  // if the field was left empty or unparseable.
+  const handleRetentionCommit = async () => {
+    const parsed = Number(retentionDraft);
+    const val = Number.isFinite(parsed) && retentionDraft.trim() !== ''
+      ? Math.min(RETENTION_MAX, Math.max(RETENTION_MIN, Math.round(parsed)))
+      : retention;
+
+    setRetentionDraft(String(val));
+    if (val === retention) return;
+
+    const prev = retention;
     setRetention(val);
-    await window.api.settings.update({ usageLimitRetentionDays: val });
+    setError(null);
+    try {
+      await window.api.settings.update({ usageLimitRetentionDays: val });
+    } catch (err) {
+      setRetention(prev);
+      setRetentionDraft(String(prev));
+      setError(`Couldn't save setting: ${errMsg(err)}`);
+    }
   };
 
   const selectStyle: React.CSSProperties = {
@@ -517,31 +725,45 @@ function UsagePollingSection(): React.JSX.Element {
             Enable usage limit tracking
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
-            <span>Poll interval:</span>
-            <select value={interval} onChange={handleIntervalChange} style={selectStyle} disabled={!enabled}>
+            <span id="poll-interval-label">Poll interval:</span>
+            <select
+              aria-labelledby="poll-interval-label"
+              aria-describedby="poll-interval-caveat"
+              value={pollIntervalMs}
+              onChange={handleIntervalChange}
+              style={selectStyle}
+              disabled={!enabled}
+            >
               {POLL_INTERVAL_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
+          <p id="poll-interval-caveat" style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0, paddingLeft: 24, maxWidth: 520, lineHeight: 1.5, fontFamily: '"Poppins", sans-serif' }}>
+            {POLL_TTL_CAVEAT}
+          </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
-            <span>Data retention:</span>
+            <span id="retention-label">Data retention:</span>
             <input
               type="number"
-              value={retention}
-              onChange={handleRetentionChange}
-              min={1}
-              max={365}
+              aria-labelledby="retention-label"
+              value={retentionDraft}
+              onChange={(e) => setRetentionDraft(e.target.value)}
+              onBlur={handleRetentionCommit}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              min={RETENTION_MIN}
+              max={RETENTION_MAX}
               style={inputStyle}
               disabled={!enabled}
             />
-            <span>days</span>
+            <span>days ({RETENTION_MIN}&ndash;{RETENTION_MAX})</span>
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0, paddingLeft: 24, fontFamily: '"Poppins", sans-serif' }}>
             Interval and toggle changes take effect on next app restart.
           </p>
         </div>
       )}
+      <SettingError message={error} />
     </div>
   );
 }
@@ -671,9 +893,11 @@ const secondaryButtonStyles: React.CSSProperties = {
 
 function SortableItem({
   id,
+  label,
   children,
 }: {
   id: string;
+  label: string;
   children: React.ReactNode;
 }): React.JSX.Element {
   const { attributes, listeners, setNodeRef, transform, transition } = useSortable({ id });
@@ -685,13 +909,26 @@ function SortableItem({
 
   return (
     <div ref={setNodeRef} style={style}>
-      <span style={dragHandleStyles} {...attributes} {...listeners}>⠿</span>
+      {/* dnd-kit gives the handle button semantics; without a label it
+          announces as the literal "⠿" glyph (CGUI-68) */}
+      <span style={dragHandleStyles} aria-label={`Reorder ${label}`} {...attributes} {...listeners}>⠿</span>
       {children}
     </div>
   );
 }
 
-function DashboardTab(): React.JSX.Element {
+/**
+ * Lets the parent intercept a tab switch that would discard an unsaved draft.
+ * Only the flag and two actions cross the boundary — the draft itself stays
+ * owned by DashboardTab (CGUI-70).
+ */
+interface DashboardTabHandle {
+  dirty: boolean;
+  save: () => Promise<void>;
+  discard: () => void;
+}
+
+function DashboardTab({ onHandleChange }: { onHandleChange?: (h: DashboardTabHandle) => void }): React.JSX.Element {
   const { config: contextConfig, refreshConfig } = useDashboardConfig();
   const [localConfig, setLocalConfig] = useState<DashboardConfig | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -773,21 +1010,53 @@ function DashboardTab(): React.JSX.Element {
     setDirty(true);
   }, []);
 
+  const [saveBusy, setSaveBusy] = useState<'save' | 'reset' | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+
   const handleSave = useCallback(async () => {
-    if (!localConfig) return;
-    await window.api.dashboard.save(localConfig);
-    refreshConfig();
-    setDirty(false);
-  }, [localConfig, refreshConfig]);
+    if (!localConfig || saveBusy) return;
+    setSaveBusy('save');
+    setSaveError(null);
+    try {
+      await window.api.dashboard.save(localConfig);
+      refreshConfig();
+      setDirty(false);
+    } catch (err) {
+      setSaveError(`Couldn't save dashboard config: ${errMsg(err)}`);
+    } finally {
+      setSaveBusy(null);
+    }
+  }, [localConfig, refreshConfig, saveBusy]);
 
   const handleReset = useCallback(async () => {
+    if (saveBusy) return;
     const confirmed = window.confirm('Reset dashboard to defaults? This will undo all view and widget customizations.');
     if (!confirmed) return;
-    const fresh = await window.api.dashboard.reset();
-    setLocalConfig(structuredClone(fresh));
-    refreshConfig();
+    setSaveBusy('reset');
+    setSaveError(null);
+    try {
+      const fresh = await window.api.dashboard.reset();
+      setLocalConfig(structuredClone(fresh));
+      refreshConfig();
+      setDirty(false);
+    } catch (err) {
+      setSaveError(`Couldn't reset dashboard config: ${errMsg(err)}`);
+    } finally {
+      setSaveBusy(null);
+    }
+  }, [refreshConfig, saveBusy]);
+
+  // Discard drops the draft back to the persisted config; the load effect
+  // re-clones from context on the next render.
+  const handleDiscard = useCallback(() => {
+    setLocalConfig(contextConfig ? structuredClone(contextConfig) : null);
     setDirty(false);
-  }, [refreshConfig]);
+    setSaveError(null);
+  }, [contextConfig]);
+
+  useEffect(() => {
+    onHandleChange?.({ dirty, save: handleSave, discard: handleDiscard });
+  }, [onHandleChange, dirty, handleSave, handleDiscard]);
 
   const handleOpenJson = useCallback(async () => {
     const paths = await window.api.configPaths.get();
@@ -795,7 +1064,7 @@ function DashboardTab(): React.JSX.Element {
   }, []);
 
   if (!localConfig) {
-    return <div style={placeholderStyles}>Loading dashboard configuration...</div>;
+    return <Loading label="dashboard configuration" compact />;
   }
 
   return (
@@ -805,18 +1074,26 @@ function DashboardTab(): React.JSX.Element {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleViewDragEnd}>
         <SortableContext items={localConfig.views.map(v => v.id)} strategy={verticalListSortingStrategy}>
           {localConfig.views.map(v => (
-            <SortableItem key={v.id} id={v.id}>
+            <SortableItem key={v.id} id={v.id} label={VIEW_LABELS[v.id] ?? v.id}>
               <span style={{ flex: 1 }}>{VIEW_LABELS[v.id] ?? v.id}</span>
-              <span
+              <button
+                type="button"
+                role="switch"
+                aria-checked={v.visible}
+                aria-label={`Show ${VIEW_LABELS[v.id] ?? v.id} in sidebar`}
                 title={v.defaultLanding && v.visible ? 'Cannot hide the landing view' : (v.visible ? 'Visible' : 'Hidden')}
-                style={toggleStyles(v.visible)}
+                style={{ ...toggleStyles(v.visible), border: 'none', padding: 0 }}
                 onClick={() => toggleViewVisibility(v.id)}
               >
                 <span style={toggleKnobStyles(v.visible)} />
-              </span>
-              <span
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={v.defaultLanding}
+                aria-label={`Set ${VIEW_LABELS[v.id] ?? v.id} as landing view`}
                 title="Landing view"
-                style={radioStyles(v.defaultLanding)}
+                style={{ ...radioStyles(v.defaultLanding), padding: 0 }}
                 onClick={() => setLandingView(v.id)}
               />
             </SortableItem>
@@ -829,31 +1106,36 @@ function DashboardTab(): React.JSX.Element {
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWidgetDragEnd}>
         <SortableContext items={localConfig.trendsWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
           {localConfig.trendsWidgets.map(w => (
-            <SortableItem key={w.id} id={w.id}>
+            <SortableItem key={w.id} id={w.id} label={WIDGET_LABELS[w.id] ?? w.id}>
               <span style={{ flex: 1 }}>{WIDGET_LABELS[w.id] ?? w.id}</span>
-              <span
+              <button
+                type="button"
+                role="switch"
+                aria-checked={w.visible}
+                aria-label={`Show ${WIDGET_LABELS[w.id] ?? w.id} widget`}
                 title={w.visible ? 'Visible' : 'Hidden'}
-                style={toggleStyles(w.visible)}
+                style={{ ...toggleStyles(w.visible), border: 'none', padding: 0 }}
                 onClick={() => toggleWidgetVisibility(w.id)}
               >
                 <span style={toggleKnobStyles(w.visible)} />
-              </span>
+              </button>
             </SortableItem>
           ))}
         </SortableContext>
       </DndContext>
 
       <div style={{ display: 'flex', gap: 8, marginTop: 24 }}>
-        <button style={primaryButtonStyles(!dirty)} onClick={handleSave} disabled={!dirty}>
-          {dirty ? 'Save Changes' : 'Saved'}
+        <button style={primaryButtonStyles(!dirty || saveBusy !== null)} onClick={handleSave} disabled={!dirty || saveBusy !== null}>
+          {saveBusy === 'save' ? 'Saving...' : dirty ? 'Save Changes' : 'Saved'}
         </button>
-        <button style={secondaryButtonStyles} onClick={handleReset}>
-          Reset to Defaults
+        <button style={secondaryButtonStyles} onClick={handleReset} disabled={saveBusy !== null}>
+          {saveBusy === 'reset' ? 'Resetting...' : 'Reset to Defaults'}
         </button>
         <button style={secondaryButtonStyles} onClick={handleOpenJson}>
           Open JSON File
         </button>
       </div>
+      <SettingError message={saveError} />
     </div>
   );
 }
@@ -897,18 +1179,17 @@ const TABLE_LABELS: Record<string, string> = {
   cowork_turns: 'Cowork Turns',
   chat_conversations: 'Chat Conversations',
   app_focus_events: 'Focus Events',
+  usage_snapshots: 'Usage Snapshots',
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatOldestDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+/**
+ * The row list is driven by what the query actually returns, with this map
+ * supplying nicer names. Rendering `Object.entries(TABLE_LABELS)` instead
+ * meant any table missing from the map — usage_snapshots, every future one —
+ * was silently absent from the counts (CGUI-70).
+ */
+function tableLabel(key: string): string {
+  return TABLE_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
 }
 
 function DataTab(): React.JSX.Element {
@@ -918,25 +1199,44 @@ function DataTab(): React.JSX.Element {
   const [stats, setStats] = useState<DatabaseStats | null>(null);
   const [backupStatus, setBackupStatus] = useState<string | null>(null);
   const [backingUp, setBackingUp] = useState(false);
+  const [statsError, setStatsError] = useState<string | null>(null);
+  const [clearError, setClearError] = useState<string | null>(null);
+  const backupTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
-    window.api.data.getTableCounts().then(setTableCounts);
-    window.api.data.getStats().then(setStats);
+    window.api.data.getTableCounts()
+      .then(setTableCounts)
+      .catch((err: unknown) => setStatsError(`Couldn't load database stats: ${errMsg(err)}`));
+    window.api.data.getStats()
+      .then(setStats)
+      .catch((err: unknown) => setStatsError(`Couldn't load database stats: ${errMsg(err)}`));
+    return () => {
+      if (backupTimer.current) clearTimeout(backupTimer.current);
+    };
   }, []);
 
   const handleBackup = async () => {
     setBackingUp(true);
     setBackupStatus(null);
+    if (backupTimer.current) clearTimeout(backupTimer.current);
+    let failed = false;
     try {
       const result: BackupResult = await window.api.data.backup();
       if (result.success) {
         setBackupStatus(`Backed up to ${result.path}`);
       } else if (result.error) {
+        failed = true;
         setBackupStatus(`Backup failed: ${result.error}`);
       }
+    } catch (err) {
+      failed = true;
+      setBackupStatus(`Backup failed: ${errMsg(err)}`);
     } finally {
       setBackingUp(false);
-      setTimeout(() => setBackupStatus(null), 5000);
+      // Success auto-dismisses; failures persist until the next backup (CGUI-66)
+      if (!failed) {
+        backupTimer.current = setTimeout(() => setBackupStatus(null), 5000);
+      }
     }
   };
 
@@ -948,6 +1248,7 @@ function DataTab(): React.JSX.Element {
     if (!confirmed) return;
 
     setClearing(true);
+    setClearError(null);
     try {
       await window.api.dev.clearDatabase();
       setCleared(true);
@@ -956,6 +1257,8 @@ function DataTab(): React.JSX.Element {
       setTableCounts(counts);
       const newStats = await window.api.data.getStats();
       setStats(newStats);
+    } catch (err) {
+      setClearError(`Clear failed: ${errMsg(err)}`);
     } finally {
       setClearing(false);
     }
@@ -963,6 +1266,8 @@ function DataTab(): React.JSX.Element {
 
   return (
     <div style={{ padding: 4 }}>
+      <SettingError message={statsError} />
+      <SettingError message={clearError} />
       <div style={{ marginBottom: 20 }}>
         <h3 style={{ fontSize: 14, color: 'var(--text-primary)', marginBottom: 12, fontFamily: '"Poppins", sans-serif', fontWeight: 600 }}>
           Database
@@ -983,11 +1288,11 @@ function DataTab(): React.JSX.Element {
             </div>
             <div style={tableCountRowStyles}>
               <span style={{ color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif' }}>Mode</span>
-              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>WAL</span>
+              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>{stats?.journalMode ?? '—'}</span>
             </div>
           </div>
         ) : (
-          <span style={placeholderStyles}>Loading...</span>
+          <Loading compact />
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -999,7 +1304,7 @@ function DataTab(): React.JSX.Element {
           </button>
         </div>
         {backupStatus && (
-          <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: backupStatus.startsWith('Backed') ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>
+          <p style={{ fontSize: 12, fontFamily: '"Poppins", sans-serif', color: backupStatus.startsWith('Backed') ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>
             {backupStatus}
           </p>
         )}
@@ -1016,20 +1321,20 @@ function DataTab(): React.JSX.Element {
               <span style={{ color: 'var(--text-secondary)', width: 80, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Rows</span>
               <span style={{ color: 'var(--text-secondary)', width: 120, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Oldest Record</span>
             </div>
-            {Object.entries(TABLE_LABELS).map(([key, label]) => (
+            {Object.keys(tableCounts).sort((a, b) => tableLabel(a).localeCompare(tableLabel(b))).map((key) => (
               <div key={key} style={{ ...tableCountRowStyles, alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif' }}>{label}</span>
+                <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif' }}>{tableLabel(key)}</span>
                 <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace', width: 80, textAlign: 'right' }}>
                   {(tableCounts[key] ?? 0).toLocaleString()}
                 </span>
                 <span style={{ color: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace', fontSize: 11, width: 120, textAlign: 'right' }}>
-                  {formatOldestDate(stats?.oldestRecords[key] ?? null)}
+                  {formatDateFull(stats?.oldestRecords[key] ?? null)}
                 </span>
               </div>
             ))}
           </div>
         ) : (
-          <span style={placeholderStyles}>Loading...</span>
+          <Loading compact />
         )}
       </div>
 

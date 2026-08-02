@@ -20,7 +20,7 @@ const contentAreaStyles: React.CSSProperties = {
 
 export default function ContentArea({ children }: ContentAreaProps): React.JSX.Element {
   return (
-    <main style={contentAreaStyles} role="main">
+    <main style={contentAreaStyles}>
       {children}
     </main>
   );

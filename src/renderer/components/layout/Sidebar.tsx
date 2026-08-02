@@ -78,17 +78,19 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
 // App mark (CGUI-57): same wireframe-gear geometry as assets/icon.svg, inlined
 // so the sidebar mark matches the installer/taskbar/tray icon exactly.
 function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
+  // useId keeps the gradient unique if the mark ever renders twice (CGUI-68)
+  const gradientId = React.useId();
   return (
     <svg viewBox="0 0 256 256" width={size} height={size} aria-hidden="true">
       <defs>
-        <linearGradient id="gear-mark-gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
           <stop offset="0%" stopColor="#a855f7" />
           <stop offset="100%" stopColor="#6366f1" />
         </linearGradient>
       </defs>
       <g
         fill="none"
-        stroke="url(#gear-mark-gradient)"
+        stroke={`url(#${gradientId})`}
         strokeWidth={24}
         strokeLinejoin="round"
         strokeLinecap="round"
@@ -104,6 +106,17 @@ export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
   const [appVersion, setAppVersion] = useState('');
+
+  // Seed from the current status, then track pushes. Without the initial
+  // fetch the dot claimed "offline" until the next connection event, which
+  // may never arrive in a healthy session (CGUI-70).
+  useEffect(() => {
+    let cancelled = false;
+    window.api.logPath.getStatus()
+      .then(status => { if (!cancelled) setWatcherConnected(status.valid); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     return window.api.onLogWatcherConnection((status) => {
@@ -131,7 +144,10 @@ export default function Sidebar(): React.JSX.Element {
         <div className="logo"><GearMark size={20} /></div>
         <div className="name">
           COG
-          <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>
+          {/* The separator belongs to the version, not the line — printing it
+              unconditionally left a dangling "· local" during the async
+              version fetch (CGUI-70). */}
+          <span className="sub">{appVersion ? `v${appVersion} · local` : 'local'}</span>
         </div>
       </div>
 
@@ -179,7 +195,6 @@ export default function Sidebar(): React.JSX.Element {
             height: 6,
             borderRadius: '50%',
             background: watcherConnected ? 'var(--success)' : 'var(--text-tertiary)',
-            boxShadow: watcherConnected ? undefined : 'none',
             animation: watcherConnected ? 'pulse 2s infinite' : 'none',
             flexShrink: 0,
           }} />

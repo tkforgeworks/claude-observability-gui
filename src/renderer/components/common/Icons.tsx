@@ -3,12 +3,16 @@ import React from 'react';
 export type IconComponent = React.FC<React.SVGProps<SVGSVGElement>>;
 
 function icon(path: React.ReactNode): IconComponent {
-  return (props) => (
+  // aria-hidden by default: every icon in the app is decorative (paired with
+  // text); overridable via props spread for any future standalone use (CGUI-68)
+  const Component: IconComponent = (props) => (
     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
-         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" {...props}>
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" {...props}>
       {path}
     </svg>
   );
+  Component.displayName = 'Icon';
+  return Component;
 }
 
 export const Icons = {

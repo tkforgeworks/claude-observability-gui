@@ -23,8 +23,10 @@ interface DeltaChipProps {
 export function DeltaChip({ value }: DeltaChipProps): React.JSX.Element {
   const dir: DeltaDirection = value > 0 ? 'up' : value < 0 ? 'down' : 'flat';
   const Arrow = dir === 'up' ? Icons.arrowUp : dir === 'down' ? Icons.arrowDown : null;
+  // Direction is otherwise conveyed only by color + a 10px glyph (CGUI-68)
+  const dirWord = dir === 'up' ? 'up' : dir === 'down' ? 'down' : 'unchanged';
   return (
-    <span className={`delta ${dir}`}>
+    <span className={`delta ${dir}`} aria-label={`${dirWord} ${Math.abs(value).toFixed(0)}%`}>
       {Arrow && <Arrow style={{ width: 10, height: 10 }} />}
       {Math.abs(value).toFixed(0)}%
     </span>

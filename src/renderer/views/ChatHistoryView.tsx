@@ -9,12 +9,16 @@ import {
   CartesianGrid,
 } from 'recharts';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatusBanner from '../components/common/StatusBanner';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import HBar from '../components/charts/HBar';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
+import { formatBytes, formatDateFull, formatElapsed } from '../utils/format';
 import type {
   ImportSummary,
   ChatConversationCount,
@@ -24,11 +28,11 @@ import type {
 } from '../../shared/ipc-types';
 
 function formatPeriodLabel(period: string, groupBy: 'week' | 'month'): string {
-  const d = new Date(period + 'T00:00:00');
+  const d = new Date(period + 'T12:00:00'); // local noon, per the format.ts convention
   if (groupBy === 'month') {
-    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function formatStaleness(isoDate: string): string {
@@ -36,17 +40,6 @@ function formatStaleness(isoDate: string): string {
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
   return `${days} days ago`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function ChartTooltip({ active, payload, label }: {
@@ -100,17 +93,16 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
 
   const visible = expanded ? sorted : sorted.slice(0, COLLAPSED_LIMIT);
   const hasMore = sorted.length > COLLAPSED_LIMIT;
-  const arrow = (key: ProjectSortKey) => sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '';
 
   return (
     <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
       <table className="data">
         <thead>
           <tr>
-            <th onClick={() => handleSort('name')} style={{ cursor: 'pointer' }}>Name{arrow('name')}</th>
-            <th className="num" onClick={() => handleSort('doc_count')} style={{ cursor: 'pointer' }}>Docs{arrow('doc_count')}</th>
-            <th onClick={() => handleSort('created_at')} style={{ cursor: 'pointer' }}>Created{arrow('created_at')}</th>
-            <th className="num" onClick={() => handleSort('lifespan_days')} style={{ cursor: 'pointer' }}>Lifespan{arrow('lifespan_days')}</th>
+            <SortableTh label="Name" active={sortKey === 'name'} dir={sortDir} onSort={() => handleSort('name')} />
+            <SortableTh label="Docs" className="num" active={sortKey === 'doc_count'} dir={sortDir} onSort={() => handleSort('doc_count')} />
+            <SortableTh label="Created" active={sortKey === 'created_at'} dir={sortDir} onSort={() => handleSort('created_at')} />
+            <SortableTh label="Lifespan" className="num" active={sortKey === 'lifespan_days'} dir={sortDir} onSort={() => handleSort('lifespan_days')} />
           </tr>
         </thead>
         <tbody>
@@ -118,10 +110,10 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
             <tr key={p.project_id}>
               <td>
                 {p.name || 'Untitled'}
-                {p.is_private && <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11, fontFamily: '"Poppins", sans-serif' }}>private</span>}
+                {p.is_private && <span className="chip muted" style={{ marginLeft: 6 }}>private</span>}
               </td>
               <td className="num">{p.doc_count}</td>
-              <td>{formatDate(p.created_at)}</td>
+              <td>{formatDateFull(p.created_at)}</td>
               <td className="num">{p.lifespan_days}d</td>
             </tr>
           ))}
@@ -134,7 +126,7 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
             border: 'none',
             color: 'var(--purple-primary)',
             fontSize: 12,
-            fontFamily: '"JetBrains Mono", monospace',
+            fontFamily: '"Poppins", sans-serif',
             cursor: 'pointer',
             padding: '8px 0',
             textAlign: 'center',
@@ -175,27 +167,27 @@ export default function ChatHistoryView(): React.JSX.Element {
   const [lastSummary, setLastSummary] = useState<ImportSummary | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  const { data: counts, loading: countsLoading, refetch: refetchCounts } = useApi(
+  const { data: counts, loading: countsLoading, error: countsError, refetch: refetchCounts } = useApi(
     () => window.api.chat.getConversationCounts(groupBy),
     [groupBy]
   );
-  const { data: stats, refetch: refetchStats } = useApi(
+  const { data: stats, loading: statsLoading, error: statsError, refetch: refetchStats } = useApi(
     () => window.api.chat.getStats(),
     [lastSummary]
   );
-  const { data: projects, refetch: refetchProjects } = useApi(
+  const { data: projects, error: projectsError, refetch: refetchProjects } = useApi(
     () => window.api.chat.getProjects(),
     [lastSummary]
   );
-  const { data: memories, refetch: refetchMemories } = useApi(
+  const { data: memories, error: memoriesError, refetch: refetchMemories } = useApi(
     () => window.api.chat.getMemories(),
     [lastSummary]
   );
-  const { data: convHeatmap, refetch: refetchConvHeatmap } = useApi(
+  const { data: convHeatmap, error: convHeatmapError, refetch: refetchConvHeatmap } = useApi(
     () => window.api.chat.getConversationHeatmap(365),
     [lastSummary]
   );
-  const { data: projHeatmap, refetch: refetchProjHeatmap } = useApi(
+  const { data: projHeatmap, error: projHeatmapError, refetch: refetchProjHeatmap } = useApi(
     () => window.api.chat.getProjectHeatmap(365),
     [lastSummary]
   );
@@ -246,14 +238,18 @@ export default function ChatHistoryView(): React.JSX.Element {
     setLastSummary(null);
     try {
       const summary = await window.api.chatImport.start(filePath);
+      // Setting lastSummary is itself the refetch trigger — it's the dep of
+      // every query below except the conversation counts, which key off
+      // groupBy. Calling refetchAll() here as well ran all six twice per
+      // import (CGUI-70).
       setLastSummary(summary);
-      refetchAll();
+      refetchCounts();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
-  }, [refetchAll]);
+  }, [refetchCounts]);
 
   const handleDropZoneClick = useCallback(async () => {
     if (importing) return;
@@ -268,7 +264,12 @@ export default function ChatHistoryView(): React.JSX.Element {
     setDragOver(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
+  // Dragging over a child fires dragleave on the parent, so a naive handler
+  // flickered the highlight on every internal boundary. Only clear when the
+  // pointer has actually left the drop zone's bounds (CGUI-70).
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    const zone = e.currentTarget as HTMLElement;
+    if (zone.contains(e.relatedTarget as Node | null)) return;
     setDragOver(false);
   }, []);
 
@@ -289,13 +290,35 @@ export default function ChatHistoryView(): React.JSX.Element {
     document.getElementById('chat-drop-zone')?.scrollIntoView({ behavior: 'smooth' });
   }, []);
 
-  if (countsLoading) {
+  // Gate on both queries that decide between empty and populated states, so a
+  // slow getStats doesn't flash the empty state before data arrives (CGUI-66)
+  if (countsLoading || statsLoading) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
+        <Loading label="chat history" />
       </div>
     );
   }
+
+  // A failed stats/counts fetch must not masquerade as "no chat history"
+  if (statsError || countsError) {
+    return (
+      <div className="page">
+        <ErrorState
+          what="chat history"
+          error={statsError ?? countsError}
+          onRetry={refetchAll}
+        />
+      </div>
+    );
+  }
+
+  const sectionErrors: { label: string; error: Error }[] = [
+    projectsError && { label: 'projects', error: projectsError },
+    memoriesError && { label: 'memories', error: memoriesError },
+    convHeatmapError && { label: 'conversation heatmap', error: convHeatmapError },
+    projHeatmapError && { label: 'project heatmap', error: projHeatmapError },
+  ].filter((e): e is { label: string; error: Error } => Boolean(e));
 
   if (!hasData) {
     return (
@@ -321,6 +344,13 @@ export default function ChatHistoryView(): React.JSX.Element {
 
   return (
     <div className="page">
+      {sectionErrors.length > 0 && (
+        <StatusBanner
+          variant="error"
+          message={`Some sections failed to load: ${sectionErrors.map(e => e.label).join(', ')}.`}
+          action={{ label: 'Retry', onClick: refetchAll }}
+        />
+      )}
       {isStale && lastImportAt && (
         <StatusBanner
           variant="warning"
@@ -371,7 +401,7 @@ export default function ChatHistoryView(): React.JSX.Element {
               allowDecimals={false}
               width={36}
             />
-            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(102, 102, 204, 0.08)' }} />
+            <Tooltip content={<ChartTooltip />} cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }} />
             <Bar
               dataKey="count"
               radius={[3, 3, 0, 0]}
@@ -416,10 +446,12 @@ export default function ChatHistoryView(): React.JSX.Element {
         <MemorySection memories={memories} />
       )}
 
-      {/* Heatmaps — side by side when space allows, stacked below ~680px columns.
-          680px ≈ HeatmapChart's minimum 365-day grid width (10px cells × 53 weeks). */}
+      {/* Heatmaps — side by side when space allows, stacked below ~660px columns.
+          The `min(…, 100%)` guard keeps the track from exceeding the container:
+          the content column is only ~656px at the 900px window minimum, so a
+          bare 660px minimum would always overflow (CGUI-69). */}
       {(convHeatmapData.length > 0 || projHeatmapData.length > 0) && (
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(680px, 1fr))', gap: 14 }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(660px, 100%), 1fr))', gap: 14 }}>
           {convHeatmapData.length > 0 && (
             <div className="card">
               <div className="card-head"><h2>Conversation Activity</h2></div>
@@ -459,7 +491,7 @@ export default function ChatHistoryView(): React.JSX.Element {
               <div style={{ color: 'var(--error)' }}>{lastSummary.errorCount} errors</div>
             )}
             <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 12 }}>
-              Completed in {lastSummary.scanDurationMs}ms
+              Completed in {formatElapsed(lastSummary.scanDurationMs)}
             </div>
           </div>
         </div>
@@ -493,7 +525,7 @@ function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDro
   importing: boolean;
   onClick: () => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
+  onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
   return (
@@ -508,15 +540,23 @@ function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDro
         fontSize: 13,
         fontFamily: '"Poppins", sans-serif',
         cursor: 'pointer',
-        backgroundColor: dragOver ? 'rgba(102, 102, 204, 0.08)' : 'transparent',
+        backgroundColor: dragOver ? 'rgba(168, 85, 247, 0.08)' : 'transparent',
         transition: 'border-color 0.15s, background-color 0.15s',
       }}
       onClick={onClick}
+      onKeyDown={(e) => {
+        // role="button" needs Enter/Space to actually activate (CGUI-68)
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          onClick();
+        }
+      }}
       onDragOver={onDragOver}
       onDragLeave={onDragLeave}
       onDrop={onDrop}
       role="button"
       tabIndex={0}
+      aria-busy={importing}
       aria-label="Drop claude.ai export ZIP here or click to browse"
     >
       {importing ? (
