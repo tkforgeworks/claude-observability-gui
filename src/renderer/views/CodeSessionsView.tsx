@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import type { CleanupWarning, ImportSummary } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
 import Loading from '../components/common/Loading';
@@ -72,23 +72,36 @@ export default function CodeSessionsView(): React.JSX.Element {
       ?.catch((err: unknown) => console.error('[CodeSessionsView] cleanup warning check failed:', err));
   }, []);
 
+  // Fade timers are tracked so they can be cancelled. Previously they were
+  // fire-and-forget: they leaked past unmount, and a timer from an earlier
+  // scan would hide the status of a scan that had just started (CGUI-70).
+  const fadeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearFadeTimers = useCallback(() => {
+    fadeTimers.current.forEach(clearTimeout);
+    fadeTimers.current = [];
+  }, []);
+
+  useEffect(() => clearFadeTimers, [clearFadeTimers]);
+
   useEffect(() => {
     const unsubStarted = window.api.onScanStarted?.(() => {
+      clearFadeTimers();
       setScanStatus('scanning');
       setScanFading(false);
     });
     const unsubComplete = window.api.onImportComplete?.((summary) => {
+      clearFadeTimers();
       setScanStatus('complete');
       setLastScanSummary(summary);
       setScanFading(false);
       if (summary.newRecords > 0 || summary.updatedRecords > 0) refetch();
-      setTimeout(() => {
+      fadeTimers.current.push(setTimeout(() => {
         setScanFading(true);
-        setTimeout(() => setScanStatus('idle'), 500);
-      }, 5000);
+        fadeTimers.current.push(setTimeout(() => setScanStatus('idle'), 500));
+      }, 5000));
     });
     return () => { unsubStarted?.(); unsubComplete?.(); };
-  }, [refetch]);
+  }, [refetch, clearFadeTimers]);
 
   const sorted = useMemo(() => {
     const copy = [...sessions];

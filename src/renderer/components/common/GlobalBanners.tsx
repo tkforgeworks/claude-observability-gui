@@ -104,8 +104,14 @@ export default function GlobalBanners(): React.JSX.Element | null {
 
   const showHealth = health.unhealthy && healthDismissedAt < health.triggerId;
 
+  if (!connection.disconnected && !showHealth) return null;
+
   return (
-    <>
+    // Banners sit outside the page's scroll container, so they own their own
+    // inset — without it they butt against the viewport edges and each other
+    // (CGUI-70). Matches `.page`'s horizontal padding so they line up with
+    // the content below.
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '12px 28px 0' }}>
       {connection.disconnected && (
         <StatusBanner
           variant="error"
@@ -123,6 +129,6 @@ export default function GlobalBanners(): React.JSX.Element | null {
           onDismiss={() => setHealthDismissedAt(health.triggerId)}
         />
       )}
-    </>
+    </div>
   );
 }

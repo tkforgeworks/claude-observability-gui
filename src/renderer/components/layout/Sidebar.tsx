@@ -107,6 +107,17 @@ export default function Sidebar(): React.JSX.Element {
   const [watcherConnected, setWatcherConnected] = useState(false);
   const [appVersion, setAppVersion] = useState('');
 
+  // Seed from the current status, then track pushes. Without the initial
+  // fetch the dot claimed "offline" until the next connection event, which
+  // may never arrive in a healthy session (CGUI-70).
+  useEffect(() => {
+    let cancelled = false;
+    window.api.logPath.getStatus()
+      .then(status => { if (!cancelled) setWatcherConnected(status.valid); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
   useEffect(() => {
     return window.api.onLogWatcherConnection((status) => {
       setWatcherConnected(status.connected);
@@ -133,7 +144,10 @@ export default function Sidebar(): React.JSX.Element {
         <div className="logo"><GearMark size={20} /></div>
         <div className="name">
           COG
-          <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>
+          {/* The separator belongs to the version, not the line — printing it
+              unconditionally left a dangling "· local" during the async
+              version fetch (CGUI-70). */}
+          <span className="sub">{appVersion ? `v${appVersion} · local` : 'local'}</span>
         </div>
       </div>
 

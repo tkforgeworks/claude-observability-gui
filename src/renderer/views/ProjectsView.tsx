@@ -192,7 +192,7 @@ export default function ProjectsView(): React.JSX.Element {
                       </td>
                     </tr>
                     {expandedProject === p.projectPath && (
-                      <tr>
+                      <tr className="detail-row">
                         <td colSpan={8} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
                           <ProjectDetail project={p} />
                         </td>
@@ -247,7 +247,11 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {modelEntries.map(([model, count]) => {
-              const pct = Math.round((count / project.codeSessionCount) * 100);
+              // Guard the divisor: a project can carry model rows with a zero
+              // session count, which rendered width: Infinity% (CGUI-70).
+              const pct = project.codeSessionCount > 0
+                ? Math.round((count / project.codeSessionCount) * 100)
+                : 0;
               return (
                 <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
                   <div style={{

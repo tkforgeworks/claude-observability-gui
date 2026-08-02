@@ -110,7 +110,7 @@ export interface AppSettings {
 
   // Usage Limit Polling
   usageLimitPollingEnabled: boolean;
-  usageLimitPollIntervalMs: number;   // Default 300_000 (5 minutes)
+  usageLimitPollIntervalMs: number;   // Default 60_000 (60s — see the TTL note in usageLimitWatcher)
   usageLimitRetentionDays: number;    // Default 90
 
   // Import history
@@ -385,6 +385,8 @@ export interface DatabaseStats {
   path: string;
   sizeBytes: number;
   oldestRecords: Record<string, string | null>;
+  /** Reported by `PRAGMA journal_mode`, not assumed (CGUI-70). */
+  journalMode: string;
 }
 
 export interface BackupResult {

@@ -80,8 +80,11 @@ export default function App(): React.JSX.Element {
               <Sidebar />
               <ContentArea>
                 <TopbarBridge />
+                {/* Outside the scroll container: the LogWatcher banner is
+                    meant to be persistent and non-dismissible, but inside it
+                    scrolled out of view with the page content (CGUI-70). */}
+                <GlobalBanners />
                 <div style={pageScrollStyles}>
-                  <GlobalBanners />
                   <Routes>
                     <Route path="/" element={<DefaultRedirect />} />
                     <Route path="/today" element={<TodayView />} />

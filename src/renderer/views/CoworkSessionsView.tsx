@@ -129,10 +129,28 @@ export default function CoworkSessionsView(): React.JSX.Element {
   }, [days]);
   const sessions = fetched ?? [];
 
+  const loadTurns = useCallback((sessionId: string) => {
+    setTurnsLoading(true);
+    setTurnsError(null);
+    window.api.coworkSessions.getTurns(sessionId)
+      .then(setExpandedTurns)
+      .catch((err: unknown) => {
+        setExpandedTurns([]);
+        setTurnsError(err instanceof Error ? err : new Error(String(err)));
+      })
+      .finally(() => setTurnsLoading(false));
+  }, []);
+
+  // A live event refreshes the session list; the expanded row's turns have to
+  // come along or the open detail keeps showing pre-event data while the row
+  // above it updates (CGUI-70).
   useEffect(() => {
-    const unsub = window.api.onLogWatcherEvent?.(() => { refetch(); });
+    const unsub = window.api.onLogWatcherEvent?.(() => {
+      refetch();
+      if (expandedId) loadTurns(expandedId);
+    });
     return () => { unsub?.(); };
-  }, [refetch]);
+  }, [refetch, expandedId, loadTurns]);
 
   const getSortValue = useCallback((s: CoworkSession, key: SortKey): string | number | null => {
     switch (key) {
@@ -189,15 +207,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
       return;
     }
     setExpandedId(sessionId);
-    setTurnsLoading(true);
-    setTurnsError(null);
-    window.api.coworkSessions.getTurns(sessionId)
-      .then(setExpandedTurns)
-      .catch((err: unknown) => {
-        setExpandedTurns([]);
-        setTurnsError(err instanceof Error ? err : new Error(String(err)));
-      })
-      .finally(() => setTurnsLoading(false));
+    loadTurns(sessionId);
   };
 
   if (loading && !fetched) {
@@ -297,7 +307,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
                       <td className="num">{formatDuration(avg)}</td>
                     </tr>
                     {isExpanded && (
-                      <tr>
+                      <tr className="detail-row">
                         <td colSpan={6} style={{ backgroundColor: 'var(--background-light)', padding: '12px 16px', borderBottom: '1px solid var(--border-soft)' }}>
                           {turnsLoading ? (
                             <span role="status" style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Loading turns...</span>

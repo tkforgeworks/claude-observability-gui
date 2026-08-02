@@ -72,6 +72,43 @@ export default function SettingsView(): React.JSX.Element {
     }
   }, [location.key, location.state]);
 
+  // Switching tabs unmounts DashboardTab, which used to throw away an unsaved
+  // draft without a word. The switch is now held until the draft is resolved
+  // (CGUI-70).
+  const dashboardHandle = useRef<DashboardTabHandle | null>(null);
+  const [dashboardDirty, setDashboardDirty] = useState(false);
+  const [pendingTab, setPendingTab] = useState<SettingsTab | null>(null);
+
+  const handleDashboardHandle = useCallback((h: DashboardTabHandle) => {
+    dashboardHandle.current = h;
+    setDashboardDirty(h.dirty);
+  }, []);
+
+  const requestTab = useCallback((id: SettingsTab) => {
+    if (id === activeTab) return;
+    if (activeTab === 'dashboard' && dashboardDirty) {
+      setPendingTab(id);
+      return;
+    }
+    setActiveTab(id);
+  }, [activeTab, dashboardDirty]);
+
+  const focusTab = (id: SettingsTab) => document.getElementById(`settings-tab-${id}`)?.focus();
+
+  const resolvePending = useCallback(async (action: 'save' | 'discard' | 'cancel') => {
+    const target = pendingTab;
+    if (action === 'cancel' || !target) { setPendingTab(null); return; }
+    if (action === 'save') {
+      await dashboardHandle.current?.save();
+    } else {
+      dashboardHandle.current?.discard();
+    }
+    setPendingTab(null);
+    setDashboardDirty(false);
+    setActiveTab(target);
+    focusTab(target);
+  }, [pendingTab]);
+
   // ARIA tabs pattern (CGUI-68): roving tabindex + arrow-key navigation
   const handleTabKeyDown = (e: React.KeyboardEvent) => {
     const idx = TABS.findIndex(t => t.id === activeTab);
@@ -83,8 +120,8 @@ export default function SettingsView(): React.JSX.Element {
     if (next != null) {
       e.preventDefault();
       const id = TABS[next].id;
-      setActiveTab(id);
-      document.getElementById(`settings-tab-${id}`)?.focus();
+      requestTab(id);
+      focusTab(id);
     }
   };
 
@@ -100,17 +137,37 @@ export default function SettingsView(): React.JSX.Element {
             aria-controls={`settings-panel-${id}`}
             tabIndex={activeTab === id ? 0 : -1}
             style={tabButtonStyles(activeTab === id)}
-            onClick={() => setActiveTab(id)}
+            onClick={() => requestTab(id)}
           >
             {label}
           </button>
         ))}
       </div>
 
+      {pendingTab && (
+        <div
+          role="alertdialog"
+          aria-label="Unsaved dashboard changes"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+            padding: '10px 14px', borderRadius: 6,
+            border: '1px solid var(--warning)',
+            background: 'rgba(251, 191, 36, 0.10)',
+            fontSize: 13, fontFamily: '"Poppins", sans-serif',
+            color: 'var(--text-primary)',
+          }}
+        >
+          <span style={{ flex: 1, minWidth: 220 }}>You have unsaved dashboard changes.</span>
+          <button style={primaryButtonStyles(false)} onClick={() => void resolvePending('save')}>Save</button>
+          <button style={secondaryButtonStyles} onClick={() => void resolvePending('discard')}>Discard</button>
+          <button style={secondaryButtonStyles} onClick={() => void resolvePending('cancel')}>Cancel</button>
+        </div>
+      )}
+
       <div role="tabpanel" id={`settings-panel-${activeTab}`} aria-labelledby={`settings-tab-${activeTab}`}>
         {activeTab === 'general'    && <GeneralTab />}
         {activeTab === 'remoteSync' && <RemoteSyncTab />}
-        {activeTab === 'dashboard'  && <DashboardTab />}
+        {activeTab === 'dashboard'  && <DashboardTab onHandleChange={handleDashboardHandle} />}
         {activeTab === 'data'       && <DataTab />}
       </div>
     </div>
@@ -540,26 +597,49 @@ function DataMigrationSection(): React.JSX.Element {
   );
 }
 
+/**
+ * cship rewrites the usage-limit files with a ~60s expiry, and expired files
+ * are skipped entirely, so any interval above 60s guarantees most polls land
+ * on an already-expired file and capture nothing. The old set started at 1
+ * minute and defaulted the UI to 5, which meant the default configuration
+ * could not collect data. Sub-minute options are the useful ones; the longer
+ * intervals stay only for deliberately low-power setups (CGUI-70).
+ */
 const POLL_INTERVAL_OPTIONS = [
-  { label: '1 minute',   value: 60_000 },
-  { label: '2 minutes',  value: 120_000 },
-  { label: '5 minutes',  value: 300_000 },
-  { label: '10 minutes', value: 600_000 },
-  { label: '15 minutes', value: 900_000 },
-  { label: '30 minutes', value: 1_800_000 },
+  { label: '30 seconds', value: 30_000 },
+  { label: '60 seconds (recommended)', value: 60_000 },
+  { label: '2 minutes (misses most windows)',  value: 120_000 },
+  { label: '5 minutes (misses most windows)',  value: 300_000 },
+  { label: '15 minutes (misses most windows)', value: 900_000 },
 ];
+
+const POLL_TTL_CAVEAT =
+  'Usage files expire about 60 seconds after Claude Code refreshes them, and ' +
+  'expired files are skipped rather than counted as zero. Intervals longer ' +
+  'than 60 seconds will miss most collection windows.';
+
+const RETENTION_MIN = 1;
+const RETENTION_MAX = 365;
 
 function UsagePollingSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
-  const [interval, setInterval] = useState<number>(300_000);
+  // Named pollIntervalMs, not `interval`: the old pair shadowed the global
+  // setInterval inside this component (CGUI-70).
+  const [pollIntervalMs, setPollIntervalMs] = useState<number>(60_000);
   const [retention, setRetention] = useState<number>(90);
+  // Retention is edited as raw text and only parsed on blur. Parsing on every
+  // keystroke made clearing the field snap to 90 mid-edit, and `Number('')
+  // || 90` silently accepted out-of-range values that the max attribute only
+  // enforced in the spinner UI.
+  const [retentionDraft, setRetentionDraft] = useState<string>('90');
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.settings.get().then((s) => {
       setEnabled(s.usageLimitPollingEnabled);
-      setInterval(s.usageLimitPollIntervalMs);
+      setPollIntervalMs(s.usageLimitPollIntervalMs);
       setRetention(s.usageLimitRetentionDays);
+      setRetentionDraft(String(s.usageLimitRetentionDays));
     }).catch((err: unknown) => setError(`Couldn't load settings: ${errMsg(err)}`));
   }, []);
 
@@ -576,27 +656,37 @@ function UsagePollingSection(): React.JSX.Element {
   };
 
   const handleIntervalChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const prev = interval;
+    const prev = pollIntervalMs;
     const val = Number(e.target.value);
-    setInterval(val);
+    setPollIntervalMs(val);
     setError(null);
     try {
       await window.api.settings.update({ usageLimitPollIntervalMs: val });
     } catch (err) {
-      setInterval(prev);
+      setPollIntervalMs(prev);
       setError(`Couldn't save setting: ${errMsg(err)}`);
     }
   };
 
-  const handleRetentionChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Commit on blur: clamp into range, and fall back to the last saved value
+  // if the field was left empty or unparseable.
+  const handleRetentionCommit = async () => {
+    const parsed = Number(retentionDraft);
+    const val = Number.isFinite(parsed) && retentionDraft.trim() !== ''
+      ? Math.min(RETENTION_MAX, Math.max(RETENTION_MIN, Math.round(parsed)))
+      : retention;
+
+    setRetentionDraft(String(val));
+    if (val === retention) return;
+
     const prev = retention;
-    const val = Math.max(1, Number(e.target.value) || 90);
     setRetention(val);
     setError(null);
     try {
       await window.api.settings.update({ usageLimitRetentionDays: val });
     } catch (err) {
       setRetention(prev);
+      setRetentionDraft(String(prev));
       setError(`Couldn't save setting: ${errMsg(err)}`);
     }
   };
@@ -634,25 +724,38 @@ function UsagePollingSection(): React.JSX.Element {
             Enable usage limit tracking
           </label>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
-            <span>Poll interval:</span>
-            <select value={interval} onChange={handleIntervalChange} style={selectStyle} disabled={!enabled}>
+            <span id="poll-interval-label">Poll interval:</span>
+            <select
+              aria-labelledby="poll-interval-label"
+              aria-describedby="poll-interval-caveat"
+              value={pollIntervalMs}
+              onChange={handleIntervalChange}
+              style={selectStyle}
+              disabled={!enabled}
+            >
               {POLL_INTERVAL_OPTIONS.map(opt => (
                 <option key={opt.value} value={opt.value}>{opt.label}</option>
               ))}
             </select>
           </div>
+          <p id="poll-interval-caveat" style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0, paddingLeft: 24, maxWidth: 520, lineHeight: 1.5, fontFamily: '"Poppins", sans-serif' }}>
+            {POLL_TTL_CAVEAT}
+          </p>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-primary)', fontFamily: '"Poppins", sans-serif', paddingLeft: 24 }}>
-            <span>Data retention:</span>
+            <span id="retention-label">Data retention:</span>
             <input
               type="number"
-              value={retention}
-              onChange={handleRetentionChange}
-              min={1}
-              max={365}
+              aria-labelledby="retention-label"
+              value={retentionDraft}
+              onChange={(e) => setRetentionDraft(e.target.value)}
+              onBlur={handleRetentionCommit}
+              onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+              min={RETENTION_MIN}
+              max={RETENTION_MAX}
               style={inputStyle}
               disabled={!enabled}
             />
-            <span>days</span>
+            <span>days ({RETENTION_MIN}&ndash;{RETENTION_MAX})</span>
           </div>
           <p style={{ fontSize: 11, color: 'var(--text-tertiary)', margin: 0, paddingLeft: 24, fontFamily: '"Poppins", sans-serif' }}>
             Interval and toggle changes take effect on next app restart.
@@ -813,7 +916,18 @@ function SortableItem({
   );
 }
 
-function DashboardTab(): React.JSX.Element {
+/**
+ * Lets the parent intercept a tab switch that would discard an unsaved draft.
+ * Only the flag and two actions cross the boundary — the draft itself stays
+ * owned by DashboardTab (CGUI-70).
+ */
+interface DashboardTabHandle {
+  dirty: boolean;
+  save: () => Promise<void>;
+  discard: () => void;
+}
+
+function DashboardTab({ onHandleChange }: { onHandleChange?: (h: DashboardTabHandle) => void }): React.JSX.Element {
   const { config: contextConfig, refreshConfig } = useDashboardConfig();
   const [localConfig, setLocalConfig] = useState<DashboardConfig | null>(null);
   const [dirty, setDirty] = useState(false);
@@ -930,6 +1044,18 @@ function DashboardTab(): React.JSX.Element {
       setSaveBusy(null);
     }
   }, [refreshConfig, saveBusy]);
+
+  // Discard drops the draft back to the persisted config; the load effect
+  // re-clones from context on the next render.
+  const handleDiscard = useCallback(() => {
+    setLocalConfig(contextConfig ? structuredClone(contextConfig) : null);
+    setDirty(false);
+    setSaveError(null);
+  }, [contextConfig]);
+
+  useEffect(() => {
+    onHandleChange?.({ dirty, save: handleSave, discard: handleDiscard });
+  }, [onHandleChange, dirty, handleSave, handleDiscard]);
 
   const handleOpenJson = useCallback(async () => {
     const paths = await window.api.configPaths.get();
@@ -1052,7 +1178,18 @@ const TABLE_LABELS: Record<string, string> = {
   cowork_turns: 'Cowork Turns',
   chat_conversations: 'Chat Conversations',
   app_focus_events: 'Focus Events',
+  usage_snapshots: 'Usage Snapshots',
 };
+
+/**
+ * The row list is driven by what the query actually returns, with this map
+ * supplying nicer names. Rendering `Object.entries(TABLE_LABELS)` instead
+ * meant any table missing from the map — usage_snapshots, every future one —
+ * was silently absent from the counts (CGUI-70).
+ */
+function tableLabel(key: string): string {
+  return TABLE_LABELS[key] ?? key.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+}
 
 function DataTab(): React.JSX.Element {
   const [clearing, setClearing] = useState(false);
@@ -1150,7 +1287,7 @@ function DataTab(): React.JSX.Element {
             </div>
             <div style={tableCountRowStyles}>
               <span style={{ color: 'var(--text-secondary)', fontFamily: '"Poppins", sans-serif' }}>Mode</span>
-              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>WAL</span>
+              <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace' }}>{stats?.journalMode ?? '—'}</span>
             </div>
           </div>
         ) : (
@@ -1183,9 +1320,9 @@ function DataTab(): React.JSX.Element {
               <span style={{ color: 'var(--text-secondary)', width: 80, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Rows</span>
               <span style={{ color: 'var(--text-secondary)', width: 120, textAlign: 'right', fontFamily: '"Poppins", sans-serif', fontSize: 12 }}>Oldest Record</span>
             </div>
-            {Object.entries(TABLE_LABELS).map(([key, label]) => (
+            {Object.keys(tableCounts).sort((a, b) => tableLabel(a).localeCompare(tableLabel(b))).map((key) => (
               <div key={key} style={{ ...tableCountRowStyles, alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif' }}>{label}</span>
+                <span style={{ color: 'var(--text-secondary)', flex: 1, fontFamily: '"Poppins", sans-serif' }}>{tableLabel(key)}</span>
                 <span style={{ color: 'var(--text-primary)', fontFamily: '"JetBrains Mono", monospace', width: 80, textAlign: 'right' }}>
                   {(tableCounts[key] ?? 0).toLocaleString()}
                 </span>

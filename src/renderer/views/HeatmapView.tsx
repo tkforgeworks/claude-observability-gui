@@ -36,6 +36,16 @@ export default function HeatmapView(): React.JSX.Element {
   } = useApi(() => window.api.analytics.getHeatmapData(rangeDays), [rangeDays]);
   const data = fetched ?? [];
 
+  // The heatmap draws from both sources, so it has to follow both feeds —
+  // previously it went stale until the view was remounted (CGUI-70).
+  useEffect(() => {
+    const unsubImport = window.api.onImportComplete?.((summary) => {
+      if (summary.newRecords > 0 || summary.updatedRecords > 0) refetch();
+    });
+    const unsubEvent = window.api.onLogWatcherEvent?.(() => { refetch(); });
+    return () => { unsubImport?.(); unsubEvent?.(); };
+  }, [refetch]);
+
   const totals = useMemo(() => {
     let activeDays = 0, coworkSessions = 0, codeSessions = 0;
     let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheCreationTokens = 0;

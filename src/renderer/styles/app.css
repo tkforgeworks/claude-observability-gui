@@ -351,6 +351,9 @@ table.data td {
 }
 table.data tr:last-child td { border-bottom: none; }
 table.data tr:hover td { background: rgba(168, 85, 247, 0.05); }
+/* Expanded detail rows are panels, not rows you can act on — the hover
+   highlight implied they were clickable (CGUI-70) */
+table.data tr.detail-row:hover td { background: inherit; }
 /* Expanded/selected row highlight (CGUI-68 — the .active class was previously
    applied by views but had no rule) */
 table.data tr.active td { background: var(--purple-tint-soft); }

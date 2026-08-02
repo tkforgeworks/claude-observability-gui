@@ -5,14 +5,20 @@ import { useDashboardConfig } from '../../contexts/DashboardConfigContext';
 
 const TITLE_BAR_HEIGHT = 32;
 
-const VIEW_LABELS: Partial<Record<ViewId, string>> = {
+// Every ViewId needs an entry — the View menu falls back to the raw route id,
+// so a missing key renders as e.g. "projects" (CGUI-70). Typed as a total
+// Record rather than Partial so a new view fails the build instead of
+// shipping an unlabelled menu item.
+const VIEW_LABELS: Record<ViewId, string> = {
   today: 'Today',
   cowork: 'Cowork',
   code: 'Code',
   chat: 'Chat',
+  projects: 'Projects',
   trends: 'Trends',
   heatmap: 'Heatmap',
   usage: 'Usage',
+  settings: 'Settings',
 };
 
 interface MenuItem {
@@ -272,7 +278,7 @@ export default function TitleBar(): React.JSX.Element {
     {
       label: 'View',
       items: visibleViews.map(id => ({
-        label: VIEW_LABELS[id] ?? id,
+        label: VIEW_LABELS[id],
         action: () => navigate(`/${id}`),
       })),
     },

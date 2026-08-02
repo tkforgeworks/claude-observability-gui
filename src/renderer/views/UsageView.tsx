@@ -117,6 +117,16 @@ export default function UsageView(): React.JSX.Element {
     });
   }, [refetch]);
 
+  // Reset countdowns and the staleness check are derived from Date.now() at
+  // render time, so with no new snapshots arriving nothing re-rendered: the
+  // countdown froze and the staleness notice could appear late or never.
+  // A minute tick is enough for both — they're displayed to the minute.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick(t => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+
   // Oldest-first, matching getRecent ordering; pct zeroed when the window
   // had already reset at capture time (stale resets_at in the source file).
   const historyRows: HistoryRow[] = useMemo(
