@@ -36,7 +36,7 @@ export default function EmptyState({
             border: 'none',
             borderRadius: 'var(--radius-md)',
             fontSize: 13,
-            fontFamily: '"Poppins"',
+            fontFamily: 'var(--font-header)',
             fontWeight: 500,
             cursor: 'pointer',
             transition: 'background-color 200ms ease',

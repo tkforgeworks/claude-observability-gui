@@ -28,11 +28,11 @@ import type {
 } from '../../shared/ipc-types';
 
 function formatPeriodLabel(period: string, groupBy: 'week' | 'month'): string {
-  const d = new Date(period + 'T00:00:00');
+  const d = new Date(period + 'T12:00:00'); // local noon, per the format.ts convention
   if (groupBy === 'month') {
-    return d.toLocaleDateString('en-US', { month: 'short', year: 'numeric' });
+    return d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
   }
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
 function formatStaleness(isoDate: string): string {

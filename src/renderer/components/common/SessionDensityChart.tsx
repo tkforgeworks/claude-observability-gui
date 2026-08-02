@@ -25,7 +25,6 @@ const COLORS = {
   line: 'var(--chart-5)',
   grid: 'var(--border-soft)',
   axis: 'var(--text-tertiary)',
-  bg: 'var(--background)',
 };
 
 interface ChartPoint {

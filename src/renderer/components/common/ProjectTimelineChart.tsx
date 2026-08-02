@@ -38,7 +38,7 @@ const buttonStyles: React.CSSProperties = {
   borderRadius: 'var(--radius-sm)',
   color: 'var(--text-secondary)',
   fontSize: 11,
-  fontFamily: '"Poppins"',
+  fontFamily: 'var(--font-header)',
   padding: '4px 12px',
   cursor: 'pointer',
   marginRight: 8,

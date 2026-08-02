@@ -216,7 +216,7 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
       {/* Left: Token breakdown */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: '"Poppins"', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-header)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
           Token Breakdown
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 12, fontFamily: '"JetBrains Mono", monospace' }}>
@@ -239,7 +239,7 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
 
       {/* Right: Model usage */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: '"Poppins"', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-header)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
           Model Usage
         </div>
         {modelEntries.length === 0 ? (

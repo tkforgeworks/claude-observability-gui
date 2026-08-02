@@ -43,7 +43,7 @@ const statCardStyles: React.CSSProperties = {
 
 const statLabelStyles: React.CSSProperties = {
   fontSize: 10,
-  fontFamily: '"Poppins"',
+  fontFamily: 'var(--font-header)',
   fontWeight: 600,
   color: COLORS.label,
   textTransform: 'uppercase' as const,
@@ -63,7 +63,7 @@ const heatbarContainerStyles: React.CSSProperties = {
 
 const heatbarLabelStyles: React.CSSProperties = {
   fontSize: 11,
-  fontFamily: '"Poppins"',
+  fontFamily: 'var(--font-header)',
   fontWeight: 600,
   color: COLORS.label,
   marginBottom: 6,

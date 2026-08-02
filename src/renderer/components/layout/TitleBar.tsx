@@ -163,7 +163,7 @@ function DropdownMenu({
             backgroundColor: 'var(--background-light)',
             border: '1px solid var(--border)',
             borderRadius: 4,
-            boxShadow: '0 4px 12px rgba(0,0,0,0.5)',
+            boxShadow: 'var(--shadow-lg)',
             zIndex: 9999,
             padding: '4px 0',
           }}
@@ -351,7 +351,7 @@ export default function TitleBar(): React.JSX.Element {
         </WindowButton>
         <WindowButton
           onClick={() => window.api.windowControls.close()}
-          hoverBg="#e81123"
+          hoverBg="var(--window-close-hover)"
           hoverColor="#ffffff"
           label="Close"
         >

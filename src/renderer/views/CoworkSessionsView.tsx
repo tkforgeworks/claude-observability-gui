@@ -67,7 +67,7 @@ function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | 
 
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: '"Poppins"', fontWeight: 600 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: 'var(--font-header)', fontWeight: 600 }}>
         Turn Duration Distribution
       </div>
       {/* Overflow lives on the wrapper, not the 40px bar row, so the
@@ -333,7 +333,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
                             <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>No completed turns recorded</span>
                           ) : (
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: '"Poppins"', fontWeight: 600 }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: 'var(--font-header)', fontWeight: 600 }}>
                                 Turns ({expandedTurns.length})
                               </div>
                               {expandedTurns.map((t, i) => (

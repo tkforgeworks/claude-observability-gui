@@ -195,7 +195,6 @@ export default function Sidebar(): React.JSX.Element {
             height: 6,
             borderRadius: '50%',
             background: watcherConnected ? 'var(--success)' : 'var(--text-tertiary)',
-            boxShadow: watcherConnected ? undefined : 'none',
             animation: watcherConnected ? 'pulse 2s infinite' : 'none',
             flexShrink: 0,
           }} />
