@@ -8,32 +8,19 @@ import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import {
+  formatDateTime,
+  formatDuration,
+  formatProjectName,
+  rangeDays,
+} from '../utils/format';
 
 type SortKey = 'title' | 'started_at' | 'turn_count' | 'duration' | 'avg_turn';
 type SortDir = 'asc' | 'desc';
 
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, 'All': 3650 };
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null || seconds <= 0) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
 function formatTurnTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function sessionDuration(s: CoworkSession): number | null {
@@ -45,17 +32,11 @@ function sessionAvgTurn(s: CoworkSession): number | null {
   return s.avg_turn_seconds != null ? Math.round(s.avg_turn_seconds) : null;
 }
 
-function formatProjectName(p: string | null): string {
-  if (!p) return '';
-  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
-}
-
 function sessionTitle(s: CoworkSession): string {
   if (s.project_path) return formatProjectName(s.project_path);
   if (s.title) return s.title;
   const d = new Date(s.started_at);
-  return `Session at ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+  return `Session at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function daysAgo(n: number): string {
@@ -125,7 +106,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
   const [turnsError, setTurnsError] = useState<Error | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 30;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -142,10 +123,10 @@ export default function CoworkSessionsView(): React.JSX.Element {
     error,
     refetch,
   } = useApi(() => {
-    const from = daysAgo(rangeDays);
+    const from = daysAgo(days);
     const to = new Date().toISOString();
     return window.api.coworkSessions.getAll({ from, to });
-  }, [rangeDays]);
+  }, [days]);
   const sessions = fetched ?? [];
 
   useEffect(() => {
@@ -310,7 +291,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
                           </span>
                         )}
                       </td>
-                      <td>{formatDate(s.started_at)}</td>
+                      <td>{formatDateTime(s.started_at)}</td>
                       <td className="num">{s.turn_count}</td>
                       <td className="num">{formatDuration(dur)}</td>
                       <td className="num">{formatDuration(avg)}</td>

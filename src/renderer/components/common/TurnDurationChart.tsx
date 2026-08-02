@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import type { TurnDurationDay } from '../../../shared/ipc-types';
 import { chartAxisTick, chartGridStroke, chartTooltipStyles } from './chartTheme';
+import { CHART_Y_AXIS_WIDTH, dateTickInterval, formatDayLabel, formatDuration } from '../../utils/format';
 
 interface TurnDurationChartProps {
   data: TurnDurationDay[];
@@ -29,19 +30,6 @@ const COLORS = {
   trendDown: 'var(--success)',
   neutral: 'var(--text-secondary)',
 };
-
-function formatDuration(seconds: number): string {
-  if (seconds === 0) return '0s';
-  if (seconds < 60) return `${seconds}s`;
-  const m = Math.floor(seconds / 60);
-  const s = seconds % 60;
-  return s > 0 ? `${m}m ${s}s` : `${m}m`;
-}
-
-function formatDateLabel(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 interface ChartDataPoint {
   date: string;
@@ -129,7 +117,7 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
 
       points.push({
         date: d.date,
-        label: formatDateLabel(d.date),
+        label: formatDayLabel(d.date),
         avgDuration: d.turnCount > 0 ? d.avgDurationSeconds : null,
         ma7,
         turnCount: d.turnCount,
@@ -179,7 +167,7 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
   }
 
   // Thin out X-axis labels for longer ranges
-  const tickInterval = data.length > 60 ? 13 : data.length > 14 ? 6 : 1;
+  const tickInterval = dateTickInterval(data.length);
 
   return (
     <div className="card">
@@ -200,7 +188,7 @@ export default function TurnDurationChart({ data }: TurnDurationChartProps): Rea
             tick={chartAxisTick}
             axisLine={false}
             tickLine={false}
-            width={50}
+            width={CHART_Y_AXIS_WIDTH}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend

@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
+import { formatDayLabelFull, localDateStr } from '../../utils/format';
 
 interface HeatmapDay {
   date: string;
@@ -65,7 +66,10 @@ function buildGrid(data: HeatmapDay[], days: number): GridLayout {
     const dayIndex = current.getDay();
     if (dayIndex === 0 && cells.length > 0) weekIndex++;
 
-    const dateStr = current.toISOString().slice(0, 10);
+    // Local day key, never toISOString(): the grid is anchored at local noon,
+    // so UTC formatting rolls cells onto the wrong day east of UTC+12 and the
+    // heatmap stops lining up with the query's own local-day buckets (CGUI-52)
+    const dateStr = localDateStr(current);
 
     if (current.getMonth() !== lastMonth) {
       lastMonth = current.getMonth();
@@ -96,11 +100,6 @@ function computeIntensityLevels(values: number[]): number[] {
     if (v <= p75) return 3;
     return 4;
   });
-}
-
-function formatDateLabel(dateStr: string): string {
-  const d = new Date(dateStr + 'T12:00:00');
-  return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 interface TooltipState {
@@ -250,7 +249,7 @@ export default function HeatmapChart({
           whiteSpace: 'nowrap',
           boxShadow: 'var(--shadow-md)',
         }}>
-          <div style={{ fontWeight: 600, marginBottom: 2 }}>{formatDateLabel(tooltip.date)}</div>
+          <div style={{ fontWeight: 600, marginBottom: 2 }}>{formatDayLabelFull(tooltip.date)}</div>
           <div style={{ color: tooltip.value > 0 ? 'var(--text-secondary)' : 'var(--text-tertiary)' }}>
             {formatValue ? formatValue(tooltip.value) : (tooltip.value > 0 ? String(tooltip.value) : 'No activity')}
           </div>

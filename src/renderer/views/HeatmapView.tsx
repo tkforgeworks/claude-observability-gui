@@ -5,18 +5,13 @@ import ErrorState from '../components/common/ErrorState';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import { formatTokens } from '../utils/format';
 
 const RANGE_MAP: Record<string, number> = {
   '3 months': 91,
   '6 months': 182,
   '12 months': 365,
 };
-
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
 
 export default function HeatmapView(): React.JSX.Element {
   const [rangeLabel, setRangeLabel] = useState('12 months');
@@ -103,9 +98,9 @@ export default function HeatmapView(): React.JSX.Element {
           <span className="sep">·</span>
           <span>Code: <strong>{totals.codeSessions}</strong> sessions</span>
           <span className="sep">·</span>
-          <span>I/O: <strong>{formatTokenCount(totals.inputTokens + totals.outputTokens)}</strong></span>
+          <span>I/O: <strong>{formatTokens(totals.inputTokens + totals.outputTokens)}</strong></span>
           <span className="sep">·</span>
-          <span>Cache: <strong>{formatTokenCount(totals.cacheReadTokens + totals.cacheCreationTokens)}</strong></span>
+          <span>Cache: <strong>{formatTokens(totals.cacheReadTokens + totals.cacheCreationTokens)}</strong></span>
         </div>
       </div>
 
@@ -125,26 +120,26 @@ export default function HeatmapView(): React.JSX.Element {
       <div className="card">
         <div className="card-head">
           <h2>Code: Input + Output Tokens</h2>
-          <span className="sub">{ioActive} active days · {formatTokenCount(totals.inputTokens + totals.outputTokens)} total</span>
+          <span className="sub">{ioActive} active days · {formatTokens(totals.inputTokens + totals.outputTokens)} total</span>
         </div>
         <HeatmapChart
           data={ioData}
           days={rangeDays}
           colorScale="teal"
-          formatValue={(v) => v > 0 ? formatTokenCount(v) + ' tokens' : 'No token usage'}
+          formatValue={(v) => v > 0 ? formatTokens(v) + ' tokens' : 'No token usage'}
         />
       </div>
 
       <div className="card">
         <div className="card-head">
           <h2>Code: Cache Read + Write Tokens</h2>
-          <span className="sub">{cacheActive} active days · {formatTokenCount(totals.cacheReadTokens + totals.cacheCreationTokens)} total</span>
+          <span className="sub">{cacheActive} active days · {formatTokens(totals.cacheReadTokens + totals.cacheCreationTokens)} total</span>
         </div>
         <HeatmapChart
           data={cacheData}
           days={rangeDays}
           colorScale="purple"
-          formatValue={(v) => v > 0 ? formatTokenCount(v) + ' tokens' : 'No cache usage'}
+          formatValue={(v) => v > 0 ? formatTokens(v) + ' tokens' : 'No cache usage'}
         />
       </div>
     </div>

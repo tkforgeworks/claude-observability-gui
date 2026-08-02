@@ -16,21 +16,12 @@ import {
   Legend,
 } from 'recharts';
 import type { ModelMixDay } from '../../../shared/ipc-types';
+import { CHART_Y_AXIS_WIDTH, dateTickInterval, formatDayLabel, shortenModel } from '../../utils/format';
 import { chartAxisTick, chartGridStroke, chartTooltipStyles, chartSeriesColors } from './chartTheme';
 
 interface ModelMigrationChartProps {
   data: ModelMixDay[];
   models: string[];
-}
-
-function formatDateLabel(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
-
-function shortenModelName(model: string): string {
-  // e.g. "claude-opus-4-6" → "opus-4-6", "claude-sonnet-4-6" → "sonnet-4-6"
-  return model.replace(/^claude-/, '');
 }
 
 interface ChartPoint {
@@ -61,7 +52,7 @@ function CustomTooltip({ active, payload, label }: CustomTooltipProps) {
       <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 2 }}>{label}</div>
       {active_.map(p => (
         <div key={p.dataKey} style={{ color: p.color }}>
-          {shortenModelName(p.name)}: {p.value} ({total > 0 ? Math.round((p.value / total) * 100) : 0}%)
+          {shortenModel(p.name)}: {p.value} ({total > 0 ? Math.round((p.value / total) * 100) : 0}%)
         </div>
       ))}
       <div style={{ color: 'var(--text-tertiary)', marginTop: 2 }}>Total: {total}</div>
@@ -73,14 +64,14 @@ export default function ModelMigrationChart({ data, models }: ModelMigrationChar
   if (models.length === 0) return null;
 
   const chartData: ChartPoint[] = data.map(d => {
-    const point: ChartPoint = { label: formatDateLabel(d.date) };
+    const point: ChartPoint = { label: formatDayLabel(d.date) };
     for (const m of models) {
       point[m] = (d[m] as number) ?? 0;
     }
     return point;
   });
 
-  const tickInterval = data.length > 60 ? 13 : data.length > 14 ? 6 : 1;
+  const tickInterval = dateTickInterval(data.length);
 
   return (
     <div className="card">
@@ -103,12 +94,12 @@ export default function ModelMigrationChart({ data, models }: ModelMigrationChar
             tick={chartAxisTick}
             axisLine={false}
             tickLine={false}
-            width={35}
+            width={CHART_Y_AXIS_WIDTH}
           />
           <Tooltip content={<CustomTooltip />} />
           <Legend
             wrapperStyle={{ fontSize: 11, color: 'var(--text-tertiary)' }}
-            formatter={(value: string) => shortenModelName(value)}
+            formatter={(value: string) => shortenModel(value)}
           />
           {models.map((model, i) => (
             <Area

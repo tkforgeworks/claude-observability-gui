@@ -20,6 +20,7 @@ import {
 } from 'recharts';
 import type { CacheEfficiencyData } from '../../../shared/ipc-types';
 import { chartAxisTick, chartGridStroke, chartCursorFill, chartTooltipStyles } from './chartTheme';
+import { formatCost, formatTokens } from '../../utils/format';
 
 interface CacheEfficiencyChartProps {
   data: CacheEfficiencyData[];
@@ -27,18 +28,6 @@ interface CacheEfficiencyChartProps {
 
 const BAR_COLOR = 'var(--chart-1)';
 const SAVINGS_COLOR = 'var(--success)';
-
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return String(n);
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
 
 function truncateProject(name: string): string {
   return name.length > 18 ? `${name.slice(0, 17)}…` : name;

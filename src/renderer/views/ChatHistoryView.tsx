@@ -18,6 +18,7 @@ import HBar from '../components/charts/HBar';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
+import { formatBytes, formatDateFull, formatElapsed } from '../utils/format';
 import type {
   ImportSummary,
   ChatConversationCount,
@@ -39,17 +40,6 @@ function formatStaleness(isoDate: string): string {
   if (days === 0) return 'today';
   if (days === 1) return 'yesterday';
   return `${days} days ago`;
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
 function ChartTooltip({ active, payload, label }: {
@@ -123,7 +113,7 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
                 {p.is_private && <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11, fontFamily: '"Poppins", sans-serif' }}>private</span>}
               </td>
               <td className="num">{p.doc_count}</td>
-              <td>{formatDate(p.created_at)}</td>
+              <td>{formatDateFull(p.created_at)}</td>
               <td className="num">{p.lifespan_days}d</td>
             </tr>
           ))}
@@ -492,7 +482,7 @@ export default function ChatHistoryView(): React.JSX.Element {
               <div style={{ color: 'var(--error)' }}>{lastSummary.errorCount} errors</div>
             )}
             <div style={{ marginTop: 8, color: 'var(--text-tertiary)', fontSize: 12 }}>
-              Completed in {lastSummary.scanDurationMs}ms
+              Completed in {formatElapsed(lastSummary.scanDurationMs)}
             </div>
           </div>
         </div>

@@ -8,6 +8,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import type { ProjectTimelineRow } from '../../../shared/ipc-types';
+import { formatDayLabel } from '../../utils/format';
 
 interface ProjectTimelineChartProps {
   rows: ProjectTimelineRow[];
@@ -42,11 +43,6 @@ const buttonStyles: React.CSSProperties = {
   cursor: 'pointer',
   marginRight: 8,
 };
-
-function formatMonthLabel(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 const MIN_CELL_SIZE = 6;
 const CELL_GAP = 1;
@@ -157,7 +153,7 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
                       fontSize: 9,
                       color: COLORS.axis,
                     }}>
-                      {formatMonthLabel(date)}
+                      {formatDayLabel(date)}
                     </span>
                   )}
                 </div>
@@ -193,7 +189,7 @@ export default function ProjectTimelineChart({ rows, dateRange }: ProjectTimelin
                   return (
                     <div
                       key={date}
-                      title={isActive ? `${row.project} — ${formatMonthLabel(date)}` : undefined}
+                      title={isActive ? `${row.project} — ${formatDayLabel(date)}` : undefined}
                       style={{
                         width: cellSize,
                         height: cellSize,

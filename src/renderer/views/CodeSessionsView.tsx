@@ -11,45 +11,18 @@ import Donut from '../components/charts/Donut';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import {
+  formatCost,
+  formatElapsed,
+  formatDateTime,
+  formatProjectName,
+  formatTokens,
+  rangeDays,
+  shortenModel,
+} from '../utils/format';
 
 type SortKey = 'project_path' | 'model' | 'input_tokens' | 'output_tokens' | 'cache_creation_tokens' | 'cache_read_tokens' | 'cost_usd' | 'started_at';
 type SortDir = 'asc' | 'desc';
-
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, 'All': 3650 };
-
-function formatTokens(n: number | null): string {
-  if (n == null || n === 0) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-function formatCost(n: number | null): string {
-  if (n == null) return '—';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatProjectName(p: string | null): string {
-  if (!p) return '—';
-  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
-}
-
-function shortenModel(model: string | null): string {
-  if (!model) return 'unknown';
-  const match = model.match(/(opus|sonnet|haiku)-([\d]+(?:-[\d]+)*)/i);
-  if (match) return `${match[1].toLowerCase()}-${match[2]}`;
-  const parts = model.split('-').filter(Boolean);
-  return parts.length > 2 ? parts.slice(-3, -1).join('-') : model;
-}
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -70,7 +43,7 @@ export default function CodeSessionsView(): React.JSX.Element {
   const [cleanupWarning, setCleanupWarning] = useState<CleanupWarning | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 30;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -87,10 +60,10 @@ export default function CodeSessionsView(): React.JSX.Element {
     error,
     refetch,
   } = useApi(() => {
-    const from = daysAgo(rangeDays);
+    const from = daysAgo(days);
     const to = new Date().toISOString();
     return window.api.codeSessions.getByDateRange({ from, to });
-  }, [rangeDays]);
+  }, [days]);
   const sessions = fetched ?? [];
 
   useEffect(() => {
@@ -159,7 +132,7 @@ export default function CodeSessionsView(): React.JSX.Element {
   const modelDist = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of sessions) {
-      const key = shortenModel(s.model);
+      const key = shortenModel(s.model ?? 'unknown');
       map.set(key, (map.get(key) ?? 0) + 1);
     }
     return Array.from(map.entries())
@@ -217,7 +190,7 @@ export default function CodeSessionsView(): React.JSX.Element {
           transition: 'opacity 0.5s ease',
         }}>
           {scanStatus === 'scanning' ? '⟳ Scanning JSONL files...' :
-            lastScanSummary ? `Scan complete: ${lastScanSummary.newRecords} new, ${lastScanSummary.updatedRecords} updated (${lastScanSummary.scanDurationMs}ms)` : null}
+            lastScanSummary ? `Scan complete: ${lastScanSummary.newRecords} new, ${lastScanSummary.updatedRecords} updated (${formatElapsed(lastScanSummary.scanDurationMs)})` : null}
         </div>
       )}
 
@@ -287,7 +260,7 @@ export default function CodeSessionsView(): React.JSX.Element {
                     <td className="num">{formatTokens(s.cache_creation_tokens)}</td>
                     <td className="num">{formatTokens(s.cache_read_tokens)}</td>
                     <td className="num" style={{ color: s.cost_usd != null ? 'var(--success)' : 'var(--text-tertiary)' }}>{formatCost(s.cost_usd)}</td>
-                    <td>{formatDate(s.started_at)}</td>
+                    <td>{formatDateTime(s.started_at)}</td>
                   </tr>
                 );
               })}

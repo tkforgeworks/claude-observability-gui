@@ -8,36 +8,16 @@ import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
-
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, 'All': 3650 };
+import {
+  formatCost,
+  formatDateFull,
+  formatTokens,
+  rangeDays,
+  shortenModel,
+} from '../utils/format';
 
 type SortKey = 'displayName' | 'totalCostUsd' | 'codeSessionCount' | 'coworkSessionCount' | 'lastActiveAt' | 'activeDays';
 type SortDir = 'asc' | 'desc';
-
-function formatTokens(n: number): string {
-  if (n === 0) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '—';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function shortenModel(model: string): string {
-  const match = model.match(/(opus|sonnet|haiku)-([\d]+(?:-[\d]+)*)/i);
-  if (match) return `${match[1].toLowerCase()}-${match[2]}`;
-  return model;
-}
 
 export default function ProjectsView(): React.JSX.Element {
   const [rangeLabel, setRangeLabel] = useState('90d');
@@ -46,7 +26,7 @@ export default function ProjectsView(): React.JSX.Element {
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 90;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -62,7 +42,7 @@ export default function ProjectsView(): React.JSX.Element {
     loading,
     error,
     refetch,
-  } = useApi(() => window.api.projects.getAggregates(rangeDays), [rangeDays]);
+  } = useApi(() => window.api.projects.getAggregates(days), [days]);
   const projects = fetched ?? [];
 
   const totals = useMemo(() => {
@@ -197,10 +177,18 @@ export default function ProjectsView(): React.JSX.Element {
                       </td>
                       <td className="num">{p.codeSessionCount || '—'}</td>
                       <td className="num">{p.coworkSessionCount || '—'}</td>
-                      <td className="num">{formatTokens(p.inputTokens)} / {formatTokens(p.outputTokens)}</td>
+                      {/* Token counts are only meaningful for Code sessions.
+                          A Cowork-only project reports 0, which under the
+                          null-vs-zero convention would read as a measured
+                          zero — it's actually "not applicable" (CGUI-70). */}
+                      <td className="num">
+                        {formatTokens(p.codeSessionCount > 0 ? p.inputTokens : null)}
+                        {' / '}
+                        {formatTokens(p.codeSessionCount > 0 ? p.outputTokens : null)}
+                      </td>
                       <td className="num">{p.activeDays}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {formatDate(p.lastActiveAt)}
+                        {formatDateFull(p.lastActiveAt)}
                       </td>
                     </tr>
                     {expandedProject === p.projectPath && (
@@ -245,7 +233,7 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
           {project.projectPath}
         </div>
         <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>
-          First seen: {formatDate(project.firstSeenAt)} · Cowork turns: {project.coworkTurnCount || '—'}
+          First seen: {formatDateFull(project.firstSeenAt)} · Cowork turns: {project.coworkTurnCount || '—'}
         </div>
       </div>
 

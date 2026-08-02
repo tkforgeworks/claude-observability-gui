@@ -7,20 +7,9 @@ import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
+import { formatCost, formatDuration } from '../utils/format';
 
-function formatCost(n: number | null): string {
-  if (n == null || n === 0) return '—';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null || seconds === 0) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
-}
+const formatDurationHm = (s: number | null) => formatDuration(s, { style: 'hm' });
 
 export default function TodayView(): React.JSX.Element {
   const { data, loading, error, refetch } = useApi(() =>
@@ -71,7 +60,7 @@ export default function TodayView(): React.JSX.Element {
 
   const turnsMeta = hasCoworkData
     ? (summary.avgTurnDurationSeconds != null
-      ? `avg ${formatDuration(summary.avgTurnDurationSeconds)}`
+      ? `avg ${formatDurationHm(summary.avgTurnDurationSeconds)}`
       : '')
     : (hasCodeData ? 'no cowork data yet' : noDataMeta);
 
@@ -107,7 +96,7 @@ export default function TodayView(): React.JSX.Element {
         />
         <StatCard
           label="Active Time"
-          value={summary?.activeTimeSeconds ? formatDuration(summary.activeTimeSeconds) : '—'}
+          value={summary?.activeTimeSeconds ? formatDurationHm(summary.activeTimeSeconds) : '—'}
           icon={Icons.clock}
           meta={activeMeta}
         />

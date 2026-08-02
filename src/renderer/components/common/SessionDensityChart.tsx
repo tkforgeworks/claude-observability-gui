@@ -15,6 +15,7 @@ import {
   CartesianGrid,
 } from 'recharts';
 import type { SessionDensityDay } from '../../../shared/ipc-types';
+import { CHART_Y_AXIS_WIDTH, dateTickInterval, formatDayLabel } from '../../utils/format';
 
 interface SessionDensityChartProps {
   data: SessionDensityDay[];
@@ -26,11 +27,6 @@ const COLORS = {
   axis: 'var(--text-tertiary)',
   bg: 'var(--background)',
 };
-
-function formatDateLabel(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 interface ChartPoint {
   label: string;
@@ -83,13 +79,13 @@ export default function SessionDensityChart({ data }: SessionDensityChartProps):
   if (!hasData) return null;
 
   const chartData: ChartPoint[] = data.map(d => ({
-    label: formatDateLabel(d.date),
+    label: formatDayLabel(d.date),
     density: d.sessionCount > 0 ? d.density : null,
     sessionCount: d.sessionCount,
     activeHours: d.activeHours,
   }));
 
-  const tickInterval = data.length > 60 ? 13 : data.length > 14 ? 6 : 1;
+  const tickInterval = dateTickInterval(data.length);
 
   return (
     <div className="card">
@@ -111,7 +107,7 @@ export default function SessionDensityChart({ data }: SessionDensityChartProps):
             tick={{ fill: COLORS.axis, fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            width={40}
+            width={CHART_Y_AXIS_WIDTH}
           />
           <Tooltip content={<CustomTooltip />} />
           <Line

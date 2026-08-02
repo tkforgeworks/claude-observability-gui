@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import { formatBytes, formatDateFull } from '../utils/format';
 import {
   DndContext,
   closestCenter,
@@ -1053,18 +1054,6 @@ const TABLE_LABELS: Record<string, string> = {
   app_focus_events: 'Focus Events',
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-}
-
-function formatOldestDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
 function DataTab(): React.JSX.Element {
   const [clearing, setClearing] = useState(false);
   const [cleared, setCleared] = useState(false);
@@ -1201,7 +1190,7 @@ function DataTab(): React.JSX.Element {
                   {(tableCounts[key] ?? 0).toLocaleString()}
                 </span>
                 <span style={{ color: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace', fontSize: 11, width: 120, textAlign: 'right' }}>
-                  {formatOldestDate(stats?.oldestRecords[key] ?? null)}
+                  {formatDateFull(stats?.oldestRecords[key] ?? null)}
                 </span>
               </div>
             ))}

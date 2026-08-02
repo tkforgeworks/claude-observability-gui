@@ -7,6 +7,7 @@ import ErrorState from '../components/common/ErrorState';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import { formatDateTime } from '../utils/format';
 
 const RANGE_HOURS: Record<string, number> = {
   '24h': 24,
@@ -25,12 +26,6 @@ function formatResetCountdown(resetsAt: string | null): string {
   const m = totalMin % 60;
   if (h > 0) return `resets ${h}h ${m}m`;
   return `resets ${m}m`;
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 function getEffectivePct(pct: number, resetsAt: string | null): number {
