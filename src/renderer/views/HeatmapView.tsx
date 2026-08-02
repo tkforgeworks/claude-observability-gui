@@ -1,8 +1,11 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { HeatmapDay } from '../../shared/ipc-types';
+import React, { useEffect, useMemo, useCallback, useState } from 'react';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
+import { formatTokens } from '../utils/format';
 
 const RANGE_MAP: Record<string, number> = {
   '3 months': 91,
@@ -10,15 +13,7 @@ const RANGE_MAP: Record<string, number> = {
   '12 months': 365,
 };
 
-function formatTokenCount(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
 export default function HeatmapView(): React.JSX.Element {
-  const [data, setData] = useState<HeatmapDay[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('12 months');
   const { setRangeControls, clearRangeControls } = useTopbar();
 
@@ -33,19 +28,23 @@ export default function HeatmapView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchData = useCallback(() => {
-    return window.api.analytics.getHeatmapData(rangeDays)
-      .then(setData)
-      .catch(err => {
-        console.error('[HeatmapView] fetch failed:', err);
-        setData([]);
-      });
-  }, [rangeDays]);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => window.api.analytics.getHeatmapData(rangeDays), [rangeDays]);
+  const data = fetched ?? [];
 
+  // The heatmap draws from both sources, so it has to follow both feeds —
+  // previously it went stale until the view was remounted (CGUI-70).
   useEffect(() => {
-    setLoading(true);
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
+    const unsubImport = window.api.onImportComplete?.((summary) => {
+      if (summary.newRecords > 0 || summary.updatedRecords > 0) refetch();
+    });
+    const unsubEvent = window.api.onLogWatcherEvent?.(() => { refetch(); });
+    return () => { unsubImport?.(); unsubEvent?.(); };
+  }, [refetch]);
 
   const totals = useMemo(() => {
     let activeDays = 0, coworkSessions = 0, codeSessions = 0;
@@ -68,10 +67,18 @@ export default function HeatmapView(): React.JSX.Element {
 
   const hasAnyData = totals.coworkSessions + totals.codeSessions > 0;
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading heatmap data...</div>
+        <Loading label="heatmap data" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="heatmap data" error={error} onRetry={refetch} />
       </div>
     );
   }
@@ -101,9 +108,9 @@ export default function HeatmapView(): React.JSX.Element {
           <span className="sep">·</span>
           <span>Code: <strong>{totals.codeSessions}</strong> sessions</span>
           <span className="sep">·</span>
-          <span>I/O: <strong>{formatTokenCount(totals.inputTokens + totals.outputTokens)}</strong></span>
+          <span>I/O: <strong>{formatTokens(totals.inputTokens + totals.outputTokens)}</strong></span>
           <span className="sep">·</span>
-          <span>Cache: <strong>{formatTokenCount(totals.cacheReadTokens + totals.cacheCreationTokens)}</strong></span>
+          <span>Cache: <strong>{formatTokens(totals.cacheReadTokens + totals.cacheCreationTokens)}</strong></span>
         </div>
       </div>
 
@@ -123,26 +130,26 @@ export default function HeatmapView(): React.JSX.Element {
       <div className="card">
         <div className="card-head">
           <h2>Code: Input + Output Tokens</h2>
-          <span className="sub">{ioActive} active days · {formatTokenCount(totals.inputTokens + totals.outputTokens)} total</span>
+          <span className="sub">{ioActive} active days · {formatTokens(totals.inputTokens + totals.outputTokens)} total</span>
         </div>
         <HeatmapChart
           data={ioData}
           days={rangeDays}
           colorScale="teal"
-          formatValue={(v) => v > 0 ? formatTokenCount(v) + ' tokens' : 'No token usage'}
+          formatValue={(v) => v > 0 ? formatTokens(v) + ' tokens' : 'No token usage'}
         />
       </div>
 
       <div className="card">
         <div className="card-head">
           <h2>Code: Cache Read + Write Tokens</h2>
-          <span className="sub">{cacheActive} active days · {formatTokenCount(totals.cacheReadTokens + totals.cacheCreationTokens)} total</span>
+          <span className="sub">{cacheActive} active days · {formatTokens(totals.cacheReadTokens + totals.cacheCreationTokens)} total</span>
         </div>
         <HeatmapChart
           data={cacheData}
           days={rangeDays}
           colorScale="purple"
-          formatValue={(v) => v > 0 ? formatTokenCount(v) + ' tokens' : 'No cache usage'}
+          formatValue={(v) => v > 0 ? formatTokens(v) + ' tokens' : 'No cache usage'}
         />
       </div>
     </div>

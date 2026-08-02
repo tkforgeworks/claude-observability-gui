@@ -5,7 +5,7 @@
  * shows how many times each cached context byte was reused.
  *
  * Table below: raw token counts, cache hit %, and estimated $ saved.
- * @see CGUI-24
+ * @see CGUI-24 (widget), CGUI-67 (token migration)
  */
 
 import React, { useState } from 'react';
@@ -17,33 +17,20 @@ import {
   Tooltip,
   ResponsiveContainer,
   CartesianGrid,
-  Cell,
 } from 'recharts';
 import type { CacheEfficiencyData } from '../../../shared/ipc-types';
+import { chartAxisTick, chartGridStroke, chartCursorFill, chartTooltipStyles } from './chartTheme';
+import { formatCost, formatTokens } from '../../utils/format';
 
 interface CacheEfficiencyChartProps {
   data: CacheEfficiencyData[];
 }
 
-const COLORS = {
-  bar: '#6688cc',
-  barAlt: '#5577bb',
-  savings: '#22aa66',
-  grid: '#2a2a3e',
-  axis: '#6666aa',
-  bg: '#16162a',
-};
+const BAR_COLOR = 'var(--chart-1)';
+const SAVINGS_COLOR = 'var(--success)';
 
-function formatTokens(n: number): string {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K`;
-  return String(n);
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
+function truncateProject(name: string): string {
+  return name.length > 18 ? `${name.slice(0, 17)}…` : name;
 }
 
 interface TooltipPayloadEntry {
@@ -59,69 +46,37 @@ function CustomTooltip({ active, payload }: CustomTooltipProps) {
   if (!active || !payload?.[0]) return null;
   const d = payload[0].payload;
   return (
-    <div style={{
-      backgroundColor: '#1a1a2e',
-      border: '1px solid #3a3a5e',
-      borderRadius: 6,
-      padding: '8px 12px',
-      fontSize: 12,
-      lineHeight: 1.6,
-    }}>
-      <div style={{ color: '#ccccdd', fontWeight: 600, marginBottom: 2 }}>{d.project}</div>
-      <div style={{ color: COLORS.bar }}>{d.reuseRatio.toFixed(1)}x cache reuse</div>
-      <div style={{ color: '#8888aa' }}>{d.efficiencyPct.toFixed(1)}% cache hit rate</div>
-      <div style={{ color: '#8888aa' }}>
+    <div style={chartTooltipStyles}>
+      <div style={{ color: 'var(--text-primary)', fontWeight: 600, marginBottom: 2 }}>{d.project}</div>
+      <div style={{ color: BAR_COLOR }}>{d.reuseRatio.toFixed(1)}x cache reuse</div>
+      <div style={{ color: 'var(--text-secondary)' }}>{d.efficiencyPct.toFixed(1)}% cache hit rate</div>
+      <div style={{ color: 'var(--text-secondary)' }}>
         Read: {formatTokens(d.cacheReadTokens)} &middot; Write: {formatTokens(d.cacheWriteTokens)} &middot; Input: {formatTokens(d.inputTokens)}
       </div>
-      <div style={{ color: COLORS.savings }}>Saved {formatCost(d.estimatedSavingsUsd)}</div>
-      <div style={{ color: '#666688' }}>{d.sessionCount} session{d.sessionCount !== 1 ? 's' : ''}</div>
+      <div style={{ color: SAVINGS_COLOR }}>Saved {formatCost(d.estimatedSavingsUsd)}</div>
+      <div style={{ color: 'var(--text-tertiary)' }}>{d.sessionCount} session{d.sessionCount !== 1 ? 's' : ''}</div>
     </div>
   );
 }
-
-const containerStyles: React.CSSProperties = {
-  backgroundColor: COLORS.bg,
-  borderRadius: 8,
-  padding: '16px 16px 8px',
-  border: '1px solid #2a2a3e',
-};
-
-const titleStyles: React.CSSProperties = {
-  fontSize: 13,
-  fontWeight: 600,
-  color: '#8888aa',
-  textTransform: 'uppercase' as const,
-  letterSpacing: '0.5px',
-  marginBottom: 4,
-};
-
-const subtitleStyles: React.CSSProperties = {
-  fontSize: 11,
-  color: '#666688',
-  marginBottom: 12,
-};
-
-const tokenRowStyles: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  padding: '3px 0',
-  fontSize: 11,
-  color: '#666688',
-  borderBottom: '1px solid #1e1e36',
-};
 
 const CHART_LIMIT = 10;
 
 const showMoreButtonStyles: React.CSSProperties = {
   background: 'none',
-  border: '1px solid #3333aa',
+  border: '1px solid var(--border)',
   borderRadius: 4,
-  color: '#8888aa',
+  color: 'var(--text-secondary)',
   fontSize: 11,
+  fontFamily: '"Poppins", sans-serif',
   padding: '4px 12px',
   cursor: 'pointer',
   marginTop: 8,
   alignSelf: 'flex-start',
+};
+
+const numCellStyles: React.CSSProperties = {
+  textAlign: 'right',
+  fontFamily: '"JetBrains Mono", monospace',
 };
 
 export default function CacheEfficiencyChart({ data }: CacheEfficiencyChartProps): React.JSX.Element | null {
@@ -137,66 +92,72 @@ export default function CacheEfficiencyChart({ data }: CacheEfficiencyChartProps
   const chartHeight = Math.max(120, chartData.length * 32 + 20);
 
   return (
-    <div style={containerStyles}>
-      <div style={titleStyles}>Cache Reuse by Project</div>
-      <div style={subtitleStyles}>
-        cache_read / cache_write ratio &mdash; higher means more reuse per cache investment
-        {totalSavings > 0 && (
-          <span style={{ color: COLORS.savings, marginLeft: 12 }}>
-            Total estimated savings: {formatCost(totalSavings)}
-          </span>
-        )}
+    <div className="card">
+      <div className="card-head">
+        <h2>Cache Reuse by Project</h2>
+        <span className="sub">
+          cache_read / cache_write — higher means more reuse
+          {totalSavings > 0 && ` · saved ${formatCost(totalSavings)}`}
+        </span>
       </div>
 
       <ResponsiveContainer width="100%" height={chartHeight}>
         <BarChart data={chartData} layout="vertical" margin={{ top: 0, right: 8, bottom: 0, left: 0 }}>
-          <CartesianGrid strokeDasharray="3 3" stroke={COLORS.grid} horizontal={false} />
+          <CartesianGrid strokeDasharray="3 3" stroke={chartGridStroke} horizontal={false} />
           <XAxis
             type="number"
             tickFormatter={(v: number) => `${v}x`}
-            tick={{ fill: COLORS.axis, fontSize: 11 }}
-            axisLine={{ stroke: COLORS.grid }}
+            tick={chartAxisTick}
+            axisLine={{ stroke: chartGridStroke }}
             tickLine={false}
           />
           <YAxis
             type="category"
             dataKey="project"
             width={140}
-            tick={{ fill: COLORS.axis, fontSize: 11 }}
+            tickFormatter={truncateProject}
+            tick={chartAxisTick}
             axisLine={false}
             tickLine={false}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(102, 136, 204, 0.1)' }} />
-          <Bar dataKey="reuseRatio" radius={[0, 4, 4, 0]}>
-            {chartData.map((_, i) => (
-              <Cell key={i} fill={i % 2 === 0 ? COLORS.bar : COLORS.barAlt} />
-            ))}
-          </Bar>
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: chartCursorFill }} />
+          <Bar dataKey="reuseRatio" radius={[0, 4, 4, 0]} fill={BAR_COLOR} />
         </BarChart>
       </ResponsiveContainer>
 
-      {/* Detailed token breakdown table */}
-      <div style={{ marginTop: 12, padding: '0 4px', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ ...tokenRowStyles, fontWeight: 600, color: '#8888aa', borderBottom: '1px solid #2a2a3e' }}>
-          <span style={{ flex: 2 }}>Project</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Cache Read</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Cache Write</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Input</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Hit %</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Reuse</span>
-          <span style={{ flex: 1, textAlign: 'right' }}>Saved</span>
+      {/* Detailed token breakdown. The 7 columns need ~633px of min-content
+          width, more than the ~610px card interior at the 900px window
+          minimum, so the table scrolls in its own wrapper — the button stays
+          outside it and always visible (CGUI-69). */}
+      <div style={{ marginTop: 12, display: 'flex', flexDirection: 'column' }}>
+        <div style={{ overflowX: 'auto' }}>
+          <table className="data" style={{ fontSize: 11 }}>
+            <thead>
+              <tr>
+                <th style={{ textAlign: 'left' }}>Project</th>
+                <th style={{ textAlign: 'right' }}>Cache Read</th>
+                <th style={{ textAlign: 'right' }}>Cache Write</th>
+                <th style={{ textAlign: 'right' }}>Input</th>
+                <th style={{ textAlign: 'right' }}>Hit %</th>
+                <th style={{ textAlign: 'right' }}>Reuse</th>
+                <th style={{ textAlign: 'right' }}>Saved</th>
+              </tr>
+            </thead>
+            <tbody>
+              {tableData.map((d) => (
+                <tr key={d.project}>
+                  <td>{d.project}</td>
+                  <td style={numCellStyles}>{formatTokens(d.cacheReadTokens)}</td>
+                  <td style={numCellStyles}>{formatTokens(d.cacheWriteTokens)}</td>
+                  <td style={numCellStyles}>{formatTokens(d.inputTokens)}</td>
+                  <td style={numCellStyles}>{d.efficiencyPct.toFixed(1)}%</td>
+                  <td style={{ ...numCellStyles, color: BAR_COLOR }}>{d.reuseRatio.toFixed(1)}x</td>
+                  <td style={{ ...numCellStyles, color: SAVINGS_COLOR }}>{formatCost(d.estimatedSavingsUsd)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
-        {tableData.map((d) => (
-          <div key={d.project} style={tokenRowStyles}>
-            <span style={{ flex: 2 }}>{d.project}</span>
-            <span style={{ flex: 1, textAlign: 'right' }}>{formatTokens(d.cacheReadTokens)}</span>
-            <span style={{ flex: 1, textAlign: 'right' }}>{formatTokens(d.cacheWriteTokens)}</span>
-            <span style={{ flex: 1, textAlign: 'right' }}>{formatTokens(d.inputTokens)}</span>
-            <span style={{ flex: 1, textAlign: 'right' }}>{d.efficiencyPct.toFixed(1)}%</span>
-            <span style={{ flex: 1, textAlign: 'right', color: COLORS.bar }}>{d.reuseRatio.toFixed(1)}x</span>
-            <span style={{ flex: 1, textAlign: 'right', color: COLORS.savings }}>{formatCost(d.estimatedSavingsUsd)}</span>
-          </div>
-        ))}
         {hasMore && (
           <button
             style={showMoreButtonStyles}

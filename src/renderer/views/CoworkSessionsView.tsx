@@ -1,35 +1,27 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { CoworkSession, CoworkTurn } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
+import {
+  formatDateTime,
+  formatDuration,
+  formatProjectName,
+  ALL_RANGE_DAYS,
+  rangeDays,
+} from '../utils/format';
 
 type SortKey = 'title' | 'started_at' | 'turn_count' | 'duration' | 'avg_turn';
 type SortDir = 'asc' | 'desc';
 
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, 'All': 3650 };
-
-function formatDuration(seconds: number | null): string {
-  if (seconds == null || seconds <= 0) return '—';
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  if (m > 0) return `${m}m ${s}s`;
-  return `${s}s`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
 function formatTurnTime(iso: string): string {
   const d = new Date(iso);
-  return d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 }
 
 function sessionDuration(s: CoworkSession): number | null {
@@ -41,17 +33,11 @@ function sessionAvgTurn(s: CoworkSession): number | null {
   return s.avg_turn_seconds != null ? Math.round(s.avg_turn_seconds) : null;
 }
 
-function formatProjectName(p: string | null): string {
-  if (!p) return '';
-  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
-}
-
 function sessionTitle(s: CoworkSession): string {
   if (s.project_path) return formatProjectName(s.project_path);
   if (s.title) return s.title;
   const d = new Date(s.started_at);
-  return `Session at ${d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`;
+  return `Session at ${d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' })}`;
 }
 
 function daysAgo(n: number): string {
@@ -61,6 +47,14 @@ function daysAgo(n: number): string {
   return d.toISOString();
 }
 
+// The histogram lives in a full-span <td>, which sizes to its content — so a
+// long session used to widen the whole table rather than overflow its cell.
+// Bars are sized against a fixed width budget instead, and the wrapper is
+// capped to it, so past the 2px floor the histogram scrolls on its own and
+// the table's column layout never shifts (CGUI-69).
+const HISTOGRAM_MAX_WIDTH = 560;
+const HISTOGRAM_BAR_GAP = 2;
+
 function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | null {
   const durations = turns
     .map(t => t.duration_seconds)
@@ -68,45 +62,52 @@ function TurnHistogram({ turns }: { turns: CoworkTurn[] }): React.JSX.Element | 
   if (durations.length === 0) return null;
   const maxDur = Math.max(...durations);
 
+  const gapTotal = (durations.length - 1) * HISTOGRAM_BAR_GAP;
+  const barWidth = Math.max(2, Math.min(20, Math.floor((HISTOGRAM_MAX_WIDTH - gapTotal) / durations.length)));
+
   return (
     <div style={{ marginTop: 8 }}>
-      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: '"Poppins"', fontWeight: 600 }}>
+      <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: 'var(--font-header)', fontWeight: 600 }}>
         Turn Duration Distribution
       </div>
-      <div style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 40 }}>
-        {durations.map((dur, i) => {
-          const heightPct = Math.max(8, (dur / maxDur) * 100);
-          return (
-            <div
-              key={i}
-              title={`Turn ${i + 1}: ${formatDuration(dur)}`}
-              style={{
-                width: Math.max(6, Math.min(20, 200 / durations.length)),
-                height: `${heightPct}%`,
-                backgroundColor: 'var(--chart-5)',
-                borderRadius: '2px 2px 0 0',
-                opacity: 0.8,
-              }}
-            />
-          );
-        })}
+      {/* Overflow lives on the wrapper, not the 40px bar row, so the
+          scrollbar doesn't eat bar height. */}
+      <div style={{ maxWidth: HISTOGRAM_MAX_WIDTH, overflowX: 'auto', overflowY: 'hidden' }}>
+        <div style={{ display: 'flex', alignItems: 'flex-end', gap: HISTOGRAM_BAR_GAP, height: 40 }}>
+          {durations.map((dur, i) => {
+            const heightPct = Math.max(8, (dur / maxDur) * 100);
+            return (
+              <div
+                key={i}
+                title={`Turn ${i + 1}: ${formatDuration(dur)}`}
+                style={{
+                  width: barWidth,
+                  flexShrink: 0,
+                  height: `${heightPct}%`,
+                  backgroundColor: 'var(--chart-5)',
+                  borderRadius: '2px 2px 0 0',
+                  opacity: 0.8,
+                }}
+              />
+            );
+          })}
+        </div>
       </div>
     </div>
   );
 }
 
 export default function CoworkSessionsView(): React.JSX.Element {
-  const [sessions, setSessions] = useState<CoworkSession[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('30d');
   const [sortKey, setSortKey] = useState<SortKey>('started_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [expandedTurns, setExpandedTurns] = useState<CoworkTurn[]>([]);
   const [turnsLoading, setTurnsLoading] = useState(false);
+  const [turnsError, setTurnsError] = useState<Error | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 30;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -117,26 +118,40 @@ export default function CoworkSessionsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchSessions = useCallback(() => {
-    const from = daysAgo(rangeDays);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => {
+    const from = daysAgo(days);
     const to = new Date().toISOString();
-    return window.api.coworkSessions.getAll({ from, to })
-      .then(setSessions)
-      .catch(err => {
-        console.error('[CoworkSessionsView] fetch failed:', err);
-        setSessions([]);
-      });
-  }, [rangeDays]);
+    return window.api.coworkSessions.getAll({ from, to });
+  }, [days]);
+  const sessions = fetched ?? [];
 
-  useEffect(() => {
-    setLoading(true);
-    fetchSessions().finally(() => setLoading(false));
-  }, [fetchSessions]);
+  const loadTurns = useCallback((sessionId: string) => {
+    setTurnsLoading(true);
+    setTurnsError(null);
+    window.api.coworkSessions.getTurns(sessionId)
+      .then(setExpandedTurns)
+      .catch((err: unknown) => {
+        setExpandedTurns([]);
+        setTurnsError(err instanceof Error ? err : new Error(String(err)));
+      })
+      .finally(() => setTurnsLoading(false));
+  }, []);
 
+  // A live event refreshes the session list; the expanded row's turns have to
+  // come along or the open detail keeps showing pre-event data while the row
+  // above it updates (CGUI-70).
   useEffect(() => {
-    const unsub = window.api.onLogWatcherEvent?.(() => { fetchSessions(); });
+    const unsub = window.api.onLogWatcherEvent?.(() => {
+      refetch();
+      if (expandedId) loadTurns(expandedId);
+    });
     return () => { unsub?.(); };
-  }, [fetchSessions]);
+  }, [refetch, expandedId, loadTurns]);
 
   const getSortValue = useCallback((s: CoworkSession, key: SortKey): string | number | null => {
     switch (key) {
@@ -186,10 +201,18 @@ export default function CoworkSessionsView(): React.JSX.Element {
     }
   };
 
-  const sortIndicator = (key: SortKey) => {
-    if (sortKey !== key) return '';
-    return sortDir === 'asc' ? ' ▲' : ' ▼';
-  };
+  // Only fired when the selected range came back empty, so an empty range
+  // stops claiming the log watcher isn't connected (CGUI-70).
+  const [totalOutsideRange, setTotalOutsideRange] = useState<number | null>(null);
+  useEffect(() => {
+    if (loading || sessions.length > 0) { setTotalOutsideRange(null); return; }
+    let cancelled = false;
+    window.api.coworkSessions
+      .getAll({ from: daysAgo(ALL_RANGE_DAYS), to: new Date().toISOString() })
+      .then(all => { if (!cancelled) setTotalOutsideRange(all.length); })
+      .catch(() => { if (!cancelled) setTotalOutsideRange(null); });
+    return () => { cancelled = true; };
+  }, [loading, sessions.length]);
 
   const handleExpand = (sessionId: string) => {
     if (expandedId === sessionId) {
@@ -198,34 +221,27 @@ export default function CoworkSessionsView(): React.JSX.Element {
       return;
     }
     setExpandedId(sessionId);
-    setTurnsLoading(true);
-    window.api.coworkSessions.getTurns(sessionId)
-      .then(setExpandedTurns)
-      .catch(err => {
-        console.error('[CoworkSessionsView] fetch turns failed:', err);
-        setExpandedTurns([]);
-      })
-      .finally(() => setTurnsLoading(false));
+    loadTurns(sessionId);
   };
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading sessions...</div>
+        <Loading label="sessions" />
       </div>
     );
   }
 
-  if (sessions.length === 0) {
+  if (error) {
     return (
       <div className="page">
-        <EmptyState
-          title="No Cowork sessions yet"
-          message="Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected."
-        />
+        <ErrorState what="Cowork sessions" error={error} onRetry={refetch} />
       </div>
     );
   }
+
+  const isEmpty = sessions.length === 0;
+  const hasDataOutsideRange = (totalOutsideRange ?? 0) > 0;
 
   return (
     <div className="page">
@@ -236,17 +252,25 @@ export default function CoworkSessionsView(): React.JSX.Element {
         <StatCard label="Avg Session" value={formatDuration(totals.avgDuration)} icon={Icons.bolt} variant="minimal" />
       </div>
 
+      {isEmpty ? (
+        <EmptyState
+          title={hasDataOutsideRange ? 'No Cowork sessions in this range' : 'No Cowork sessions yet'}
+          message={hasDataOutsideRange
+            ? `You have ${totalOutsideRange} session${totalOutsideRange === 1 ? '' : 's'} outside the selected range. Pick a wider range to see them.`
+            : 'Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected.'}
+        />
+      ) : (
       <div className="card" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <table className="data">
             <thead>
               <tr>
-                <th style={{ width: 28 }} />
-                <th onClick={() => handleSort('title')} style={{ cursor: 'pointer' }}>Title{sortIndicator('title')}</th>
-                <th onClick={() => handleSort('started_at')} style={{ cursor: 'pointer' }}>Date{sortIndicator('started_at')}</th>
-                <th className="num" onClick={() => handleSort('turn_count')} style={{ cursor: 'pointer' }}>Turns{sortIndicator('turn_count')}</th>
-                <th className="num" onClick={() => handleSort('duration')} style={{ cursor: 'pointer' }}>Duration{sortIndicator('duration')}</th>
-                <th className="num" onClick={() => handleSort('avg_turn')} style={{ cursor: 'pointer' }}>Avg Turn{sortIndicator('avg_turn')}</th>
+                <th style={{ width: 28 }}><span className="visually-hidden">Expand</span></th>
+                <SortableTh label="Title" active={sortKey === 'title'} dir={sortDir} onSort={() => handleSort('title')} />
+                <SortableTh label="Date" active={sortKey === 'started_at'} dir={sortDir} onSort={() => handleSort('started_at')} />
+                <SortableTh label="Turns" className="num" active={sortKey === 'turn_count'} dir={sortDir} onSort={() => handleSort('turn_count')} />
+                <SortableTh label="Duration" className="num" active={sortKey === 'duration'} dir={sortDir} onSort={() => handleSort('duration')} />
+                <SortableTh label="Avg Turn" className="num" active={sortKey === 'avg_turn'} dir={sortDir} onSort={() => handleSort('avg_turn')} />
               </tr>
             </thead>
             <tbody>
@@ -263,8 +287,18 @@ export default function CoworkSessionsView(): React.JSX.Element {
                       style={{ cursor: 'pointer' }}
                       onClick={() => handleExpand(s.session_id)}
                     >
-                      <td style={{ color: 'var(--text-tertiary)', fontSize: 11, textAlign: 'center' }}>
-                        {isExpanded ? '▾' : '▸'}
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          aria-expanded={isExpanded}
+                          aria-label={`${isExpanded ? 'Collapse' : 'Expand'} ${title}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleExpand(s.session_id);
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                        >
+                          {isExpanded ? '▾' : '▸'}
+                        </button>
                       </td>
                       <td>
                         <span className="path">
@@ -281,21 +315,25 @@ export default function CoworkSessionsView(): React.JSX.Element {
                           </span>
                         )}
                       </td>
-                      <td>{formatDate(s.started_at)}</td>
+                      <td>{formatDateTime(s.started_at)}</td>
                       <td className="num">{s.turn_count}</td>
                       <td className="num">{formatDuration(dur)}</td>
                       <td className="num">{formatDuration(avg)}</td>
                     </tr>
                     {isExpanded && (
-                      <tr>
+                      <tr className="detail-row">
                         <td colSpan={6} style={{ backgroundColor: 'var(--background-light)', padding: '12px 16px', borderBottom: '1px solid var(--border-soft)' }}>
                           {turnsLoading ? (
-                            <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>Loading turns...</span>
+                            <span role="status" style={{ color: 'var(--text-secondary)', fontSize: 12 }}>Loading turns...</span>
+                          ) : turnsError ? (
+                            <span role="alert" style={{ color: 'var(--error)', fontSize: 12 }}>
+                              Couldn&apos;t load turns: {turnsError.message}
+                            </span>
                           ) : expandedTurns.length === 0 ? (
                             <span style={{ color: 'var(--text-tertiary)', fontSize: 12 }}>No completed turns recorded</span>
                           ) : (
                             <div>
-                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: '"Poppins"', fontWeight: 600 }}>
+                              <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.14em', fontFamily: 'var(--font-header)', fontWeight: 600 }}>
                                 Turns ({expandedTurns.length})
                               </div>
                               {expandedTurns.map((t, i) => (
@@ -320,6 +358,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }

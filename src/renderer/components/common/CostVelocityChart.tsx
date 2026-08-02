@@ -18,6 +18,7 @@ import {
   Legend,
 } from 'recharts';
 import type { DailyCostData } from '../../../shared/ipc-types';
+import { CHART_Y_AXIS_WIDTH, dateTickInterval, formatCost, formatDayLabel } from '../../utils/format';
 
 interface CostVelocityChartProps {
   data: DailyCostData[];
@@ -35,18 +36,6 @@ const COLORS = {
   trendDown: 'var(--success)',
   neutral: 'var(--text-secondary)',
 };
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  if (n < 1) return `$${n.toFixed(3)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDateLabel(date: string): string {
-  const d = new Date(date + 'T00:00:00');
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-}
 
 interface ChartPoint {
   date: string;
@@ -145,7 +134,7 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
       }
       return {
         date: d.date,
-        label: formatDateLabel(d.date),
+        label: formatDayLabel(d.date),
         costUsd: d.costUsd,
         ma7,
         sessionCount: d.sessionCount,
@@ -189,7 +178,7 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
   if (!hasAnyData) return null;
 
   // Thin out X-axis labels for longer ranges
-  const tickInterval = chartData.length > 60 ? 13 : chartData.length > 14 ? 6 : 1;
+  const tickInterval = dateTickInterval(chartData.length);
 
   return (
     <div className="card">
@@ -220,13 +209,13 @@ export default function CostVelocityChart({ data }: CostVelocityChartProps): Rea
             tick={{ fill: COLORS.axis, fontSize: 11 }}
             axisLine={false}
             tickLine={false}
-            width={50}
+            width={CHART_Y_AXIS_WIDTH}
           />
-          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(204, 136, 68, 0.1)' }} />
+          <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }} />
           <Legend wrapperStyle={{ fontSize: 11, color: COLORS.axis }} />
           <Bar dataKey="costUsd" name="Daily cost" radius={[2, 2, 0, 0]}>
             {chartData.map((d, i) => (
-              <Cell key={i} fill={d.costUsd > 0 ? (i % 2 === 0 ? COLORS.bar : COLORS.barAlt) : COLORS.barZero} />
+              <Cell key={i} fill={d.costUsd > 0 ? COLORS.bar : COLORS.barZero} />
             ))}
           </Bar>
           <Line

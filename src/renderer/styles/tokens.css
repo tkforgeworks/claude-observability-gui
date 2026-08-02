@@ -1,14 +1,14 @@
 /* ============================================================
    TK FORGEWORKS — Foundation tokens (color + type)
    Adapted from design handoff lib/tokens.css.
-   Only the 4 Poppins weights actually used are declared.
+   Only the Poppins weights actually used are declared — 700 was
+   dropped in CGUI-70 because nothing renders above 600.
    ============================================================ */
 
-/* ---- Local Poppins (4 weights) ---- */
+/* ---- Local Poppins (3 weights) ---- */
 @font-face { font-family: "Poppins"; font-style: normal; font-weight: 400; font-display: swap; src: url("../assets/fonts/Poppins-Regular.ttf") format("truetype"); }
 @font-face { font-family: "Poppins"; font-style: normal; font-weight: 500; font-display: swap; src: url("../assets/fonts/Poppins-Medium.ttf") format("truetype"); }
 @font-face { font-family: "Poppins"; font-style: normal; font-weight: 600; font-display: swap; src: url("../assets/fonts/Poppins-SemiBold.ttf") format("truetype"); }
-@font-face { font-family: "Poppins"; font-style: normal; font-weight: 700; font-display: swap; src: url("../assets/fonts/Poppins-Bold.ttf") format("truetype"); }
 
 /* ---- Local JetBrains Mono (variable, wght) ---- */
 @font-face {
@@ -35,13 +35,24 @@
   --font-body:   "Source Serif 4", Georgia, serif;
   --font-code:   "JetBrains Mono", Monaco, Menlo, monospace;
 
-  /* ---- Radii ---- */
+  /* ---- Radii ----
+     6px is the workhorse (nav items, tabs, banners, buttons, the logo tile);
+     8px is card-scale; 4px is for small inline chips and controls. */
   --radius-sm:   4px;
+  --radius-base: 6px;
   --radius-md:   8px;
   --radius-full: 9999px;
 
-  /* ---- Shadow (only one in the system) ---- */
+  /* ---- Shadows ---- */
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  /* Menus and popovers need more separation than --shadow-md gives. Value
+     lifted verbatim from TitleBar's inline dropdown style (CGUI-71) — this is
+     an extraction, not a restyle. */
+  --shadow-lg: 0 4px 12px rgba(0, 0, 0, 0.5);
+
+  /* Windows' own close-button hover red. A platform convention rather than a
+     brand color, so it lives here instead of being inlined in TitleBar. */
+  --window-close-hover: #e81123;
 
   /* ---- Motion ---- */
   --duration: 200ms;

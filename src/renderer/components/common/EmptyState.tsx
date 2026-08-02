@@ -25,17 +25,21 @@ export default function EmptyState({
       {action && (
         <button
           onClick={action.onClick}
+          onMouseEnter={(e) => { e.currentTarget.style.backgroundColor = 'var(--purple-secondary)'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.backgroundColor = 'var(--purple-primary)'; }}
           style={{
             marginTop: 16,
             padding: '8px 20px',
             backgroundColor: 'var(--purple-primary)',
-            color: 'var(--text-primary)',
+            // White on purple-primary ≈ 4.7:1; --text-primary was ~3.2:1 (CGUI-68)
+            color: '#ffffff',
             border: 'none',
             borderRadius: 'var(--radius-md)',
             fontSize: 13,
-            fontFamily: '"Poppins"',
+            fontFamily: 'var(--font-header)',
             fontWeight: 500,
             cursor: 'pointer',
+            transition: 'background-color 200ms ease',
           }}
         >
           {action.label}

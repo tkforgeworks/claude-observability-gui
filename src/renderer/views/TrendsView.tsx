@@ -1,5 +1,7 @@
 import React from 'react';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import CacheEfficiencyChart from '../components/common/CacheEfficiencyChart';
 import TurnDurationChart from '../components/common/TurnDurationChart';
 import CostVelocityChart from '../components/common/CostVelocityChart';
@@ -27,6 +29,16 @@ function isTimeRange(value: unknown): value is TimeRange {
   return typeof value === 'string' && VALID_RANGES.has(value);
 }
 
+/** Card shell for widget loading/error/empty placeholders (CGUI-66) */
+function WidgetPlaceholder({ title, children }: { title: string; children: React.ReactNode }): React.JSX.Element {
+  return (
+    <div className="card">
+      <div className="card-head"><h2>{title}</h2></div>
+      {children}
+    </div>
+  );
+}
+
 export default function TrendsView(): React.JSX.Element {
   const { config: dashConfig, refreshConfig } = useDashboardConfig();
   const { setRangeControls, clearRangeControls } = useTopbar();
@@ -51,7 +63,9 @@ export default function TrendsView(): React.JSX.Element {
         v.id === 'trends' ? { ...v, defaultTimeRange: range } : v
       );
       window.api.dashboard.save({ ...config, views }).then(refreshConfig);
-    }).catch(() => {});
+    }).catch((err: unknown) => {
+      console.error('[TrendsView] failed to persist range selection:', err);
+    });
   }, [refreshConfig]);
 
   React.useEffect(() => {
@@ -61,102 +75,124 @@ export default function TrendsView(): React.JSX.Element {
 
   const days = TIME_RANGE_DAYS[timeRange as keyof typeof TIME_RANGE_DAYS] ?? 30;
 
-  const { data: cacheData, loading: cacheLoading } = useApi(
-    () => window.api.analytics.getCacheEfficiency(days),
-    [days]
-  );
+  const cache = useApi(() => window.api.analytics.getCacheEfficiency(days), [days]);
+  const turn = useApi(() => window.api.analytics.getTurnDurationTrend(days), [days]);
+  const cost = useApi(() => window.api.analytics.getDailyCosts(days), [days]);
+  const density = useApi(() => window.api.analytics.getSessionDensity(days), [days]);
+  const modelMix = useApi(() => window.api.analytics.getModelMix(days), [days]);
+  const timeline = useApi(() => window.api.analytics.getProjectTimeline(days), [days]);
+  const patterns = useApi(() => window.api.analytics.getUsagePatterns(days), [days]);
 
-  const { data: turnData, loading: turnLoading } = useApi(
-    () => window.api.analytics.getTurnDurationTrend(days),
-    [days]
-  );
+  // Only the dashboard config gates the whole page — each widget carries its
+  // own loading/error/empty state so one slow or failed endpoint no longer
+  // blanks or silently drops anything (CGUI-66)
+  const configLoading = !dashConfig || !timeRangeInitialized;
 
-  const { data: costData, loading: costLoading } = useApi(
-    () => window.api.analytics.getDailyCosts(days),
-    [days]
-  );
+  interface WidgetEntry {
+    title: string;
+    node: React.ReactNode;
+    hasData: boolean;
+    loading: boolean;
+    error: Error | null;
+    refetch: () => void;
+  }
 
-  const { data: densityData, loading: densityLoading } = useApi(
-    () => window.api.analytics.getSessionDensity(days),
-    [days]
-  );
-
-  const { data: modelMixData, loading: modelMixLoading } = useApi(
-    () => window.api.analytics.getModelMix(days),
-    [days]
-  );
-
-  const { data: timelineData, loading: timelineLoading } = useApi(
-    () => window.api.analytics.getProjectTimeline(days),
-    [days]
-  );
-
-  const { data: patternsData, loading: patternsLoading } = useApi(
-    () => window.api.analytics.getUsagePatterns(days),
-    [days]
-  );
-
-  const loading = !dashConfig || !timeRangeInitialized || cacheLoading || turnLoading || costLoading
-    || densityLoading || modelMixLoading || timelineLoading || patternsLoading;
-
-  // Widget registry: maps widget IDs to their rendered component and data availability
-  const widgetRegistry: Record<TrendsWidgetId, { node: React.ReactNode; hasData: boolean }> = {
+  const widgetRegistry: Record<TrendsWidgetId, WidgetEntry> = {
     usagePatternsSummary: {
-      node: patternsData ? <UsagePatternsCard data={patternsData} /> : null,
-      hasData: !!(patternsData && patternsData.totalSessions > 0),
+      title: 'Usage Patterns',
+      node: patterns.data ? <UsagePatternsCard data={patterns.data} /> : null,
+      hasData: !!(patterns.data && patterns.data.totalSessions > 0),
+      loading: patterns.loading, error: patterns.error, refetch: patterns.refetch,
     },
     costVelocity: {
-      node: costData ? <CostVelocityChart data={costData} /> : null,
-      hasData: !!(costData && costData.some(d => d.costUsd > 0)),
+      title: 'Cost Velocity',
+      node: cost.data ? <CostVelocityChart data={cost.data} /> : null,
+      hasData: !!(cost.data && cost.data.some(d => d.costUsd > 0)),
+      loading: cost.loading, error: cost.error, refetch: cost.refetch,
     },
     cacheEfficiency: {
-      node: cacheData ? <CacheEfficiencyChart data={cacheData} /> : null,
-      hasData: !!(cacheData && cacheData.length > 0),
+      title: 'Cache Efficiency',
+      node: cache.data ? <CacheEfficiencyChart data={cache.data} /> : null,
+      hasData: !!(cache.data && cache.data.length > 0),
+      loading: cache.loading, error: cache.error, refetch: cache.refetch,
     },
     turnDurationTrend: {
-      node: turnData ? <TurnDurationChart data={turnData} /> : null,
-      hasData: !!(turnData && turnData.some(d => d.turnCount > 0)),
+      title: 'Turn Duration Trend',
+      node: turn.data ? <TurnDurationChart data={turn.data} /> : null,
+      hasData: !!(turn.data && turn.data.some(d => d.turnCount > 0)),
+      loading: turn.loading, error: turn.error, refetch: turn.refetch,
     },
     sessionDensity: {
-      node: densityData ? <SessionDensityChart data={densityData} /> : null,
-      hasData: !!(densityData && densityData.some(d => d.sessionCount > 0)),
+      title: 'Session Density',
+      node: density.data ? <SessionDensityChart data={density.data} /> : null,
+      hasData: !!(density.data && density.data.some(d => d.sessionCount > 0)),
+      loading: density.loading, error: density.error, refetch: density.refetch,
     },
     projectActivityTimeline: {
-      node: timelineData ? <ProjectTimelineChart rows={timelineData.rows} dateRange={timelineData.dateRange} /> : null,
-      hasData: !!(timelineData && timelineData.rows.length > 0),
+      title: 'Project Activity Timeline',
+      node: timeline.data ? <ProjectTimelineChart rows={timeline.data.rows} dateRange={timeline.data.dateRange} /> : null,
+      hasData: !!(timeline.data && timeline.data.rows.length > 0),
+      loading: timeline.loading, error: timeline.error, refetch: timeline.refetch,
     },
     modelMigration: {
-      node: modelMixData ? <ModelMigrationChart data={modelMixData.days} models={modelMixData.models} /> : null,
-      hasData: !!(modelMixData && modelMixData.models.length > 0),
+      title: 'Model Migration',
+      node: modelMix.data ? <ModelMigrationChart data={modelMix.data.days} models={modelMix.data.models} /> : null,
+      hasData: !!(modelMix.data && modelMix.data.models.length > 0),
+      loading: modelMix.loading, error: modelMix.error, refetch: modelMix.refetch,
     },
   };
 
-  // Build ordered, visible widget list from config
+  // Ordered, visible widgets — empty/loading/error widgets stay in the list
+  // and render placeholder cards instead of vanishing
   const orderedWidgets = dashConfig
     ? [...dashConfig.trendsWidgets]
         .filter(w => w.visible)
         .sort((a, b) => a.order - b.order)
         .map(w => ({ id: w.id, ...widgetRegistry[w.id] }))
-        .filter(w => w.hasData)
     : [];
 
-  const hasAnyData = orderedWidgets.length > 0;
+  const allSettledEmpty =
+    orderedWidgets.length > 0 &&
+    orderedWidgets.every(w => !w.loading && !w.error && !w.hasData);
 
   return (
     <div className="page">
-      {loading ? (
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading...</div>
-      ) : hasAnyData ? (
-        <>
-          {orderedWidgets.map(w => (
-            <React.Fragment key={w.id}>{w.node}</React.Fragment>
-          ))}
-        </>
-      ) : (
+      {configLoading ? (
+        <Loading />
+      ) : allSettledEmpty ? (
         <EmptyState
           title="No trend data available"
           message="Trends will appear here once session data has been collected. Import Claude Code JSONL data or connect the log watcher to begin."
         />
+      ) : (
+        <>
+          {orderedWidgets.map(w => {
+            if (w.error) {
+              return (
+                <WidgetPlaceholder key={w.id} title={w.title}>
+                  <ErrorState what={w.title.toLowerCase()} error={w.error} onRetry={w.refetch} compact />
+                </WidgetPlaceholder>
+              );
+            }
+            if (w.loading && !w.hasData) {
+              return (
+                <WidgetPlaceholder key={w.id} title={w.title}>
+                  <Loading compact />
+                </WidgetPlaceholder>
+              );
+            }
+            if (!w.hasData) {
+              return (
+                <WidgetPlaceholder key={w.id} title={w.title}>
+                  <div style={{ color: 'var(--text-tertiary)', fontSize: 12, fontFamily: '"Poppins", sans-serif', padding: '8px 0' }}>
+                    No data in this range yet
+                  </div>
+                </WidgetPlaceholder>
+              );
+            }
+            return <React.Fragment key={w.id}>{w.node}</React.Fragment>;
+          })}
+        </>
       )}
     </div>
   );

@@ -1,50 +1,32 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import type { ProjectAggregate } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
-
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, '1y': 365, 'All': 3650 };
+import { useApi } from '../hooks/useApi';
+import {
+  formatCost,
+  formatDateFull,
+  formatTokens,
+  rangeDays,
+  shortenModel,
+} from '../utils/format';
 
 type SortKey = 'displayName' | 'totalCostUsd' | 'codeSessionCount' | 'coworkSessionCount' | 'lastActiveAt' | 'activeDays';
 type SortDir = 'asc' | 'desc';
 
-function formatTokens(n: number): string {
-  if (n === 0) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '—';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDate(iso: string): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-}
-
-function shortenModel(model: string): string {
-  const match = model.match(/(opus|sonnet|haiku)-([\d]+(?:-[\d]+)*)/i);
-  if (match) return `${match[1].toLowerCase()}-${match[2]}`;
-  return model;
-}
-
 export default function ProjectsView(): React.JSX.Element {
-  const [projects, setProjects] = useState<ProjectAggregate[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('90d');
   const [sortKey, setSortKey] = useState<SortKey>('totalCostUsd');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
   const [expandedProject, setExpandedProject] = useState<string | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 90;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -55,16 +37,13 @@ export default function ProjectsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  useEffect(() => {
-    setLoading(true);
-    window.api.projects.getAggregates(rangeDays)
-      .then(setProjects)
-      .catch(err => {
-        console.error('[ProjectsView] fetch failed:', err);
-        setProjects([]);
-      })
-      .finally(() => setLoading(false));
-  }, [rangeDays]);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => window.api.projects.getAggregates(days), [days]);
+  const projects = fetched ?? [];
 
   const totals = useMemo(() => {
     let cost = 0, input = 0, output = 0, codeSessions = 0, coworkSessions = 0;
@@ -97,12 +76,18 @@ export default function ProjectsView(): React.JSX.Element {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
-
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading projects...</div>
+        <Loading label="projects" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="project aggregates" error={error} onRetry={refetch} />
       </div>
     );
   }
@@ -120,8 +105,12 @@ export default function ProjectsView(): React.JSX.Element {
 
   return (
     <div className="page">
-      {/* Summary stats */}
-      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(6, 1fr)' }}>
+      {/* Summary stats — 6-up at the default window, wrapping to 3×2 at the
+          900px minimum rather than squeezing six ~100px cards (CGUI-69).
+          158px is the only track minimum that holds both ends: 6 columns
+          still fit the ~1036px column at 1280px wide, and a 4th column no
+          longer fits the ~656px column at 900px. */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(158px, 100%), 1fr))' }}>
         <StatCard label="Projects" value={totals.projectCount} icon={Icons.projects} variant="minimal" />
         <StatCard label="Total Cost" value={formatCost(totals.cost)} icon={Icons.dollar} variant="minimal" />
         <StatCard label="Code Sessions" value={totals.codeSessions.toLocaleString()} icon={Icons.code} variant="minimal" />
@@ -143,25 +132,14 @@ export default function ProjectsView(): React.JSX.Element {
           <table className="data">
             <thead>
               <tr>
-                <th onClick={() => handleSort('displayName')} style={{ cursor: 'pointer' }}>
-                  Project{sortIndicator('displayName')}
-                </th>
-                <th className="num" onClick={() => handleSort('totalCostUsd')} style={{ cursor: 'pointer' }}>
-                  Cost{sortIndicator('totalCostUsd')}
-                </th>
-                <th className="num" onClick={() => handleSort('codeSessionCount')} style={{ cursor: 'pointer' }}>
-                  Code{sortIndicator('codeSessionCount')}
-                </th>
-                <th className="num" onClick={() => handleSort('coworkSessionCount')} style={{ cursor: 'pointer' }}>
-                  Cowork{sortIndicator('coworkSessionCount')}
-                </th>
+                <th aria-hidden="true" style={{ width: 24 }} />
+                <SortableTh label="Project" active={sortKey === 'displayName'} dir={sortDir} onSort={() => handleSort('displayName')} />
+                <SortableTh label="Cost" className="num" active={sortKey === 'totalCostUsd'} dir={sortDir} onSort={() => handleSort('totalCostUsd')} />
+                <SortableTh label="Code" className="num" active={sortKey === 'codeSessionCount'} dir={sortDir} onSort={() => handleSort('codeSessionCount')} />
+                <SortableTh label="Cowork" className="num" active={sortKey === 'coworkSessionCount'} dir={sortDir} onSort={() => handleSort('coworkSessionCount')} />
                 <th className="num">Tokens (in/out)</th>
-                <th className="num" onClick={() => handleSort('activeDays')} style={{ cursor: 'pointer' }}>
-                  Active Days{sortIndicator('activeDays')}
-                </th>
-                <th onClick={() => handleSort('lastActiveAt')} style={{ cursor: 'pointer' }}>
-                  Last Active{sortIndicator('lastActiveAt')}
-                </th>
+                <SortableTh label="Active Days" className="num" active={sortKey === 'activeDays'} dir={sortDir} onSort={() => handleSort('activeDays')} />
+                <SortableTh label="Last Active" active={sortKey === 'lastActiveAt'} dir={sortDir} onSort={() => handleSort('lastActiveAt')} />
               </tr>
             </thead>
             <tbody>
@@ -170,9 +148,23 @@ export default function ProjectsView(): React.JSX.Element {
                 return (
                   <React.Fragment key={p.projectPath}>
                     <tr
+                      className={expandedProject === p.projectPath ? 'active' : undefined}
                       onClick={() => setExpandedProject(expandedProject === p.projectPath ? null : p.projectPath)}
                       style={{ cursor: 'pointer' }}
                     >
+                      <td style={{ width: 24, textAlign: 'center' }}>
+                        <button
+                          aria-expanded={expandedProject === p.projectPath}
+                          aria-label={`${expandedProject === p.projectPath ? 'Collapse' : 'Expand'} ${p.displayName}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedProject(expandedProject === p.projectPath ? null : p.projectPath);
+                          }}
+                          style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', padding: 0, fontSize: 11 }}
+                        >
+                          {expandedProject === p.projectPath ? '▾' : '▸'}
+                        </button>
+                      </td>
                       <td>
                         <span className="path">
                           {leaf ? (
@@ -185,15 +177,23 @@ export default function ProjectsView(): React.JSX.Element {
                       </td>
                       <td className="num">{p.codeSessionCount || '—'}</td>
                       <td className="num">{p.coworkSessionCount || '—'}</td>
-                      <td className="num">{formatTokens(p.inputTokens)} / {formatTokens(p.outputTokens)}</td>
+                      {/* Token counts are only meaningful for Code sessions.
+                          A Cowork-only project reports 0, which under the
+                          null-vs-zero convention would read as a measured
+                          zero — it's actually "not applicable" (CGUI-70). */}
+                      <td className="num">
+                        {formatTokens(p.codeSessionCount > 0 ? p.inputTokens : null)}
+                        {' / '}
+                        {formatTokens(p.codeSessionCount > 0 ? p.outputTokens : null)}
+                      </td>
                       <td className="num">{p.activeDays}</td>
                       <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>
-                        {formatDate(p.lastActiveAt)}
+                        {formatDateFull(p.lastActiveAt)}
                       </td>
                     </tr>
                     {expandedProject === p.projectPath && (
-                      <tr>
-                        <td colSpan={7} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
+                      <tr className="detail-row">
+                        <td colSpan={8} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
                           <ProjectDetail project={p} />
                         </td>
                       </tr>
@@ -216,7 +216,7 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 24 }}>
       {/* Left: Token breakdown */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: '"Poppins"', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-header)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
           Token Breakdown
         </div>
         <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '6px 16px', fontSize: 12, fontFamily: '"JetBrains Mono", monospace' }}>
@@ -233,13 +233,13 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
           {project.projectPath}
         </div>
         <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>
-          First seen: {formatDate(project.firstSeenAt)} · Cowork turns: {project.coworkTurnCount || '—'}
+          First seen: {formatDateFull(project.firstSeenAt)} · Cowork turns: {project.coworkTurnCount || '—'}
         </div>
       </div>
 
       {/* Right: Model usage */}
       <div>
-        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: '"Poppins"', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
+        <div style={{ fontSize: 10, fontWeight: 600, fontFamily: 'var(--font-header)', letterSpacing: '0.14em', textTransform: 'uppercase', color: 'var(--text-tertiary)', marginBottom: 10 }}>
           Model Usage
         </div>
         {modelEntries.length === 0 ? (
@@ -247,7 +247,11 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
             {modelEntries.map(([model, count]) => {
-              const pct = Math.round((count / project.codeSessionCount) * 100);
+              // Guard the divisor: a project can carry model rows with a zero
+              // session count, which rendered width: Infinity% (CGUI-70).
+              const pct = project.codeSessionCount > 0
+                ? Math.round((count / project.codeSessionCount) * 100)
+                : 0;
               return (
                 <div key={model} style={{ display: 'flex', alignItems: 'center', gap: 10, fontSize: 12 }}>
                   <div style={{

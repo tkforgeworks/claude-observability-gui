@@ -5,6 +5,9 @@
  * @see CGUI-18
  */
 
+import { formatDuration as sharedFormatDuration, formatHour } from '../../utils/format';
+
+const formatHourOfDate = (d: Date) => formatHour(d.getHours(), { style: 'compact' });
 import React, { useMemo } from 'react';
 import type { TimelineEntry } from '../../../shared/ipc-types';
 
@@ -58,20 +61,8 @@ function toPercent(time: number, axisStart: number, axisEnd: number): number {
   return Math.max(0, Math.min(100, ((time - axisStart) / range) * 100));
 }
 
-function formatHour(date: Date): string {
-  const h = date.getHours();
-  const ampm = h >= 12 ? 'p' : 'a';
-  const hour12 = h % 12 || 12;
-  return `${hour12}${ampm}`;
-}
-
 function formatDuration(ms: number): string {
-  const totalMin = Math.round(ms / 60000);
-  if (totalMin < 1) return '<1m';
-  const h = Math.floor(totalMin / 60);
-  const m = totalMin % 60;
-  if (h > 0) return `${h}h ${m}m`;
-  return `${m}m`;
+  return sharedFormatDuration(ms / 1000, { style: 'hm' });
 }
 
 function SessionBlock({ entry, axisStart, axisEnd, now }: {
@@ -223,7 +214,7 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
                 color: 'var(--text-tertiary)',
               }}
             >
-              {formatHour(h)}
+              {formatHourOfDate(h)}
             </span>
           );
         })}

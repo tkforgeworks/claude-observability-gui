@@ -75,10 +75,48 @@ function navLinkStyle(isActive: boolean): React.CSSProperties {
   };
 }
 
+// App mark (CGUI-57): same wireframe-gear geometry as assets/icon.svg, inlined
+// so the sidebar mark matches the installer/taskbar/tray icon exactly.
+function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
+  // useId keeps the gradient unique if the mark ever renders twice (CGUI-68)
+  const gradientId = React.useId();
+  return (
+    <svg viewBox="0 0 256 256" width={size} height={size} aria-hidden="true">
+      <defs>
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stopColor="#a855f7" />
+          <stop offset="100%" stopColor="#6366f1" />
+        </linearGradient>
+      </defs>
+      <g
+        fill="none"
+        stroke={`url(#${gradientId})`}
+        strokeWidth={24}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      >
+        <path d="M105.13 57.62 L109.23 23.68 L146.77 23.68 L150.87 57.62 L177.52 73.01 L208.96 59.58 L227.73 92.09 L200.38 112.61 L200.38 143.39 L227.73 163.91 L208.96 196.42 L177.52 182.99 L150.87 198.38 L146.77 232.32 L109.23 232.32 L105.13 198.38 L78.48 182.99 L47.04 196.42 L28.27 163.91 L55.62 143.39 L55.62 112.61 L28.27 92.09 L47.04 59.58 L78.48 73.01 Z" />
+        <circle cx="128" cy="128" r="34" />
+      </g>
+    </svg>
+  );
+}
+
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
   const [appVersion, setAppVersion] = useState('');
+
+  // Seed from the current status, then track pushes. Without the initial
+  // fetch the dot claimed "offline" until the next connection event, which
+  // may never arrive in a healthy session (CGUI-70).
+  useEffect(() => {
+    let cancelled = false;
+    window.api.logPath.getStatus()
+      .then(status => { if (!cancelled) setWatcherConnected(status.valid); })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
 
   useEffect(() => {
     return window.api.onLogWatcherConnection((status) => {
@@ -103,10 +141,13 @@ export default function Sidebar(): React.JSX.Element {
     <nav style={sidebarStyles} aria-label="Main navigation">
       {/* Brand block */}
       <div className="sidebar-brand">
-        <div className="logo">TK</div>
+        <div className="logo"><GearMark size={20} /></div>
         <div className="name">
           COG
-          <span className="sub">{appVersion ? `v${appVersion}` : ''} · local</span>
+          {/* The separator belongs to the version, not the line — printing it
+              unconditionally left a dangling "· local" during the async
+              version fetch (CGUI-70). */}
+          <span className="sub">{appVersion ? `v${appVersion} · local` : 'local'}</span>
         </div>
       </div>
 
@@ -154,7 +195,6 @@ export default function Sidebar(): React.JSX.Element {
             height: 6,
             borderRadius: '50%',
             background: watcherConnected ? 'var(--success)' : 'var(--text-tertiary)',
-            boxShadow: watcherConnected ? undefined : 'none',
             animation: watcherConnected ? 'pulse 2s infinite' : 'none',
             flexShrink: 0,
           }} />

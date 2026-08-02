@@ -3,7 +3,7 @@ import Sparkline from './Sparkline';
 import { DeltaChip } from './Chip';
 import type { IconComponent } from './Icons';
 
-type StatVariant = 'default' | 'minimal' | 'sparky';
+type StatVariant = 'default' | 'minimal';
 
 interface StatCardProps {
   label: string;
@@ -30,7 +30,14 @@ export default function StatCard({
   sparkColor,
   variant = 'default',
 }: StatCardProps): React.JSX.Element {
-  const className = 'stat' + (variant !== 'default' ? ` ${variant}` : '');
+  // `.minimal` hides the sparkline entirely, so only a non-minimal card with
+  // enough points reserves the bottom padding for one (CGUI-71).
+  const hasSpark = variant !== 'minimal' && !!sparkData && sparkData.length >= 2;
+  const className = [
+    'stat',
+    variant !== 'default' ? variant : null,
+    hasSpark ? 'has-spark' : null,
+  ].filter(Boolean).join(' ');
   return (
     <div className={className}>
       <div className="label">
@@ -52,7 +59,7 @@ export default function StatCard({
           <span>{subMeta}</span>
         </div>
       )}
-      {sparkData && sparkData.length >= 2 && (
+      {hasSpark && sparkData && (
         <Sparkline values={sparkData} color={sparkColor} />
       )}
     </div>

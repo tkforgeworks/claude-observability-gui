@@ -1,15 +1,12 @@
 import React from 'react';
+import { formatHour } from '../../utils/format';
+
+const formatHourCompact = (h: number) => formatHour(h, { style: 'compact' });
 
 interface HourStripProps {
   data: number[];
   color?: string;
   height?: number;
-}
-
-function formatHour(h: number): string {
-  if (h === 0) return '12a';
-  if (h === 12) return '12p';
-  return h < 12 ? `${h}a` : `${h - 12}p`;
 }
 
 export default function HourStrip({
@@ -26,7 +23,7 @@ export default function HourStrip({
         {data.map((v, i) => (
           <div
             key={i}
-            title={`${formatHour(i)}: ${v} sessions`}
+            title={`${formatHourCompact(i)}: ${v} sessions`}
             style={{
               flex: 1,
               height: `${Math.max((v / max) * 100, v > 0 ? 8 : 3)}%`,
@@ -50,7 +47,7 @@ export default function HourStrip({
               textAlign: 'center',
             }}
           >
-            {i % 3 === 0 ? formatHour(i) : ''}
+            {i % 3 === 0 ? formatHourCompact(i) : ''}
           </div>
         ))}
       </div>

@@ -1,51 +1,29 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
-import type { CodeSession, CleanupWarning, ImportSummary } from '../../shared/ipc-types';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
+import type { CleanupWarning, ImportSummary } from '../../shared/ipc-types';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import StatCard from '../components/common/StatCard';
+import SortableTh from '../components/common/SortableTh';
 import StatusBanner from '../components/common/StatusBanner';
 import HBar from '../components/charts/HBar';
 import Donut from '../components/charts/Donut';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
+import {
+  formatCost,
+  formatElapsed,
+  formatDateTime,
+  formatProjectName,
+  formatTokens,
+  ALL_RANGE_DAYS,
+  rangeDays,
+  shortenModel,
+} from '../utils/format';
 
 type SortKey = 'project_path' | 'model' | 'input_tokens' | 'output_tokens' | 'cache_creation_tokens' | 'cache_read_tokens' | 'cost_usd' | 'started_at';
 type SortDir = 'asc' | 'desc';
-
-const RANGE_MAP: Record<string, number> = { '7d': 7, '30d': 30, '90d': 90, 'All': 3650 };
-
-function formatTokens(n: number | null): string {
-  if (n == null || n === 0) return '—';
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1_000).toFixed(1)}k`;
-  return n.toLocaleString();
-}
-
-function formatCost(n: number | null): string {
-  if (n == null) return '—';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  const d = new Date(iso);
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-}
-
-function formatProjectName(p: string | null): string {
-  if (!p) return '—';
-  const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
-  return parts.length <= 2 ? parts.join('/') : parts.slice(-2).join('/');
-}
-
-function shortenModel(model: string | null): string {
-  if (!model) return 'unknown';
-  const match = model.match(/(opus|sonnet|haiku)-([\d]+(?:-[\d]+)*)/i);
-  if (match) return `${match[1].toLowerCase()}-${match[2]}`;
-  const parts = model.split('-').filter(Boolean);
-  return parts.length > 2 ? parts.slice(-3, -1).join('-') : model;
-}
 
 function daysAgo(n: number): string {
   const d = new Date();
@@ -57,8 +35,6 @@ function daysAgo(n: number): string {
 type ScanStatus = 'idle' | 'scanning' | 'complete';
 
 export default function CodeSessionsView(): React.JSX.Element {
-  const [sessions, setSessions] = useState<CodeSession[]>([]);
-  const [loading, setLoading] = useState(true);
   const [rangeLabel, setRangeLabel] = useState('30d');
   const [sortKey, setSortKey] = useState<SortKey>('started_at');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -68,7 +44,7 @@ export default function CodeSessionsView(): React.JSX.Element {
   const [cleanupWarning, setCleanupWarning] = useState<CleanupWarning | null>(null);
 
   const { setRangeControls, clearRangeControls } = useTopbar();
-  const rangeDays = RANGE_MAP[rangeLabel] ?? 30;
+  const days = rangeDays(rangeLabel);
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -79,21 +55,17 @@ export default function CodeSessionsView(): React.JSX.Element {
     return clearRangeControls;
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
-  const fetchSessions = useCallback(() => {
-    const from = daysAgo(rangeDays);
+  const {
+    data: fetched,
+    loading,
+    error,
+    refetch,
+  } = useApi(() => {
+    const from = daysAgo(days);
     const to = new Date().toISOString();
-    return window.api.codeSessions.getByDateRange({ from, to })
-      .then(setSessions)
-      .catch(err => {
-        console.error('[CodeSessionsView] fetch failed:', err);
-        setSessions([]);
-      });
-  }, [rangeDays]);
-
-  useEffect(() => {
-    setLoading(true);
-    fetchSessions().finally(() => setLoading(false));
-  }, [fetchSessions]);
+    return window.api.codeSessions.getByDateRange({ from, to });
+  }, [days]);
+  const sessions = fetched ?? [];
 
   useEffect(() => {
     window.api.codeSessions.getCleanupWarning?.()
@@ -101,23 +73,36 @@ export default function CodeSessionsView(): React.JSX.Element {
       ?.catch((err: unknown) => console.error('[CodeSessionsView] cleanup warning check failed:', err));
   }, []);
 
+  // Fade timers are tracked so they can be cancelled. Previously they were
+  // fire-and-forget: they leaked past unmount, and a timer from an earlier
+  // scan would hide the status of a scan that had just started (CGUI-70).
+  const fadeTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
+  const clearFadeTimers = useCallback(() => {
+    fadeTimers.current.forEach(clearTimeout);
+    fadeTimers.current = [];
+  }, []);
+
+  useEffect(() => clearFadeTimers, [clearFadeTimers]);
+
   useEffect(() => {
     const unsubStarted = window.api.onScanStarted?.(() => {
+      clearFadeTimers();
       setScanStatus('scanning');
       setScanFading(false);
     });
     const unsubComplete = window.api.onImportComplete?.((summary) => {
+      clearFadeTimers();
       setScanStatus('complete');
       setLastScanSummary(summary);
       setScanFading(false);
-      if (summary.newRecords > 0 || summary.updatedRecords > 0) fetchSessions();
-      setTimeout(() => {
+      if (summary.newRecords > 0 || summary.updatedRecords > 0) refetch();
+      fadeTimers.current.push(setTimeout(() => {
         setScanFading(true);
-        setTimeout(() => setScanStatus('idle'), 500);
-      }, 5000);
+        fadeTimers.current.push(setTimeout(() => setScanStatus('idle'), 500));
+      }, 5000));
     });
     return () => { unsubStarted?.(); unsubComplete?.(); };
-  }, [fetchSessions]);
+  }, [refetch, clearFadeTimers]);
 
   const sorted = useMemo(() => {
     const copy = [...sessions];
@@ -127,7 +112,11 @@ export default function CodeSessionsView(): React.JSX.Element {
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      // localeCompare for text: a plain < comparison sorts by code point, so
+      // every uppercase path sorted ahead of every lowercase one (CGUI-70).
+      const cmp = typeof av === 'string' && typeof bv === 'string'
+        ? av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true })
+        : av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
@@ -161,7 +150,7 @@ export default function CodeSessionsView(): React.JSX.Element {
   const modelDist = useMemo(() => {
     const map = new Map<string, number>();
     for (const s of sessions) {
-      const key = shortenModel(s.model);
+      const key = shortenModel(s.model ?? 'unknown');
       map.set(key, (map.get(key) ?? 0) + 1);
     }
     return Array.from(map.entries())
@@ -174,26 +163,38 @@ export default function CodeSessionsView(): React.JSX.Element {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
-  const sortIndicator = (key: SortKey) => sortKey !== key ? '' : sortDir === 'asc' ? ' ▲' : ' ▼';
+  // Only fired when the selected range came back empty: an empty range and an
+  // empty database look identical otherwise, and the old copy told people to
+  // wait for an import they had already run (CGUI-70).
+  const [totalOutsideRange, setTotalOutsideRange] = useState<number | null>(null);
+  useEffect(() => {
+    if (loading || sessions.length > 0) { setTotalOutsideRange(null); return; }
+    let cancelled = false;
+    window.api.codeSessions
+      .getByDateRange({ from: daysAgo(ALL_RANGE_DAYS), to: new Date().toISOString() })
+      .then(all => { if (!cancelled) setTotalOutsideRange(all.length); })
+      .catch(() => { if (!cancelled) setTotalOutsideRange(null); });
+    return () => { cancelled = true; };
+  }, [loading, sessions.length]);
 
-  if (loading) {
+  if (loading && !fetched) {
     return (
       <div className="page">
-        <div style={{ color: 'var(--text-tertiary)', padding: 40, textAlign: 'center' }}>Loading sessions...</div>
+        <Loading label="sessions" />
       </div>
     );
   }
 
-  if (sessions.length === 0) {
+  if (error) {
     return (
       <div className="page">
-        <EmptyState
-          title="No Code sessions yet"
-          message="Claude Code session data will appear here once the JSONL importer has scanned ~/.claude/projects/."
-        />
+        <ErrorState what="Code sessions" error={error} onRetry={refetch} />
       </div>
     );
   }
+
+  const isEmpty = sessions.length === 0;
+  const hasDataOutsideRange = (totalOutsideRange ?? 0) > 0;
 
   return (
     <div className="page">
@@ -213,7 +214,7 @@ export default function CodeSessionsView(): React.JSX.Element {
           transition: 'opacity 0.5s ease',
         }}>
           {scanStatus === 'scanning' ? '⟳ Scanning JSONL files...' :
-            lastScanSummary ? `Scan complete: ${lastScanSummary.newRecords} new, ${lastScanSummary.updatedRecords} updated (${lastScanSummary.scanDurationMs}ms)` : null}
+            lastScanSummary ? `Scan complete: ${lastScanSummary.newRecords} new, ${lastScanSummary.updatedRecords} updated (${formatElapsed(lastScanSummary.scanDurationMs)})` : null}
         </div>
       )}
 
@@ -224,14 +225,27 @@ export default function CodeSessionsView(): React.JSX.Element {
         <StatCard label="Cache Tokens" value={formatTokens(totals.cache)} icon={Icons.bolt} variant="minimal" />
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: 14 }}>
-        <div className="card">
-          <div className="card-head"><h2>Cost by Project</h2></div>
-          <HBar items={costByProject} />
-        </div>
-        <div className="card">
-          <div className="card-head"><h2>Model Distribution</h2></div>
-          <Donut slices={modelDist} centerLabel="sessions" centerValue={String(totals.count)} />
+      {isEmpty ? (
+        <EmptyState
+          title={hasDataOutsideRange
+            ? `No Code sessions in this range`
+            : 'No Code sessions yet'}
+          message={hasDataOutsideRange
+            ? `You have ${totalOutsideRange} session${totalOutsideRange === 1 ? '' : 's'} outside the selected range. Pick a wider range to see them.`
+            : 'Claude Code session data will appear here once the JSONL importer has scanned ~/.claude/projects/.'}
+        />
+      ) : (
+      <>
+      <div className="chart-row">
+        <div className="chart-row-grid">
+          <div className="card">
+            <div className="card-head"><h2>Cost by Project</h2></div>
+            <HBar items={costByProject} />
+          </div>
+          <div className="card">
+            <div className="card-head"><h2>Model Distribution</h2></div>
+            <Donut slices={modelDist} centerLabel="sessions" centerValue={String(totals.count)} />
+          </div>
         </div>
       </div>
 
@@ -251,14 +265,14 @@ export default function CodeSessionsView(): React.JSX.Element {
           <table className="data">
             <thead>
               <tr>
-                <th onClick={() => handleSort('project_path')} style={{ cursor: 'pointer' }}>Project{sortIndicator('project_path')}</th>
-                <th onClick={() => handleSort('model')} style={{ cursor: 'pointer' }}>Model{sortIndicator('model')}</th>
-                <th className="num" onClick={() => handleSort('input_tokens')} style={{ cursor: 'pointer' }}>Input{sortIndicator('input_tokens')}</th>
-                <th className="num" onClick={() => handleSort('output_tokens')} style={{ cursor: 'pointer' }}>Output{sortIndicator('output_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cache_creation_tokens')} style={{ cursor: 'pointer' }}>Cache W{sortIndicator('cache_creation_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cache_read_tokens')} style={{ cursor: 'pointer' }}>Cache R{sortIndicator('cache_read_tokens')}</th>
-                <th className="num" onClick={() => handleSort('cost_usd')} style={{ cursor: 'pointer' }}>Cost{sortIndicator('cost_usd')}</th>
-                <th onClick={() => handleSort('started_at')} style={{ cursor: 'pointer' }}>Date{sortIndicator('started_at')}</th>
+                <SortableTh label="Project" active={sortKey === 'project_path'} dir={sortDir} onSort={() => handleSort('project_path')} />
+                <SortableTh label="Model" active={sortKey === 'model'} dir={sortDir} onSort={() => handleSort('model')} />
+                <SortableTh label="Input" className="num" active={sortKey === 'input_tokens'} dir={sortDir} onSort={() => handleSort('input_tokens')} />
+                <SortableTh label="Output" className="num" active={sortKey === 'output_tokens'} dir={sortDir} onSort={() => handleSort('output_tokens')} />
+                <SortableTh label="Cache W" className="num" active={sortKey === 'cache_creation_tokens'} dir={sortDir} onSort={() => handleSort('cache_creation_tokens')} />
+                <SortableTh label="Cache R" className="num" active={sortKey === 'cache_read_tokens'} dir={sortDir} onSort={() => handleSort('cache_read_tokens')} />
+                <SortableTh label="Cost" className="num" active={sortKey === 'cost_usd'} dir={sortDir} onSort={() => handleSort('cost_usd')} />
+                <SortableTh label="Date" active={sortKey === 'started_at'} dir={sortDir} onSort={() => handleSort('started_at')} />
               </tr>
             </thead>
             <tbody>
@@ -275,13 +289,13 @@ export default function CodeSessionsView(): React.JSX.Element {
                       </span>
                       {s.slug && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{s.slug}</div>}
                     </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{s.model ?? '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }} title={s.model ?? undefined}>{shortenModel(s.model)}</td>
                     <td className="num">{formatTokens(s.input_tokens)}</td>
                     <td className="num">{formatTokens(s.output_tokens)}</td>
                     <td className="num">{formatTokens(s.cache_creation_tokens)}</td>
                     <td className="num">{formatTokens(s.cache_read_tokens)}</td>
-                    <td className="num" style={{ color: s.cost_usd != null ? 'var(--success)' : 'var(--text-tertiary)' }}>{formatCost(s.cost_usd)}</td>
-                    <td>{formatDate(s.started_at)}</td>
+                    <td className="num">{formatCost(s.cost_usd)}</td>
+                    <td>{formatDateTime(s.started_at)}</td>
                   </tr>
                 );
               })}
@@ -289,6 +303,8 @@ export default function CodeSessionsView(): React.JSX.Element {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

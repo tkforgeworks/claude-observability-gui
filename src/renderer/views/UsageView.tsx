@@ -2,8 +2,12 @@ import React, { useEffect, useState, useCallback, useMemo } from 'react';
 import type { UsageSnapshot } from '../../shared/ipc-types';
 import StatCard from '../components/common/StatCard';
 import EmptyState from '../components/common/EmptyState';
+import Loading from '../components/common/Loading';
+import ErrorState from '../components/common/ErrorState';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
+import { useApi } from '../hooks/useApi';
+import { formatDateTime } from '../utils/format';
 
 const RANGE_HOURS: Record<string, number> = {
   '24h': 24,
@@ -22,12 +26,6 @@ function formatResetCountdown(resetsAt: string | null): string {
   const m = totalMin % 60;
   if (h > 0) return `resets ${h}h ${m}m`;
   return `resets ${m}m`;
-}
-
-function formatDateTime(iso: string): string {
-  const d = new Date(iso);
-  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) +
-    ' ' + d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
 }
 
 function getEffectivePct(pct: number, resetsAt: string | null): number {
@@ -89,9 +87,6 @@ function deriveResetRows(rows: HistoryRow[], nowMs: number): ResetRow[] {
 }
 
 export default function UsageView(): React.JSX.Element {
-  const [latest, setLatest] = useState<UsageSnapshot | null>(null);
-  const [snapshots, setSnapshots] = useState<UsageSnapshot[]>([]);
-  const [loading, setLoading] = useState(true);
   const { setRangeControls, clearRangeControls } = useTopbar();
   const [rangeLabel, setRangeLabel] = useState('24h');
 
@@ -106,25 +101,31 @@ export default function UsageView(): React.JSX.Element {
 
   const hours = RANGE_HOURS[rangeLabel] ?? 24;
 
-  const fetchData = useCallback(() => {
-    return Promise.all([
-      window.api.usageSnapshots.getLatest().then(setLatest),
-      window.api.usageSnapshots.getRecent(hours).then(setSnapshots),
-    ]).catch(err => {
-      console.error('[UsageView] fetch failed:', err);
-    });
-  }, [hours]);
+  const { data, loading, error, refetch } = useApi(
+    () =>
+      Promise.all([
+        window.api.usageSnapshots.getLatest(),
+        window.api.usageSnapshots.getRecent(hours),
+      ]),
+    [hours]
+  );
+  const [latest, snapshots] = data ?? [null, []];
 
   useEffect(() => {
-    fetchData().finally(() => setLoading(false));
-  }, [fetchData]);
-
-  useEffect(() => {
-    return window.api.onUsageSnapshot((snapshot) => {
-      setLatest(snapshot);
-      fetchData();
+    return window.api.onUsageSnapshot(() => {
+      refetch();
     });
-  }, [fetchData]);
+  }, [refetch]);
+
+  // Reset countdowns and the staleness check are derived from Date.now() at
+  // render time, so with no new snapshots arriving nothing re-rendered: the
+  // countdown froze and the staleness notice could appear late or never.
+  // A minute tick is enough for both — they're displayed to the minute.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = window.setInterval(() => setTick(t => t + 1), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
 
   // Oldest-first, matching getRecent ordering; pct zeroed when the window
   // had already reset at capture time (stale resets_at in the source file).
@@ -137,16 +138,28 @@ export default function UsageView(): React.JSX.Element {
     [snapshots]
   );
 
-  if (loading) {
-    return <div style={{ padding: 24, color: 'var(--text-secondary)' }}>Loading…</div>;
+  if (loading && !data) {
+    return (
+      <div className="page">
+        <Loading label="usage data" />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="page">
+        <ErrorState what="usage data" error={error} onRetry={refetch} />
+      </div>
+    );
   }
 
   if (!latest && snapshots.length === 0) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="page">
         <EmptyState
           title="No usage data yet"
-          message="Usage data will appear after your first Claude Code session. The app polls for usage limits every 5 minutes."
+          message="Usage data will appear after your first Claude Code session. Usage limits are only published while a session is running, and the app polls for them every 60 seconds by default."
         />
       </div>
     );
@@ -187,17 +200,23 @@ export default function UsageView(): React.JSX.Element {
     })),
   ].sort((a, b) => b.t - a.t);
 
+  // A sticky <th> loses its bottom border under border-collapse — the border
+  // belongs to the collapsed grid, which scrolls away. An inset shadow is
+  // painted by the cell itself and survives (CGUI-70).
   const stickyHeader: React.CSSProperties = {
     position: 'sticky',
     top: 0,
     background: 'var(--surface)',
+    boxShadow: 'inset 0 -1px 0 var(--border-soft)',
     zIndex: 1,
   };
 
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+    <div className="page">
+      {/* Stat cards. Uses the shared .stats-grid rather than an ad-hoc grid so
+          the cards match every other view's; two cards need a wider track
+          than the default, hence the override (CGUI-70). */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}>
         <StatCard
           label="5-Hour Usage"
           value={effectiveFiveHour !== null ? `${effectiveFiveHour.toFixed(1)}%` : '—'}
@@ -220,16 +239,16 @@ export default function UsageView(): React.JSX.Element {
 
       {/* Staleness notice */}
       {isStale && latest && (
-        <div style={{
+        <div role="status" style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: '10px 14px',
-          background: 'var(--surface)',
-          border: '1px solid var(--border-soft)',
+          background: 'rgba(251, 191, 36, 0.10)',
+          border: '1px solid var(--warning)',
           borderRadius: 'var(--radius-md)',
           fontSize: 12,
-          color: 'var(--text-secondary)',
+          color: 'var(--text-primary)',
         }}>
           <Icons.clock style={{ flexShrink: 0 }} />
           <span>

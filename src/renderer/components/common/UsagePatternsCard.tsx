@@ -6,6 +6,7 @@
 
 import React from 'react';
 import type { UsagePatternsData } from '../../../shared/ipc-types';
+import { formatCost, formatHour } from '../../utils/format';
 
 interface UsagePatternsCardProps {
   data: UsagePatternsData;
@@ -22,18 +23,6 @@ const COLORS = {
 };
 
 const DAY_NAMES = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-
-function formatHour(h: number): string {
-  if (h === 0) return '12 AM';
-  if (h === 12) return '12 PM';
-  return h < 12 ? `${h} AM` : `${h - 12} PM`;
-}
-
-function formatCost(n: number): string {
-  if (n === 0) return '$0';
-  if (n < 0.01) return `$${n.toFixed(4)}`;
-  return `$${n.toFixed(2)}`;
-}
 
 const gridStyles: React.CSSProperties = {
   display: 'grid',
@@ -54,7 +43,7 @@ const statCardStyles: React.CSSProperties = {
 
 const statLabelStyles: React.CSSProperties = {
   fontSize: 10,
-  fontFamily: '"Poppins"',
+  fontFamily: 'var(--font-header)',
   fontWeight: 600,
   color: COLORS.label,
   textTransform: 'uppercase' as const,
@@ -74,7 +63,7 @@ const heatbarContainerStyles: React.CSSProperties = {
 
 const heatbarLabelStyles: React.CSSProperties = {
   fontSize: 11,
-  fontFamily: '"Poppins"',
+  fontFamily: 'var(--font-header)',
   fontWeight: 600,
   color: COLORS.label,
   marginBottom: 6,

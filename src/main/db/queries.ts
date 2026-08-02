@@ -1041,18 +1041,25 @@ export function queryUsagePatterns(
 /**
  * Returns row counts for each data table (for Settings > Data display).
  */
+/** Bookkeeping, not user data — never shown in the Settings row counts. */
+const INTERNAL_TABLES = new Set(['meta']);
+
 export function queryTableCounts(db: Database.Database): Record<string, number> {
-  const tables = [
-    'app_sessions',
-    'code_sessions',
-    'cowork_sessions',
-    'cowork_turns',
-    'chat_conversations',
-    'app_focus_events',
-  ];
+  // Discovered from the schema rather than hardcoded. The old fixed list
+  // silently omitted usage_snapshots, and every future table would have been
+  // invisible in the Data tab until someone remembered to add it here as
+  // well as to the renderer's label map (CGUI-70).
+  const tables = (db
+    .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
+    .all() as { name: string }[])
+    .map(r => r.name)
+    .filter(name => !INTERNAL_TABLES.has(name));
+
   const counts: Record<string, number> = {};
   for (const table of tables) {
-    const row = db.prepare(`SELECT COUNT(*) as cnt FROM ${table}`).get() as { cnt: number };
+    // Table names come from sqlite_master, not user input, so the
+    // interpolation here can't carry anything the schema didn't already name.
+    const row = db.prepare(`SELECT COUNT(*) as cnt FROM "${table}"`).get() as { cnt: number };
     counts[table] = row.cnt;
   }
   return counts;
@@ -1072,6 +1079,9 @@ export function queryDatabaseStats(db: Database.Database): DatabaseStats {
     } catch { /* file may not exist */ }
   }
 
+  // Stays explicit: unlike the row counts, each table needs its own date
+  // column named, so there's nothing to discover. Tables absent here simply
+  // have no "oldest record" to show.
   const dateColumns: Record<string, string> = {
     app_sessions: 'launched_at',
     code_sessions: 'started_at',
@@ -1079,6 +1089,7 @@ export function queryDatabaseStats(db: Database.Database): DatabaseStats {
     cowork_turns: 'started_at',
     chat_conversations: 'created_at',
     app_focus_events: 'focused_at',
+    usage_snapshots: 'captured_at',
   };
 
   const oldestRecords: Record<string, string | null> = {};
@@ -1087,7 +1098,13 @@ export function queryDatabaseStats(db: Database.Database): DatabaseStats {
     oldestRecords[table] = row.oldest;
   }
 
-  return { path: dbPath, sizeBytes, oldestRecords };
+  // Read the mode rather than hardcoding it: the Settings Data tab used to
+  // print a literal "WAL", which would keep claiming WAL even if the pragma
+  // failed to apply at startup (CGUI-70).
+  const journalRow = db.pragma('journal_mode', { simple: true });
+  const journalMode = String(journalRow ?? 'unknown').toUpperCase();
+
+  return { path: dbPath, sizeBytes, oldestRecords, journalMode };
 }
 
 // ---------------------------------------------------------------------------
