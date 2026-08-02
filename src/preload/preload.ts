@@ -47,6 +47,9 @@ const api: ElectronApi = {
     getVersion(): Promise<string> {
       return ipcRenderer.invoke('app:getVersion');
     },
+    isPackaged(): Promise<boolean> {
+      return ipcRenderer.invoke('app:isPackaged');
+    },
   },
 
   // -------------------------------------------------------------------------
