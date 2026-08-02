@@ -89,8 +89,10 @@ export default function SessionDensityChart({ data }: SessionDensityChartProps):
 
   return (
     <div className="card">
-      <div className="card-head"><h2>Session Density</h2></div>
-      <div style={subtitleStyles}>Sessions per active hour per day</div>
+      <div className="card-head">
+        <h2>Session Density</h2>
+        <span className="sub">Sessions per active hour per day</span>
+      </div>
 
       <ResponsiveContainer width="100%" height={180}>
         <LineChart data={chartData} margin={{ top: 4, right: 8, bottom: 0, left: 0 }}>

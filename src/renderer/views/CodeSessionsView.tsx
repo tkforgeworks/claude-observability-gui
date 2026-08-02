@@ -17,6 +17,7 @@ import {
   formatDateTime,
   formatProjectName,
   formatTokens,
+  ALL_RANGE_DAYS,
   rangeDays,
   shortenModel,
 } from '../utils/format';
@@ -111,7 +112,11 @@ export default function CodeSessionsView(): React.JSX.Element {
       if (av == null && bv == null) return 0;
       if (av == null) return 1;
       if (bv == null) return -1;
-      const cmp = av < bv ? -1 : av > bv ? 1 : 0;
+      // localeCompare for text: a plain < comparison sorts by code point, so
+      // every uppercase path sorted ahead of every lowercase one (CGUI-70).
+      const cmp = typeof av === 'string' && typeof bv === 'string'
+        ? av.localeCompare(bv, undefined, { sensitivity: 'base', numeric: true })
+        : av < bv ? -1 : av > bv ? 1 : 0;
       return sortDir === 'asc' ? cmp : -cmp;
     });
     return copy;
@@ -158,6 +163,20 @@ export default function CodeSessionsView(): React.JSX.Element {
     else { setSortKey(key); setSortDir('desc'); }
   };
 
+  // Only fired when the selected range came back empty: an empty range and an
+  // empty database look identical otherwise, and the old copy told people to
+  // wait for an import they had already run (CGUI-70).
+  const [totalOutsideRange, setTotalOutsideRange] = useState<number | null>(null);
+  useEffect(() => {
+    if (loading || sessions.length > 0) { setTotalOutsideRange(null); return; }
+    let cancelled = false;
+    window.api.codeSessions
+      .getByDateRange({ from: daysAgo(ALL_RANGE_DAYS), to: new Date().toISOString() })
+      .then(all => { if (!cancelled) setTotalOutsideRange(all.length); })
+      .catch(() => { if (!cancelled) setTotalOutsideRange(null); });
+    return () => { cancelled = true; };
+  }, [loading, sessions.length]);
+
   if (loading && !fetched) {
     return (
       <div className="page">
@@ -174,16 +193,8 @@ export default function CodeSessionsView(): React.JSX.Element {
     );
   }
 
-  if (sessions.length === 0) {
-    return (
-      <div className="page">
-        <EmptyState
-          title="No Code sessions yet"
-          message="Claude Code session data will appear here once the JSONL importer has scanned ~/.claude/projects/."
-        />
-      </div>
-    );
-  }
+  const isEmpty = sessions.length === 0;
+  const hasDataOutsideRange = (totalOutsideRange ?? 0) > 0;
 
   return (
     <div className="page">
@@ -214,6 +225,17 @@ export default function CodeSessionsView(): React.JSX.Element {
         <StatCard label="Cache Tokens" value={formatTokens(totals.cache)} icon={Icons.bolt} variant="minimal" />
       </div>
 
+      {isEmpty ? (
+        <EmptyState
+          title={hasDataOutsideRange
+            ? `No Code sessions in this range`
+            : 'No Code sessions yet'}
+          message={hasDataOutsideRange
+            ? `You have ${totalOutsideRange} session${totalOutsideRange === 1 ? '' : 's'} outside the selected range. Pick a wider range to see them.`
+            : 'Claude Code session data will appear here once the JSONL importer has scanned ~/.claude/projects/.'}
+        />
+      ) : (
+      <>
       <div className="chart-row">
         <div className="chart-row-grid">
           <div className="card">
@@ -267,12 +289,12 @@ export default function CodeSessionsView(): React.JSX.Element {
                       </span>
                       {s.slug && <div style={{ fontSize: 11, color: 'var(--text-tertiary)', marginTop: 2 }}>{s.slug}</div>}
                     </td>
-                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }}>{s.model ?? '—'}</td>
+                    <td style={{ fontSize: 12, color: 'var(--text-secondary)' }} title={s.model ?? undefined}>{shortenModel(s.model)}</td>
                     <td className="num">{formatTokens(s.input_tokens)}</td>
                     <td className="num">{formatTokens(s.output_tokens)}</td>
                     <td className="num">{formatTokens(s.cache_creation_tokens)}</td>
                     <td className="num">{formatTokens(s.cache_read_tokens)}</td>
-                    <td className="num" style={{ color: s.cost_usd != null ? 'var(--success)' : 'var(--text-tertiary)' }}>{formatCost(s.cost_usd)}</td>
+                    <td className="num">{formatCost(s.cost_usd)}</td>
                     <td>{formatDateTime(s.started_at)}</td>
                   </tr>
                 );
@@ -281,6 +303,8 @@ export default function CodeSessionsView(): React.JSX.Element {
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

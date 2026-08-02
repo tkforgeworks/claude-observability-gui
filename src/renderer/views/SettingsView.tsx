@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import Loading from '../components/common/Loading';
 import { formatBytes, formatDateFull } from '../utils/format';
 import {
   DndContext,
@@ -252,7 +253,7 @@ function LogPathSection(): React.JSX.Element {
   }
 
   if (!status) {
-    return <span style={placeholderStyles}>Checking log path...</span>;
+    return <Loading label="log path" compact />;
   }
 
   const badgeColor = status.valid ? 'green' : status.source === 'not-found' ? 'amber' : 'red';
@@ -483,7 +484,7 @@ function GeneralTab(): React.JSX.Element {
         ) : pathsError ? (
           <SettingError message={pathsError} />
         ) : (
-          <span style={placeholderStyles}>Loading paths...</span>
+          <Loading label="paths" compact />
         )}
       </div>
 
@@ -589,7 +590,7 @@ function DataMigrationSection(): React.JSX.Element {
         </button>
       </div>
       {status && (
-        <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: status.ok ? 'var(--success)' : 'var(--error)', marginTop: 8, maxWidth: 520 }}>
+        <p style={{ fontSize: 12, fontFamily: '"Poppins", sans-serif', color: status.ok ? 'var(--success)' : 'var(--error)', marginTop: 8, maxWidth: 520 }}>
           {status.text}
         </p>
       )}
@@ -1063,7 +1064,7 @@ function DashboardTab({ onHandleChange }: { onHandleChange?: (h: DashboardTabHan
   }, []);
 
   if (!localConfig) {
-    return <div style={placeholderStyles}>Loading dashboard configuration...</div>;
+    return <Loading label="dashboard configuration" compact />;
   }
 
   return (
@@ -1291,7 +1292,7 @@ function DataTab(): React.JSX.Element {
             </div>
           </div>
         ) : (
-          <span style={placeholderStyles}>Loading...</span>
+          <Loading compact />
         )}
 
         <div style={{ display: 'flex', gap: 8, marginTop: 12 }}>
@@ -1303,7 +1304,7 @@ function DataTab(): React.JSX.Element {
           </button>
         </div>
         {backupStatus && (
-          <p style={{ fontSize: 12, fontFamily: '"JetBrains Mono", monospace', color: backupStatus.startsWith('Backed') ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>
+          <p style={{ fontSize: 12, fontFamily: '"Poppins", sans-serif', color: backupStatus.startsWith('Backed') ? 'var(--success)' : 'var(--error)', marginTop: 8 }}>
             {backupStatus}
           </p>
         )}
@@ -1333,7 +1334,7 @@ function DataTab(): React.JSX.Element {
             ))}
           </div>
         ) : (
-          <span style={placeholderStyles}>Loading...</span>
+          <Loading compact />
         )}
       </div>
 

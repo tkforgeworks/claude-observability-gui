@@ -7,7 +7,7 @@ import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
-import { formatCost, formatDuration } from '../utils/format';
+import { formatCost, formatDuration, formatTime } from '../utils/format';
 
 const formatDurationHm = (s: number | null) => formatDuration(s, { style: 'hm' });
 
@@ -54,8 +54,13 @@ export default function TodayView(): React.JSX.Element {
     );
   }
 
+  // Only name the sources that actually contributed — "0 code · 3 cowork"
+  // led with a zero that read as a problem rather than an absence (CGUI-70).
   const sessionMeta = hasAnyData
-    ? `${summary.codeSessionCount} code` + (hasCoworkData ? ` · ${summary.coworkSessionCount} cowork` : '')
+    ? [
+        hasCodeData ? `${summary.codeSessionCount} code` : null,
+        hasCoworkData ? `${summary.coworkSessionCount} cowork` : null,
+      ].filter(Boolean).join(' · ')
     : noDataMeta;
 
   const turnsMeta = hasCoworkData
@@ -69,7 +74,7 @@ export default function TodayView(): React.JSX.Element {
     : noDataMeta;
 
   const activeMeta = summary?.lastFocusedAt
-    ? `last seen ${new Date(summary.lastFocusedAt).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}`
+    ? `last seen ${formatTime(summary.lastFocusedAt)}`
     : (hasCodeData ? 'no cowork data yet' : noDataMeta);
 
   return (

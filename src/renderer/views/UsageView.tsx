@@ -140,15 +140,15 @@ export default function UsageView(): React.JSX.Element {
 
   if (loading && !data) {
     return (
-      <div style={{ padding: 24 }}>
-        <Loading label="usage data" compact />
+      <div className="page">
+        <Loading label="usage data" />
       </div>
     );
   }
 
   if (error) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="page">
         <ErrorState what="usage data" error={error} onRetry={refetch} />
       </div>
     );
@@ -156,10 +156,10 @@ export default function UsageView(): React.JSX.Element {
 
   if (!latest && snapshots.length === 0) {
     return (
-      <div style={{ padding: 24 }}>
+      <div className="page">
         <EmptyState
           title="No usage data yet"
-          message="Usage data will appear after your first Claude Code session. The app polls for usage limits every 5 minutes."
+          message="Usage data will appear after your first Claude Code session. Usage limits are only published while a session is running, and the app polls for them every 60 seconds by default."
         />
       </div>
     );
@@ -200,17 +200,23 @@ export default function UsageView(): React.JSX.Element {
     })),
   ].sort((a, b) => b.t - a.t);
 
+  // A sticky <th> loses its bottom border under border-collapse — the border
+  // belongs to the collapsed grid, which scrolls away. An inset shadow is
+  // painted by the cell itself and survives (CGUI-70).
   const stickyHeader: React.CSSProperties = {
     position: 'sticky',
     top: 0,
     background: 'var(--surface)',
+    boxShadow: 'inset 0 -1px 0 var(--border-soft)',
     zIndex: 1,
   };
 
   return (
-    <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 24 }}>
-      {/* Stat cards */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(260px, 1fr))', gap: 16 }}>
+    <div className="page">
+      {/* Stat cards. Uses the shared .stats-grid rather than an ad-hoc grid so
+          the cards match every other view's; two cards need a wider track
+          than the default, hence the override (CGUI-70). */}
+      <div className="stats-grid" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(min(260px, 100%), 1fr))' }}>
         <StatCard
           label="5-Hour Usage"
           value={effectiveFiveHour !== null ? `${effectiveFiveHour.toFixed(1)}%` : '—'}
@@ -233,16 +239,16 @@ export default function UsageView(): React.JSX.Element {
 
       {/* Staleness notice */}
       {isStale && latest && (
-        <div style={{
+        <div role="status" style={{
           display: 'flex',
           alignItems: 'center',
           gap: 8,
           padding: '10px 14px',
-          background: 'var(--surface)',
-          border: '1px solid var(--border-soft)',
+          background: 'rgba(251, 191, 36, 0.10)',
+          border: '1px solid var(--warning)',
           borderRadius: 'var(--radius-md)',
           fontSize: 12,
-          color: 'var(--text-secondary)',
+          color: 'var(--text-primary)',
         }}>
           <Icons.clock style={{ flexShrink: 0 }} />
           <span>

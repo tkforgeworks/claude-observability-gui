@@ -110,7 +110,7 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
             <tr key={p.project_id}>
               <td>
                 {p.name || 'Untitled'}
-                {p.is_private && <span style={{ marginLeft: 6, opacity: 0.5, fontSize: 11, fontFamily: '"Poppins", sans-serif' }}>private</span>}
+                {p.is_private && <span className="chip muted" style={{ marginLeft: 6 }}>private</span>}
               </td>
               <td className="num">{p.doc_count}</td>
               <td>{formatDateFull(p.created_at)}</td>
@@ -126,7 +126,7 @@ function ProjectsTable({ projects }: { projects: ChatProject[] }) {
             border: 'none',
             color: 'var(--purple-primary)',
             fontSize: 12,
-            fontFamily: '"JetBrains Mono", monospace',
+            fontFamily: '"Poppins", sans-serif',
             cursor: 'pointer',
             padding: '8px 0',
             textAlign: 'center',
@@ -238,14 +238,18 @@ export default function ChatHistoryView(): React.JSX.Element {
     setLastSummary(null);
     try {
       const summary = await window.api.chatImport.start(filePath);
+      // Setting lastSummary is itself the refetch trigger — it's the dep of
+      // every query below except the conversation counts, which key off
+      // groupBy. Calling refetchAll() here as well ran all six twice per
+      // import (CGUI-70).
       setLastSummary(summary);
-      refetchAll();
+      refetchCounts();
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
     } finally {
       setImporting(false);
     }
-  }, [refetchAll]);
+  }, [refetchCounts]);
 
   const handleDropZoneClick = useCallback(async () => {
     if (importing) return;
@@ -260,7 +264,12 @@ export default function ChatHistoryView(): React.JSX.Element {
     setDragOver(true);
   }, []);
 
-  const handleDragLeave = useCallback(() => {
+  // Dragging over a child fires dragleave on the parent, so a naive handler
+  // flickered the highlight on every internal boundary. Only clear when the
+  // pointer has actually left the drop zone's bounds (CGUI-70).
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    const zone = e.currentTarget as HTMLElement;
+    if (zone.contains(e.relatedTarget as Node | null)) return;
     setDragOver(false);
   }, []);
 
@@ -516,7 +525,7 @@ function DropZone({ dragOver, importing, onClick, onDragOver, onDragLeave, onDro
   importing: boolean;
   onClick: () => void;
   onDragOver: (e: React.DragEvent) => void;
-  onDragLeave: () => void;
+  onDragLeave: (e: React.DragEvent) => void;
   onDrop: (e: React.DragEvent) => void;
 }) {
   return (

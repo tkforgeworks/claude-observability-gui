@@ -12,6 +12,7 @@ import {
   formatDateTime,
   formatDuration,
   formatProjectName,
+  ALL_RANGE_DAYS,
   rangeDays,
 } from '../utils/format';
 
@@ -200,6 +201,19 @@ export default function CoworkSessionsView(): React.JSX.Element {
     }
   };
 
+  // Only fired when the selected range came back empty, so an empty range
+  // stops claiming the log watcher isn't connected (CGUI-70).
+  const [totalOutsideRange, setTotalOutsideRange] = useState<number | null>(null);
+  useEffect(() => {
+    if (loading || sessions.length > 0) { setTotalOutsideRange(null); return; }
+    let cancelled = false;
+    window.api.coworkSessions
+      .getAll({ from: daysAgo(ALL_RANGE_DAYS), to: new Date().toISOString() })
+      .then(all => { if (!cancelled) setTotalOutsideRange(all.length); })
+      .catch(() => { if (!cancelled) setTotalOutsideRange(null); });
+    return () => { cancelled = true; };
+  }, [loading, sessions.length]);
+
   const handleExpand = (sessionId: string) => {
     if (expandedId === sessionId) {
       setExpandedId(null);
@@ -226,16 +240,8 @@ export default function CoworkSessionsView(): React.JSX.Element {
     );
   }
 
-  if (sessions.length === 0) {
-    return (
-      <div className="page">
-        <EmptyState
-          title="No Cowork sessions yet"
-          message="Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected."
-        />
-      </div>
-    );
-  }
+  const isEmpty = sessions.length === 0;
+  const hasDataOutsideRange = (totalOutsideRange ?? 0) > 0;
 
   return (
     <div className="page">
@@ -246,6 +252,14 @@ export default function CoworkSessionsView(): React.JSX.Element {
         <StatCard label="Avg Session" value={formatDuration(totals.avgDuration)} icon={Icons.bolt} variant="minimal" />
       </div>
 
+      {isEmpty ? (
+        <EmptyState
+          title={hasDataOutsideRange ? 'No Cowork sessions in this range' : 'No Cowork sessions yet'}
+          message={hasDataOutsideRange
+            ? `You have ${totalOutsideRange} session${totalOutsideRange === 1 ? '' : 's'} outside the selected range. Pick a wider range to see them.`
+            : 'Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected.'}
+        />
+      ) : (
       <div className="card" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <table className="data">
@@ -344,6 +358,7 @@ export default function CoworkSessionsView(): React.JSX.Element {
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 }
