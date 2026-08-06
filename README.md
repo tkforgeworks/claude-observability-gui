@@ -23,6 +23,7 @@ Claude doesn't give you a single place to see how much you're spending, which pr
 1. Download the `.deb` (Debian/Ubuntu/Pop!_OS) or `.AppImage` (any distro) from the [Releases page](../../releases).
 2. Install with `sudo apt install ./claude-usage-monitor-<version>.deb`, or make the AppImage executable and run it directly. The deb upgrades in place when you install a newer version.
 3. Tray features need a StatusNotifier/AppIndicator host (GNOME needs the AppIndicator extension; Pop!_OS ships one).
+4. Launch from your desktop's app grid (or `gtk-launch claude-usage-monitor`). Running the binary directly in a terminal keeps it attached to that terminal — useful for watching logs, but closing the terminal kills the app.
 
 That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking (Windows only) starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
 
