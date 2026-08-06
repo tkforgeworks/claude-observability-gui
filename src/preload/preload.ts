@@ -47,6 +47,9 @@ const api: ElectronApi = {
     getVersion(): Promise<string> {
       return ipcRenderer.invoke('app:getVersion');
     },
+    getPlatform(): Promise<NodeJS.Platform> {
+      return ipcRenderer.invoke('app:getPlatform');
+    },
   },
 
   // -------------------------------------------------------------------------

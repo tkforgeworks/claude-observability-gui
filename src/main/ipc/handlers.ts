@@ -158,6 +158,10 @@ export function registerIpcHandlers(db: Database.Database): void {
     return electronApp.getVersion();
   });
 
+  ipcMain.handle('app:getPlatform', (): NodeJS.Platform => {
+    return process.platform;
+  });
+
   ipcMain.handle('configPaths:get', (): ConfigPaths => {
     const { app: electronApp } = require('electron');
     return {
@@ -468,6 +472,7 @@ export function unregisterIpcHandlers(): void {
   const channels = [
     'dev:clearDatabase',
     'app:getVersion',
+    'app:getPlatform',
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',

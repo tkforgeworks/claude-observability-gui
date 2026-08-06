@@ -10,6 +10,18 @@ import type { UsageSnapshot } from '../shared/ipc-types';
 let tray: Tray | null = null;
 
 /**
+ * Whether the tray was created with a real (non-empty) icon. An empty-icon
+ * tray renders as an invisible slot on Linux, so a window hidden "to tray"
+ * would be unreachable — the close handler falls back to quitting instead
+ * (CGUI-77).
+ */
+let trayViable = false;
+
+export function isTrayViable(): boolean {
+  return trayViable;
+}
+
+/**
  * Creates the system tray icon with a right-click context menu.
  * Should be called once from main.ts after the app is ready.
  *
@@ -26,6 +38,7 @@ let tray: Tray | null = null;
 export function createTray(mainWindow: BrowserWindow): Tray {
   const iconPath = path.join(app.getAppPath(), 'assets', 'icon.ico');
   let icon = nativeImage.createFromPath(iconPath);
+  trayViable = !icon.isEmpty();
   if (icon.isEmpty()) {
     console.warn(`[tray] Icon not found at ${iconPath}, using empty placeholder`);
     icon = nativeImage.createEmpty();
@@ -134,4 +147,5 @@ export function destroyTray(): void {
     tray.destroy();
     tray = null;
   }
+  trayViable = false;
 }
