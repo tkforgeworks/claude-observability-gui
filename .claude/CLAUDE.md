@@ -125,6 +125,17 @@ A fresh dev environment starts with an empty DB. Code sessions repopulate automa
 - **Taskbar icon:** `app.setAppUserModelId(...)` is called at module load in `main.ts` (Windows-only guard) so the Windows taskbar groups the process under the app identity rather than `electron.exe`. Packaged uses `com.tkforgeworks.claude-usage-monitor` — **must match `build.appId` in `package.json`**; if either is changed, update both. Dev uses a `.dev` suffix (CGUI-64): with the shared AUMID, Windows matched dev windows to the installed app's Start Menu shortcut, grouped them onto its taskbar button, and showed the shortcut's old icon instead of the window icon
 - **Tray icon:** `src/main/tray.ts` loads `assets/icon.ico` via `nativeImage.createFromPath` and downscales it to 16×16 with `quality: 'best'` for the system tray slot
 
+## Linux support (2.0.0 — in progress)
+
+Tracked under epic **CGUI-74** ("Prepare for Linux release", fixVersion 2.0.0). **CGUI-61** is the master platform-impact inventory (read it before touching platform code); the actionable children are CGUI-75 (LogWatcher/Cowork platform gating), CGUI-76 (PNG window/tray icons — `.ico` doesn't decode on Linux, tray falls back to an invisible empty image), CGUI-77 (close-to-tray trap — `minimizeToTrayOnClose` defaults `true`, a hidden window with no working tray is unreachable), CGUI-78 (launch-on-startup via XDG autostart — `setLoginItemSettings` is a Linux no-op), CGUI-79 (electron-builder `linux` targets + `build-linux` release job).
+
+Verified on a real Linux dev machine (2026-08-05, Pop!_OS): the full pipeline (`npm ci` → `electron-rebuild` → `compile` → `test` → `build`) runs green with zero changes, and `~/.claude/projects` — including `cship/*-usage-limits` — has the same layout as Windows, so the JSONL importer and UsageLimitWatcher work unmodified. Dev userData lands in `~/.config/claude-usage-monitor-dev/ClaudeUsageMonitor/`. The only Windows env dependency in the codebase is `LOCALAPPDATA` in `logPathDiscovery.ts`.
+
+Conventions for this work:
+- **Platform gating, not error states:** Claude Desktop has no Linux build, so on non-win32 the LogWatcher/Cowork surface reports "unsupported platform" (no banner, no dead Retry) rather than "connection lost". The `logFilePath` settings override stays functional everywhere as an escape hatch.
+- **Identity sequencing:** package names, `.desktop` entry/`StartupWMClass`, and final icon assets encode product identity — that config lands only after the CGUI-54 COG rebrand decisions (CGUI-54 blocks CGUI-79). Non-identity groundwork is fair game earlier.
+- Windows behavior must be unchanged by every ticket in the epic.
+
 ## CI / Releases
 
 - **Branching (anvil pattern):** `main` is protected (repo ruleset — PRs only, required `typecheck-and-test` check, no force-push/deletion, no bypass). Each release gets a branch `vX.Y.Z/main` cut from `main`; topic branches are named `vX.Y.Z/<topic>` and PR into it; the release branch PRs into `main` when the version ships
