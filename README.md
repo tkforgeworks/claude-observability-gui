@@ -100,20 +100,20 @@ Supports 3-month, 6-month, and 12-month views. Cells scale to fill the available
 ### Settings
 
 Tabbed configuration panel:
-- **General** — Log file path override, Claude Code data path override, launch on startup, minimize to tray, tray notifications
+- **General** — Log file path override, Claude Code data path override, launch on startup (on Linux this creates an XDG autostart entry that starts the app in the tray), minimize to tray, tray notifications
 - **Dashboard** — Drag-to-reorder sidebar views, toggle visibility, set default landing view, show/hide individual Trends widgets
 - **Data** — Live database stats (size, oldest records per table), one-click SQLite backup, open data folder
 
 ### System Tray
 
-The app runs in the system tray with a context menu showing live session count and today's cost. Closing the window minimizes to tray by default (configurable in Settings). Tray notifications fire for stale chat imports.
+The app runs in the system tray with a context menu showing live session count and today's cost. On Windows, closing the window minimizes to tray by default; on Linux, closing quits the app unless you enable the tray option in Settings — and if no usable tray exists, closing always quits so the app can never get stranded in the background. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
 
 ## Data sources
 
 | Source | How it's collected | Automatic? |
 |--------|-------------------|------------|
 | **Claude Code** | Parses JSONL session files from `~/.claude/projects/` | Yes — scans on startup + every 5 min |
-| **Claude Desktop (Cowork)** | Tails `main.log` from Claude Desktop's app data directory | Yes — starts on app launch |
+| **Claude Desktop (Cowork)** | Tails `main.log` from Claude Desktop's app data directory (Windows only) | Yes — starts on app launch on Windows |
 | **claude.ai chat history** | Imports from a manually downloaded data export ZIP | No — one-time manual import per export |
 
 All data is stored locally in a SQLite database (`%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\usage.db` on Windows, `~/.config/claude-usage-monitor/ClaudeUsageMonitor/usage.db` on Linux). Nothing leaves your machine.
