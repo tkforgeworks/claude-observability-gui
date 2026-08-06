@@ -38,6 +38,9 @@ export default function GlobalBanners(): React.JSX.Element | null {
     let cancelled = false;
     window.api.logPath.getStatus().then((status) => {
       if (cancelled) return;
+      // Unsupported platform is an expected state, not a connection loss —
+      // the Settings General tab explains it instead (CGUI-75)
+      if (status.source === 'unsupported-platform') return;
       if (!status.valid) {
         setConnection({
           disconnected: true,
@@ -65,7 +68,7 @@ export default function GlobalBanners(): React.JSX.Element | null {
   useEffect(() => {
     const unsub = window.api.onLogWatcherConnection?.((status: LogConnectionStatus) => {
       setConnection({
-        disconnected: !status.connected,
+        disconnected: !status.connected && !status.unsupported,
         reason: status.reason,
       });
     });
@@ -77,7 +80,7 @@ export default function GlobalBanners(): React.JSX.Element | null {
     try {
       const result = await window.api.logWatcher.retry();
       setConnection({
-        disconnected: !result.connected,
+        disconnected: !result.connected && !result.unsupported,
         reason: result.reason,
       });
     } catch (err) {
