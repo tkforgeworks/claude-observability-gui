@@ -15,6 +15,7 @@ import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles, loadSettings } from './config/configStore';
 import { createTray, destroyTray, updateTrayMenu, isTrayViable } from './tray';
+import { getAppIconPath } from './appIcon';
 import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
@@ -43,7 +44,7 @@ function createMainWindow(): BrowserWindow {
     minHeight: 600,
     frame: false,
     title: 'Claude Usage Monitor',
-    icon: path.join(app.getAppPath(), 'assets', 'icon.ico'),
+    icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
       contextIsolation: true,

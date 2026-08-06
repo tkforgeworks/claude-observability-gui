@@ -4,8 +4,8 @@
  */
 
 import { app, Menu, Tray, BrowserWindow, nativeImage } from 'electron';
-import path from 'path';
 import type { UsageSnapshot } from '../shared/ipc-types';
+import { getAppIconPath } from './appIcon';
 
 let tray: Tray | null = null;
 
@@ -36,14 +36,14 @@ export function isTrayViable(): boolean {
  *   Quit
  */
 export function createTray(mainWindow: BrowserWindow): Tray {
-  const iconPath = path.join(app.getAppPath(), 'assets', 'icon.ico');
+  const iconPath = getAppIconPath();
   let icon = nativeImage.createFromPath(iconPath);
   trayViable = !icon.isEmpty();
   if (icon.isEmpty()) {
     console.warn(`[tray] Icon not found at ${iconPath}, using empty placeholder`);
     icon = nativeImage.createEmpty();
   } else {
-    // Downscale the 256×256 app icon for the system tray slot
+    // Downscale the full-size app icon for the system tray slot
     icon = icon.resize({ width: 16, height: 16, quality: 'best' });
   }
 
