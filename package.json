@@ -31,7 +31,7 @@
     "monitoring",
     "electron"
   ],
-  "author": "TKForgeWorks",
+  "author": "TKForgeWorks <tim@tkforgeworks.com>",
   "license": "MIT",
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",
@@ -88,6 +88,31 @@
         }
       ],
       "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "deb",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png",
+      "category": "Utility",
+      "artifactName": "${name}-${version}.${ext}",
+      "synopsis": "Claude AI usage tracking desktop application",
+      "desktop": {
+        "entry": {
+          "StartupWMClass": "claude-usage-monitor"
+        }
+      }
     },
     "nsis": {
       "oneClick": false,
