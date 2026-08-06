@@ -443,6 +443,8 @@ export interface LogEvent {
 export interface ElectronApi {
   app: {
     getVersion(): Promise<string>;
+    /** `process.platform` of the main process — for platform-conditional UI copy (CGUI-77). */
+    getPlatform(): Promise<NodeJS.Platform>;
   };
   windowControls: {
     minimize(): void;

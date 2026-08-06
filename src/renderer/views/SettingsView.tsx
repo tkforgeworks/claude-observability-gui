@@ -349,12 +349,14 @@ function LaunchOnStartupSection(): React.JSX.Element {
 
 function WindowBehaviorSection(): React.JSX.Element {
   const [minimizeToTray, setMinimizeToTray] = useState<boolean | null>(null);
+  const [platform, setPlatform] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.settings.get()
       .then((s) => setMinimizeToTray(s.minimizeToTrayOnClose))
       .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
+    window.api.app.getPlatform().then(setPlatform).catch(() => {});
   }, []);
 
   const handleToggle = async () => {
@@ -384,6 +386,13 @@ function WindowBehaviorSection(): React.JSX.Element {
           />
           Keep running in the system tray when I close the window
         </label>
+      )}
+      {platform === 'linux' && (
+        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, fontFamily: '"Poppins", sans-serif' }}>
+          Needs a working system tray (on GNOME, an AppIndicator extension).
+          If no usable tray is available, closing the window quits the app
+          regardless of this setting, so it can't get stranded in the background.
+        </p>
       )}
       <SettingError message={error} />
     </div>

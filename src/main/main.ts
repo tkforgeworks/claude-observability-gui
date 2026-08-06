@@ -14,7 +14,7 @@ import type { LogConnectionStatus } from '../shared/ipc-types';
 import { initDatabase, closeDatabase } from './db/database';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles, loadSettings } from './config/configStore';
-import { createTray, destroyTray, updateTrayMenu } from './tray';
+import { createTray, destroyTray, updateTrayMenu, isTrayViable } from './tray';
 import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
@@ -68,9 +68,12 @@ function createMainWindow(): BrowserWindow {
 
   // Close behavior (CGUI-62): hide to tray or quit per the user's setting.
   // Read at close time so a change in Settings applies without a restart.
+  // Hiding additionally requires a viable tray (CGUI-77): with an empty tray
+  // icon (e.g. Linux before the PNG icon lands, or a missing asset) the
+  // hidden window would have no visible way back, stranding the process.
   mainWindow.on('close', (event) => {
     if (isQuitting) return;
-    if (loadSettings().minimizeToTrayOnClose) {
+    if (loadSettings().minimizeToTrayOnClose && isTrayViable()) {
       event.preventDefault();
       mainWindow?.hide();
     } else {

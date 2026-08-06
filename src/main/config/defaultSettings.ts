@@ -7,7 +7,10 @@ import { AppSettings } from '../../shared/ipc-types';
 export const DEFAULT_SETTINGS: AppSettings = {
   logFilePath: null,
   claudeCodeDataPath: null,
-  minimizeToTrayOnClose: true,
+  // Close-to-tray is only a safe default where the tray reliably exists.
+  // On Linux a tray needs a StatusNotifier/AppIndicator host the desktop
+  // may not have, so closing quits unless the user opts in (CGUI-77).
+  minimizeToTrayOnClose: process.platform === 'win32',
   launchOnStartup: false,
   showTrayNotifications: true,
   chatStalenessDays: 14,
