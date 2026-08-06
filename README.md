@@ -12,11 +12,20 @@ Claude doesn't give you a single place to see how much you're spending, which pr
 
 ## Quick start
 
+**Windows**
+
 1. Download the latest `.exe` from the [Releases page](../../releases).
 2. Run the installer. Windows SmartScreen will warn you because the binary is unsigned — click **More info → Run anyway** (see [Known Limitations](#known-limitations)).
 3. The app installs per-user (no admin needed) and starts importing data automatically.
 
-That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
+**Linux**
+
+1. Download the `.deb` (Debian/Ubuntu/Pop!_OS) or `.AppImage` (any distro) from the [Releases page](../../releases).
+2. Install with `sudo apt install ./claude-usage-monitor-<version>.deb`, or make the AppImage executable and run it directly. The deb upgrades in place when you install a newer version.
+3. Tray features need a StatusNotifier/AppIndicator host (GNOME needs the AppIndicator extension; Pop!_OS ships one).
+4. Launch from your desktop's app grid (or `gtk-launch claude-usage-monitor`). Running the binary directly in a terminal keeps it attached to that terminal — useful for watching logs, but closing the terminal kills the app.
+
+That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking (Windows only) starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
 
 ## Features
 
@@ -107,20 +116,20 @@ The app runs in the system tray with a context menu showing live session count a
 | **Claude Desktop (Cowork)** | Tails `main.log` from Claude Desktop's app data directory | Yes — starts on app launch |
 | **claude.ai chat history** | Imports from a manually downloaded data export ZIP | No — one-time manual import per export |
 
-All data is stored locally in a SQLite database at `%APPDATA%\Claude Usage Monitor\ClaudeUsageMonitor\usage.db`. Nothing leaves your machine.
+All data is stored locally in a SQLite database (`%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\usage.db` on Windows, `~/.config/claude-usage-monitor/ClaudeUsageMonitor/usage.db` on Linux). Nothing leaves your machine.
 
 ## Platform support
 
-**Windows is the only platform with pre-built installers today.** The release pipeline produces an NSIS installer for 64-bit Windows.
+The release pipeline produces an NSIS installer for 64-bit Windows and AppImage + deb packages for 64-bit Linux.
 
-macOS and Linux builds are not currently produced, but the codebase has no Windows-specific runtime dependencies. If you're on another platform and want to try it, you can build from source (see [Development](#development)).
+Everything works identically on both platforms except Cowork tracking, which depends on Claude Desktop and is therefore Windows-only — on Linux the app says so in Settings instead of showing a connection error. Data lives in the platform's standard app-data location (`%APPDATA%` on Windows, `~/.config` on Linux) and can move between machines/platforms with Settings → General → data export/import.
 
-If there's interest in macOS or Linux builds, open an issue and let me know.
+macOS builds are not currently produced. If you want one, open an issue and let me know — the codebase is expected to build from source there (see [Development](#development)).
 
 ## Known limitations
 
 - **Unsigned installer.** The Windows build is not code-signed, so SmartScreen will show a warning on first install. Click *More info → Run anyway*. This will be addressed when a signing certificate is added.
-- **Cowork tracking requires Claude Desktop.** The LogWatcher tails Claude Desktop's `main.log`. If you don't use Claude Desktop, the Cowork-related views will be empty. Claude Code sessions are tracked independently.
+- **Cowork tracking requires Claude Desktop (Windows only).** The LogWatcher tails Claude Desktop's `main.log`, and Claude Desktop has no Linux build — on Linux the app marks the integration "Not Supported" in Settings rather than watching for a log that can't exist. If you don't use Claude Desktop, the Cowork-related views will be empty. Claude Code sessions are tracked independently on every platform.
 - **Chat import is manual.** There's no API to pull claude.ai history automatically. You need to request a data export from claude.ai, download the ZIP, and import it each time you want updated chat data.
 - **No remote sync.** The Remote Sync feature (push data to InfluxDB) is stubbed but not yet implemented. All data is local only.
 - **Cost accuracy depends on the pricing table.** The built-in pricing covers current Claude models (Opus 4.6/4.7, Sonnet 4.6, Haiku 4.5). If Anthropic changes pricing or you use a model not in the table, costs may be inaccurate. A cost recalculation button is available in Settings if the pricing table is updated in a new release.
