@@ -105,6 +105,8 @@ function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
+  // "n/a" rather than "offline" on platforms without Claude Desktop (CGUI-75)
+  const [watcherUnsupported, setWatcherUnsupported] = useState(false);
   const [appVersion, setAppVersion] = useState('');
 
   // Seed from the current status, then track pushes. Without the initial
@@ -113,7 +115,11 @@ export default function Sidebar(): React.JSX.Element {
   useEffect(() => {
     let cancelled = false;
     window.api.logPath.getStatus()
-      .then(status => { if (!cancelled) setWatcherConnected(status.valid); })
+      .then(status => {
+        if (cancelled) return;
+        setWatcherConnected(status.valid);
+        setWatcherUnsupported(status.source === 'unsupported-platform');
+      })
       .catch(() => {});
     return () => { cancelled = true; };
   }, []);
@@ -198,7 +204,7 @@ export default function Sidebar(): React.JSX.Element {
             animation: watcherConnected ? 'pulse 2s infinite' : 'none',
             flexShrink: 0,
           }} />
-          <span>{watcherConnected ? 'watcher live' : 'watcher offline'}</span>
+          <span>{watcherConnected ? 'watcher live' : watcherUnsupported ? 'watcher n/a' : 'watcher offline'}</span>
         </div>
         <NavLink
           to="/settings"

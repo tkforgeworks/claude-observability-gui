@@ -26,6 +26,13 @@ let cachedAutoPath: string | null = null;
  * Safe to call multiple times — re-scans each time to pick up new installs.
  */
 export function discoverLogPath(): string | null {
+  // Claude Desktop only exists on Windows/macOS; the MSIX layout is
+  // Windows-only. Skip quietly on other platforms (CGUI-75).
+  if (process.platform !== 'win32') {
+    cachedAutoPath = null;
+    return null;
+  }
+
   const localAppData = process.env.LOCALAPPDATA;
   if (!localAppData) {
     console.warn('[logPathDiscovery] LOCALAPPDATA env var not set — skipping auto-discovery');
@@ -81,6 +88,16 @@ export function getLogPathStatus(): LogPathStatus {
       path: settings.logFilePath,
       source: 'settings-override',
       valid,
+    };
+  }
+
+  // No override on a platform without Claude Desktop: report unsupported,
+  // not "not found" — the renderer must not treat this as an error (CGUI-75)
+  if (process.platform !== 'win32') {
+    return {
+      path: null,
+      source: 'unsupported-platform',
+      valid: false,
     };
   }
 

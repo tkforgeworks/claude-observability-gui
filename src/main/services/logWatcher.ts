@@ -86,6 +86,13 @@ export class LogWatcher extends EventEmitter {
     } else {
       const status = getLogPathStatus();
       if (!status.valid || !status.path) {
+        // Unsupported platform is an expected state, not a connection loss:
+        // stay silent so no renderer banner fires (CGUI-75). A settings
+        // override still takes the normal path above this branch.
+        if (status.source === 'unsupported-platform') {
+          console.log('[logWatcher] Claude Desktop integration not available on this platform — watcher not started');
+          return;
+        }
         const reason = status.source === 'not-found'
           ? 'Claude Desktop log not found — is Claude Desktop installed?'
           : `Log path invalid: ${status.path}`;

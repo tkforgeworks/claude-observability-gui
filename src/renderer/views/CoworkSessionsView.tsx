@@ -201,6 +201,17 @@ export default function CoworkSessionsView(): React.JSX.Element {
     }
   };
 
+  // On platforms without Claude Desktop the first-run empty state must say
+  // so, not tell the user to check the log watcher (CGUI-75).
+  const [platformUnsupported, setPlatformUnsupported] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    window.api.logPath.getStatus()
+      .then(s => { if (!cancelled) setPlatformUnsupported(s.source === 'unsupported-platform'); })
+      .catch(() => { /* keep the default copy */ });
+    return () => { cancelled = true; };
+  }, []);
+
   // Only fired when the selected range came back empty, so an empty range
   // stops claiming the log watcher isn't connected (CGUI-70).
   const [totalOutsideRange, setTotalOutsideRange] = useState<number | null>(null);
@@ -254,10 +265,16 @@ export default function CoworkSessionsView(): React.JSX.Element {
 
       {isEmpty ? (
         <EmptyState
-          title={hasDataOutsideRange ? 'No Cowork sessions in this range' : 'No Cowork sessions yet'}
+          title={hasDataOutsideRange
+            ? 'No Cowork sessions in this range'
+            : platformUnsupported
+              ? 'Cowork tracking not available'
+              : 'No Cowork sessions yet'}
           message={hasDataOutsideRange
             ? `You have ${totalOutsideRange} session${totalOutsideRange === 1 ? '' : 's'} outside the selected range. Pick a wider range to see them.`
-            : 'Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected.'}
+            : platformUnsupported
+              ? 'Claude Desktop integration is Windows-only, so Cowork sessions are not collected on this platform. Sessions imported from another machine (Settings → General → data import) will still appear here.'
+              : 'Cowork session data is collected from the Claude Desktop log file. Ensure Claude Desktop is running and the log watcher is connected.'}
         />
       ) : (
       <div className="card" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', padding: 0 }}>

@@ -208,9 +208,9 @@ const statusBadgeStyles = (color: string): React.CSSProperties => ({
   letterSpacing: '0.3px',
   textTransform: 'uppercase',
   fontFamily: '"Poppins", sans-serif',
-  backgroundColor: color === 'green' ? 'rgba(74, 222, 128, 0.12)' : color === 'amber' ? 'rgba(251, 191, 36, 0.12)' : 'rgba(248, 113, 113, 0.12)',
-  color: color === 'green' ? 'var(--success)' : color === 'amber' ? 'var(--warning)' : 'var(--error)',
-  border: `1px solid ${color === 'green' ? 'rgba(74, 222, 128, 0.25)' : color === 'amber' ? 'rgba(251, 191, 36, 0.25)' : 'rgba(248, 113, 113, 0.25)'}`,
+  backgroundColor: color === 'green' ? 'rgba(74, 222, 128, 0.12)' : color === 'amber' ? 'rgba(251, 191, 36, 0.12)' : color === 'gray' ? 'rgba(148, 163, 184, 0.12)' : 'rgba(248, 113, 113, 0.12)',
+  color: color === 'green' ? 'var(--success)' : color === 'amber' ? 'var(--warning)' : color === 'gray' ? 'var(--text-tertiary)' : 'var(--error)',
+  border: `1px solid ${color === 'green' ? 'rgba(74, 222, 128, 0.25)' : color === 'amber' ? 'rgba(251, 191, 36, 0.25)' : color === 'gray' ? 'rgba(148, 163, 184, 0.25)' : 'rgba(248, 113, 113, 0.25)'}`,
 });
 
 const warningBannerStyles: React.CSSProperties = {
@@ -256,17 +256,22 @@ function LogPathSection(): React.JSX.Element {
     return <Loading label="log path" compact />;
   }
 
-  const badgeColor = status.valid ? 'green' : status.source === 'not-found' ? 'amber' : 'red';
+  const unsupported = status.source === 'unsupported-platform';
+  const badgeColor = status.valid ? 'green' : unsupported ? 'gray' : status.source === 'not-found' ? 'amber' : 'red';
   const badgeLabel = status.valid
     ? 'Connected'
-    : status.source === 'not-found'
-      ? 'Not Found'
-      : 'Invalid Path';
+    : unsupported
+      ? 'Not Supported'
+      : status.source === 'not-found'
+        ? 'Not Found'
+        : 'Invalid Path';
   const sourceLabel = status.source === 'auto-discovered'
     ? 'Auto-discovered (MSIX)'
     : status.source === 'settings-override'
       ? 'Settings override'
-      : 'No path found';
+      : unsupported
+        ? 'Not available on this platform'
+        : 'No path found';
 
   return (
     <div style={{ marginBottom: 20 }}>
@@ -282,7 +287,9 @@ function LogPathSection(): React.JSX.Element {
           <span style={pathValueStyles}>{status.path}</span>
         ) : (
           <span style={{ ...pathValueStyles, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
-            Claude Desktop not detected — install it or set a path override in settings.json
+            {unsupported
+              ? 'Claude Desktop integration is Windows-only. Set a logFilePath override in settings.json to track a log file manually.'
+              : 'Claude Desktop not detected — install it or set a path override in settings.json'}
           </span>
         )}
         <span style={{ fontSize: 11, color: 'var(--text-tertiary)', fontFamily: '"JetBrains Mono", monospace' }}>{sourceLabel}</span>

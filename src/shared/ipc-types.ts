@@ -167,7 +167,7 @@ export interface CleanupWarning {
 // Log Path Discovery
 // ---------------------------------------------------------------------------
 
-export type LogPathSource = 'auto-discovered' | 'settings-override' | 'not-found';
+export type LogPathSource = 'auto-discovered' | 'settings-override' | 'not-found' | 'unsupported-platform';
 
 export interface LogPathStatus {
   path: string | null;
@@ -379,6 +379,11 @@ export interface LogConnectionStatus {
   connected: boolean;
   path: string | null;
   reason: string | null;
+  /**
+   * Claude Desktop (and therefore its log) does not exist on this platform
+   * (CGUI-75). Renderers treat this as an informational state, never an error.
+   */
+  unsupported?: boolean;
 }
 
 export interface DatabaseStats {

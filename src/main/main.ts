@@ -231,14 +231,18 @@ app.whenReady().then(() => {
     }
     await logWatcher.start();
     const status = getLogPathStatus();
+    const unsupported = status.source === 'unsupported-platform';
     return {
       connected: logWatcher.watching,
       path: logWatcher.watching ? status.path : null,
       reason: logWatcher.watching
         ? null
-        : status.source === 'not-found'
-          ? 'Claude Desktop log not found — is Claude Desktop installed?'
-          : `Log path invalid: ${status.path ?? 'unknown'}`,
+        : unsupported
+          ? 'Claude Desktop integration is not available on this platform'
+          : status.source === 'not-found'
+            ? 'Claude Desktop log not found — is Claude Desktop installed?'
+            : `Log path invalid: ${status.path ?? 'unknown'}`,
+      unsupported,
     };
   });
 
