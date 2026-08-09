@@ -8,6 +8,7 @@ import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import {
   formatDateTime,
   formatDuration,
@@ -202,15 +203,10 @@ export default function CoworkSessionsView(): React.JSX.Element {
   };
 
   // On platforms without Claude Desktop the first-run empty state must say
-  // so, not tell the user to check the log watcher (CGUI-75).
-  const [platformUnsupported, setPlatformUnsupported] = useState(false);
-  useEffect(() => {
-    let cancelled = false;
-    window.api.logPath.getStatus()
-      .then(s => { if (!cancelled) setPlatformUnsupported(s.source === 'unsupported-platform'); })
-      .catch(() => { /* keep the default copy */ });
-    return () => { cancelled = true; };
-  }, []);
+  // so, not tell the user to check the log watcher (CGUI-75). Availability
+  // comes from the shared model (CGUI-81); null keeps the default copy.
+  const availability = useCoworkAvailability();
+  const platformUnsupported = availability !== null && availability.mode !== 'live';
 
   // Only fired when the selected range came back empty, so an empty range
   // stops claiming the log watcher isn't connected (CGUI-70).

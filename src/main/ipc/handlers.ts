@@ -63,6 +63,7 @@ import {
 import { getDatabasePath } from '../db/database';
 import { exportAllData, importAllData } from '../services/dataExportImport';
 import { getLogPathStatus } from '../services/logPathDiscovery';
+import { getCoworkAvailability } from '../services/coworkAvailability';
 import { applyLaunchOnStartup } from '../services/launchOnStartup';
 import { ChatExportImporter } from '../importers/chatExportImporter';
 import fs from 'fs';
@@ -182,6 +183,14 @@ export function registerIpcHandlers(db: Database.Database): void {
 
   ipcMain.handle('logPath:getStatus', (): LogPathStatus => {
     return getLogPathStatus();
+  });
+
+  // -------------------------------------------------------------------------
+  // cowork channels
+  // -------------------------------------------------------------------------
+
+  ipcMain.handle('cowork:getAvailability', () => {
+    return getCoworkAvailability(db);
   });
 
   // -------------------------------------------------------------------------
@@ -476,6 +485,7 @@ export function unregisterIpcHandlers(): void {
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
+    'cowork:getAvailability',
     'data:getTableCounts',
     'data:getStats',
     'data:backup',

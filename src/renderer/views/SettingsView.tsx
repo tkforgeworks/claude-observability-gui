@@ -2,6 +2,7 @@ import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
 import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
+import { invalidateCoworkAvailability } from '../hooks/useCoworkAvailability';
 import Loading from '../components/common/Loading';
 import { formatBytes, formatDateFull } from '../utils/format';
 import {
@@ -575,6 +576,9 @@ function DataMigrationSection(): React.JSX.Element {
     try {
       const result = await window.api.data.importAll();
       if (result.success && result.summary) {
+        // An import can flip hasHistoricalData, so the availability model
+        // has to be re-derived (CGUI-81)
+        invalidateCoworkAvailability();
         const s = result.summary;
         const from = s.sourceHostname ? ` from ${s.sourceHostname}` : '';
         showStatus(

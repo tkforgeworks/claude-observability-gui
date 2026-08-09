@@ -244,6 +244,19 @@ export function queryCoworkTurns(
   return stmt.all(sessionId) as CoworkTurn[];
 }
 
+/**
+ * Whether any Cowork-surface data exists at all — cowork_sessions or
+ * app_sessions (both arrive via LogWatcher live collection or a CGUI-49
+ * import). Feeds the availability model's 'historical' mode (CGUI-81).
+ */
+export function queryHasCoworkData(db: Database.Database): boolean {
+  const row = db.prepare(`
+    SELECT (EXISTS (SELECT 1 FROM cowork_sessions)
+         OR EXISTS (SELECT 1 FROM app_sessions)) AS has_data
+  `).get() as { has_data: number };
+  return row.has_data === 1;
+}
+
 // ---------------------------------------------------------------------------
 // App Sessions
 // ---------------------------------------------------------------------------
