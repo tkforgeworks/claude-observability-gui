@@ -8,20 +8,7 @@ Claude Usage Monitor — an Electron desktop app for tracking Claude AI usage ac
 
 ## Commands
 
-| Task | Command |
-|------|---------|
-| Dev mode (watch) | `npm run dev` |
-| Build all | `npm run build` |
-| Build main only | `npm run build:main` |
-| Build renderer only | `npm run build:renderer` |
-| Launch app | `npm start` |
-| Type-check (no emit) | `npm run compile` |
-| Run all tests | `npm test` |
-| Run a single test | `npx jest --testPathPattern=costCalculator` |
-| Package installer | `npm run dist` |
-| Rebuild native modules | `npx electron-rebuild` |
-
-After `npm install`, always run `npx electron-rebuild` to compile better-sqlite3 for the Electron version.
+Scripts live in `package.json`. After `npm install`, always run `npx electron-rebuild` to compile better-sqlite3 for the Electron version.
 
 ## Architecture
 
@@ -58,14 +45,7 @@ Single file that exposes `window.api` via `contextBridge.exposeInMainWorld`. Eve
   - `TodayView` — 24-hour summary with metric cards and session timeline
   - `CoworkSessionsView` — sortable Cowork session table with turn expansion
   - `CodeSessionsView` — Code session table with date range filter, cost/model charts
-  - `TrendsView` — 7 analytics widgets with shared time range selector (7d/30d/90d/1y):
-    1. Usage Patterns — 8-stat card grid + 24-hour distribution heatbar
-    2. Cost Velocity — headline 7d avg daily cost, daily bar chart + 7d MA line
-    3. Cache Efficiency — reuse ratio bars by project, expandable token breakdown table
-    4. Turn Duration Trend — daily avg line chart + 7-day moving average
-    5. Session Density — sessions per active hour line chart
-    6. Project Activity Timeline — Gantt-style swimlane grid, expandable project list
-    7. Model Migration — stacked area chart with auto-discovered model series
+  - `TrendsView` — 7 analytics widgets with shared time range selector (7d/30d/90d/1y)
   - `UsageView` — subscription usage limit tracking with stat cards (5-hour and 7-day usage percentages with reset countdowns, plus a "Peak usage in window" sub-line showing the range's highest value via StatCard's optional `subMeta` prop), sparklines, and a Usage History table with range selector (24h/7d/30d/90d/All): one row per collected snapshot (capture timestamp, 5h/7d percentages, upcoming reset times) interleaved with dimmed "window reset (inferred)" rows. Reset markers are derived in the renderer from stored `resets_at` values on every load (restarts backfill resets that passed while closed), never shown for future times, and deduped by proximity (same window type within 60 min = polling jitter, since real resets are ≥5h/7d apart). Subscribes to `onUsageSnapshot` for live updates
   - `HeatmapView` — 365-day GitHub-style usage heatmap
   - `ChatHistoryView` — claude.ai export import + stats: conversation counts (weekly/monthly), projects table, memories, conversation/project heatmaps. Staleness banner drives on-import threshold from `settings.chatStalenessDays`
@@ -95,11 +75,7 @@ Push events flow main → renderer via `webContents.send()` with corresponding `
 
 ### Cost calculation
 
-`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. Formula: `(inputTokens/1M * inputRate) + (outputTokens/1M * outputRate) + (cacheRead/1M * cacheReadRate) + (cacheWrite/1M * cacheWriteRate)`. The pricing table covers Fable 5, Opus 5, Opus 4.8/4.7/4.6, Sonnet 5 (introductory $2/$10 rates — bump to $3/$15 after 2026-08-31, see comment in pricing.ts), Sonnet 4.6, and Haiku 4.5, each with both 5-min and 1-hour cache write rates. When a new model releases, add its entry to `PRICING_TABLE` and extend `__tests__/pricing.test.ts`; unknown models fall back to a warning rather than $0.00 costs.
-
-## Testing
-
-Jest + ts-jest, test environment: node. Tests live in `src/main/__tests__/`. Config: `jest.config.js` uses `tsconfig.test.json`.
+`src/main/importers/costCalculator.ts` applies per-model pricing from `src/main/config/pricing.ts`. When a new model releases, add its entry to `PRICING_TABLE` and extend `__tests__/pricing.test.ts`; unknown models fall back to a warning rather than $0.00 costs. Sonnet 5 ships introductory rates — bump to $3/$15 after 2026-08-31, see comment in pricing.ts.
 
 ## Data storage
 
@@ -139,61 +115,9 @@ Conventions for this work:
 ## CI / Releases
 
 - **Branching (anvil pattern):** `main` is protected (repo ruleset — PRs only, required `typecheck-and-test` check, no force-push/deletion, no bypass). Each release gets a branch `vX.Y.Z/main` cut from `main`; topic branches are named `vX.Y.Z/<topic>` and PR into it; the release branch PRs into `main` when the version ships
-- **`.github/workflows/ci.yml`** — runs on pushes and PRs for `main` and `v*/main`. Ubuntu runner. Steps: `npm ci` → `npm run compile` → `npm test`. No installer build
-- **`.github/workflows/release.yml` (tagless pipeline, CGUI-65)** — triggers on pushes to `main` and `v*/main`, **never on tags** (no one pushes tags; CI creates them). `check-release` reads the `package.json` version and skips unless tag `v{version}` is missing AND the branch/version combination is legal: RC versions (`-rc.`/`alpha`/`beta`) release only from `v*/main` (as prereleases), stable versions only from `main`. The stable-version bump that `release:final` pushes to the release branch therefore does NOT release — the release cuts when its PR merges to `main`. Remaining jobs: `release-notes`, `typecheck-and-test` (release gate — mirrors CI), and the CGUI-79 build/publish graph: `build-windows` and `build-linux` (each `npm ci` → `npx electron-rebuild` → `npm run dist -- --publish never` → upload-artifact; Linux produces AppImage + deb, and the runner's glibc sets their compatibility floor) feed a single `publish` job that downloads every platform's artifacts, creates ONE **draft** release with all assets (`tag_name: v{version}` at `target_commitish: github.sha`), then publishes via API — immutable releases lock assets at publish time, publishing is what creates the tag, and only the `publish` job may ever touch the release (two builders racing the same tag would break the invariant). Workflow-level `concurrency: group: release` queues overlapping merges
-- **Release notes** (TK ForgeWorks standard): the `release-notes` job consumes the reusable workflow `tkforgeworks/.github/.github/workflows/release-notes.yml@main` (`ticket-prefix: CGUI`, `release-version: v{version}` passed explicitly since the workflow runs pre-tag) — the canonical script lives in the org standards repo, not here. Body derives from commit subjects since the previous tag: version-bump and merge commits filtered, subjects split into Changes vs Bug Fixes (bug-fix commit subjects must start with `Fix` or `CGUI-N: Fix ...`), `CGUI-*` keys auto-linked via the `JIRA_BASE_URL` repo variable. Stable releases diff against the previous *stable* tag so final notes span all RCs. Write commit subjects knowing they become changelog lines
-- **Release cadence:** on the release branch, `npm run rc:patch|minor|major` bumps to the next `-rc.N` (commit + push, no tag, refuses to run on `main`) and the push cuts a GitHub prerelease. `npm run release:final` promotes the RC to its stable version and opens the PR into `main`; merging it cuts the stable release. `npm run release:patch|minor|major` is the direct no-RC path (creates a `release/vX.Y.Z` branch + PR when run from `main`). Never run `npm version` + `git push --tags` manually — direct pushes to `main` are rejected by the ruleset and tags are CI-created
+- **Never run `npm version` + `git push --tags` manually** — direct pushes to `main` are rejected by the ruleset and tags are CI-created. Releases cut via the `npm run rc:*` / `release:*` scripts and the tagless `release.yml` pipeline
+- **Full pipeline detail** (release.yml job graph, release-notes derivation, RC/stable cadence): see the `releasing` skill (`.claude/skills/releasing/SKILL.md`) — invoke it for any release work. Write commit subjects knowing they become changelog lines (bug fixes must start with `Fix` or `CGUI-N: Fix ...`)
 - **Builds are unsigned.** Windows SmartScreen will warn users until a code-signing certificate is added. Bypass: *More info → Run anyway*. README Installation section documents this for testers
-
-## Analytics IPC channels
-
-The Trends view uses these `analytics:*` channels, each following the full vertical slice pattern:
-
-| Channel | Query function | Returns |
-|---------|---------------|---------|
-| `analytics:getWeeklyActivity` | `queryWeeklyActivity` | 7-day code/cowork session counts |
-| `analytics:getHeatmapData` | `queryHeatmapData` | Daily token breakdowns for heatmap |
-| `analytics:getCacheEfficiency` | `queryCacheEfficiency` | Per-project cache reuse ratios and savings |
-| `analytics:getTurnDurationTrend` | `queryTurnDurationTrend` | Daily avg Cowork turn duration |
-| `analytics:getDailyCosts` | `queryDailyCosts` | Daily cost totals (+ 7 extra days for comparison) |
-| `analytics:getSessionDensity` | `querySessionDensity` | Sessions per active hour per day |
-| `analytics:getModelMix` | `queryModelMix` | Daily session counts by model |
-| `analytics:getProjectTimeline` | `queryProjectTimeline` | Per-project active dates for Gantt view |
-| `analytics:getUsagePatterns` | `queryUsagePatterns` | Hourly/daily distribution, streaks, averages |
-
-## Chat IPC channels
-
-The Chat History view uses these `chat:*` channels, backed by the claude.ai ZIP importer:
-
-| Channel | Returns |
-|---------|---------|
-| `chat:getConversationCounts` | Conversation counts grouped by week or month |
-| `chat:getStats` | Aggregate chat stats (totals, date range) |
-| `chat:getProjects` | Project list with per-project conversation counts |
-| `chat:getMemories` | Memory entries extracted from export |
-| `chat:getConversationHeatmap` | Daily conversation counts for heatmap |
-| `chat:getProjectHeatmap` | Daily project-activity counts for heatmap |
-
-## Usage Snapshots IPC channels
-
-The Usage view uses these `usageSnapshots:*` channels:
-
-| Channel | Query function | Returns |
-|---------|---------------|---------|
-| `usageSnapshots:getLatest` | `queryLatestUsageSnapshot` | Most recent usage snapshot or null |
-| `usageSnapshots:getRecent` | `queryUsageSnapshots` | Snapshots within last N hours |
-| `usageSnapshots:getRange` | `queryUsageSnapshotRange` | Snapshots in a date range |
-
-## Push events (main → renderer)
-
-Subscribed via `window.api.onXxx(callback)`, which returns an unsubscribe function:
-
-- `onLogWatcherEvent` / `onLogWatcherHealth` — live LogWatcher events and health status
-- `onLogWatcherConnection` — LogWatcher connection state (log path found/lost); paired with `logWatcher.retry()` request channel which re-runs path discovery and restarts the watcher
-- `onScanStarted` / `onImportComplete` — JSONL importer scan lifecycle
-- `onSyncStatusChanged` — remote sync state (stub)
-- `onUsageSnapshot` — new usage limit snapshot captured by UsageLimitWatcher
-- `onNavigate` — main-process navigation commands (used by the stale-chat Notification click handler to deep-link to `/chat`)
 
 ## Jira
 
