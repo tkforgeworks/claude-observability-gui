@@ -13,6 +13,7 @@ import { useApi } from '../hooks/useApi';
 import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import { useTopbar } from '../contexts/TopbarContext';
+import { COWORK_ONLY_WIDGETS } from '../utils/coworkOnlyWidgets';
 import type { TrendsWidgetId } from '../../shared/ipc-types';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
@@ -25,11 +26,6 @@ const TIME_RANGE_DAYS: Record<TimeRange, number> = {
 };
 
 const VALID_RANGES = new Set<string>(['7d', '30d', '90d', '1y']);
-
-// Widgets fed exclusively by Cowork tables (cowork_sessions/cowork_turns).
-// Session Density and Usage Patterns blend code+cowork via UNION, so with no
-// cowork rows they render from the code side alone and stay visible (CGUI-84).
-const COWORK_ONLY_WIDGETS: ReadonlySet<TrendsWidgetId> = new Set(['turnDurationTrend']);
 
 function isTimeRange(value: unknown): value is TimeRange {
   return typeof value === 'string' && VALID_RANGES.has(value);

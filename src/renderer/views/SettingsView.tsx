@@ -5,6 +5,7 @@ import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import { invalidateCoworkAvailability, useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import Loading from '../components/common/Loading';
 import { formatBytes, formatDateFull } from '../utils/format';
+import { COWORK_ONLY_WIDGETS } from '../utils/coworkOnlyWidgets';
 import {
   DndContext,
   closestCenter,
@@ -1153,22 +1154,33 @@ function DashboardTab({ onHandleChange }: { onHandleChange?: (h: DashboardTabHan
       <p style={sectionSubtextStyles}>Drag to reorder. Toggle visibility.</p>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleWidgetDragEnd}>
         <SortableContext items={localConfig.trendsWidgets.map(w => w.id)} strategy={verticalListSortingStrategy}>
-          {localConfig.trendsWidgets.map(w => (
+          {localConfig.trendsWidgets.map(w => {
+            const rowDisabled = coworkUnavailable && COWORK_ONLY_WIDGETS.has(w.id);
+            return (
             <SortableItem key={w.id} id={w.id} label={WIDGET_LABELS[w.id] ?? w.id}>
-              <span style={{ flex: 1 }}>{WIDGET_LABELS[w.id] ?? w.id}</span>
+              <span style={{ flex: 1, opacity: rowDisabled ? 0.5 : 1 }}>
+                {WIDGET_LABELS[w.id] ?? w.id}
+                {rowDisabled && (
+                  <span style={{ fontSize: 11, color: 'var(--text-tertiary)', marginLeft: 8 }}>
+                    not available on this platform
+                  </span>
+                )}
+              </span>
               <button
                 type="button"
                 role="switch"
                 aria-checked={w.visible}
                 aria-label={`Show ${WIDGET_LABELS[w.id] ?? w.id} widget`}
-                title={w.visible ? 'Visible' : 'Hidden'}
-                style={{ ...toggleStyles(w.visible), border: 'none', padding: 0 }}
+                title={rowDisabled ? 'Not available on this platform' : w.visible ? 'Visible' : 'Hidden'}
+                style={{ ...toggleStyles(w.visible), border: 'none', padding: 0, opacity: rowDisabled ? 0.5 : 1 }}
+                disabled={rowDisabled}
                 onClick={() => toggleWidgetVisibility(w.id)}
               >
                 <span style={toggleKnobStyles(w.visible)} />
               </button>
             </SortableItem>
-          ))}
+            );
+          })}
         </SortableContext>
       </DndContext>
 
