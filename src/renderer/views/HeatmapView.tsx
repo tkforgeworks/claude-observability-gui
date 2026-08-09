@@ -5,6 +5,7 @@ import ErrorState from '../components/common/ErrorState';
 import HeatmapChart from '../components/charts/HeatmapChart';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import { formatTokens } from '../utils/format';
 
 const RANGE_MAP: Record<string, number> = {
@@ -36,6 +37,13 @@ export default function HeatmapView(): React.JSX.Element {
   } = useApi(() => window.api.analytics.getHeatmapData(rangeDays), [rangeDays]);
   const data = fetched ?? [];
 
+  // Cowork section renders unless availability says 'none' (CGUI-85). While
+  // the answer is unknown (null) keep current behavior — Windows unchanged.
+  // 'historical' keeps the section: the 365-day window can cover imported
+  // activity.
+  const availability = useCoworkAvailability();
+  const showCowork = availability === null || availability.available;
+
   // The heatmap draws from both sources, so it has to follow both feeds —
   // previously it went stale until the view was remounted (CGUI-70).
   useEffect(() => {
@@ -46,11 +54,14 @@ export default function HeatmapView(): React.JSX.Element {
     return () => { unsubImport?.(); unsubEvent?.(); };
   }, [refetch]);
 
+  // A hidden source must not count toward the totals the UI shows — with the
+  // Cowork section gone, "active days" means days with code activity only.
   const totals = useMemo(() => {
     let activeDays = 0, coworkSessions = 0, codeSessions = 0;
     let inputTokens = 0, outputTokens = 0, cacheReadTokens = 0, cacheCreationTokens = 0;
     for (const d of data) {
-      if (d.coworkCount + d.codeCount > 0) activeDays++;
+      const visibleCount = d.codeCount + (showCowork ? d.coworkCount : 0);
+      if (visibleCount > 0) activeDays++;
       coworkSessions += d.coworkCount;
       codeSessions += d.codeCount;
       inputTokens += d.inputTokens;
@@ -59,13 +70,13 @@ export default function HeatmapView(): React.JSX.Element {
       cacheCreationTokens += d.cacheCreationTokens;
     }
     return { activeDays, coworkSessions, codeSessions, inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens };
-  }, [data]);
+  }, [data, showCowork]);
 
   const coworkData = useMemo(() => data.map(d => ({ date: d.date, value: d.coworkCount })), [data]);
   const ioData = useMemo(() => data.map(d => ({ date: d.date, value: d.inputTokens + d.outputTokens })), [data]);
   const cacheData = useMemo(() => data.map(d => ({ date: d.date, value: d.cacheReadTokens + d.cacheCreationTokens })), [data]);
 
-  const hasAnyData = totals.coworkSessions + totals.codeSessions > 0;
+  const hasAnyData = (showCowork ? totals.coworkSessions : 0) + totals.codeSessions > 0;
 
   if (loading && !fetched) {
     return (
@@ -88,7 +99,9 @@ export default function HeatmapView(): React.JSX.Element {
       <div className="page">
         <EmptyState
           title="No activity data yet"
-          message="The heatmap will show your Claude usage intensity over time once session data has been collected across Cowork and Code sources."
+          message={showCowork
+            ? 'The heatmap will show your Claude usage intensity over time once session data has been collected across Cowork and Code sources.'
+            : 'The heatmap will show your Claude usage intensity over time once Code session data has been collected.'}
         />
       </div>
     );
@@ -103,8 +116,12 @@ export default function HeatmapView(): React.JSX.Element {
       <div className="card">
         <div className="summary-row">
           <span><strong>{totals.activeDays}</strong> active days</span>
-          <span className="sep">·</span>
-          <span>Cowork: <strong>{totals.coworkSessions}</strong> sessions</span>
+          {showCowork && (
+            <>
+              <span className="sep">·</span>
+              <span>Cowork: <strong>{totals.coworkSessions}</strong> sessions</span>
+            </>
+          )}
           <span className="sep">·</span>
           <span>Code: <strong>{totals.codeSessions}</strong> sessions</span>
           <span className="sep">·</span>
@@ -114,18 +131,20 @@ export default function HeatmapView(): React.JSX.Element {
         </div>
       </div>
 
-      <div className="card">
-        <div className="card-head">
-          <h2>Cowork Sessions</h2>
-          <span className="sub">{coworkActive} active days</span>
+      {showCowork && (
+        <div className="card">
+          <div className="card-head">
+            <h2>Cowork Sessions</h2>
+            <span className="sub">{coworkActive} active days</span>
+          </div>
+          <HeatmapChart
+            data={coworkData}
+            days={rangeDays}
+            colorScale="sky"
+            formatValue={(v) => v > 0 ? `${v} session${v !== 1 ? 's' : ''}` : 'No sessions'}
+          />
         </div>
-        <HeatmapChart
-          data={coworkData}
-          days={rangeDays}
-          colorScale="sky"
-          formatValue={(v) => v > 0 ? `${v} session${v !== 1 ? 's' : ''}` : 'No sessions'}
-        />
-      </div>
+      )}
 
       <div className="card">
         <div className="card-head">
