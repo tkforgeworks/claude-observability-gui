@@ -30,6 +30,7 @@ import type {
   LogHealthStatus,
   LogConnectionStatus,
   LogPathStatus,
+  CoworkAvailability,
   ImportSummary,
   SyncStatus,
   ChatConversationCount,
@@ -91,6 +92,15 @@ const api: ElectronApi = {
   logPath: {
     getStatus(): Promise<LogPathStatus> {
       return ipcRenderer.invoke('logPath:getStatus');
+    },
+  },
+
+  // -------------------------------------------------------------------------
+  // cowork
+  // -------------------------------------------------------------------------
+  cowork: {
+    getAvailability(): Promise<CoworkAvailability> {
+      return ipcRenderer.invoke('cowork:getAvailability');
     },
   },
 

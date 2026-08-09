@@ -176,6 +176,36 @@ export interface LogPathStatus {
 }
 
 // ---------------------------------------------------------------------------
+// Cowork Availability (CGUI-81)
+// ---------------------------------------------------------------------------
+
+/**
+ * 'live' — collection is possible on this install (supported platform or
+ * logFilePath override); surfaces may reference live tracking.
+ * 'historical' — stored data only (e.g. a CGUI-49 import); surfaces show the
+ * data but must never imply live collection.
+ * 'none' — nothing to show and nothing will be collected.
+ */
+export type CoworkAvailabilityMode = 'live' | 'historical' | 'none';
+
+/**
+ * Single source of truth for "is Cowork a thing on this install?" (CGUI-81).
+ * Renderers consume this via useCoworkAvailability() — never process.platform
+ * sniffing or per-view re-derivation.
+ */
+export interface CoworkAvailability {
+  /** True unless mode is 'none' — whether Cowork surfaces have anything to say. */
+  available: boolean;
+  mode: CoworkAvailabilityMode;
+  /** Claude Desktop exists on this platform (win32). */
+  platformSupported: boolean;
+  /** A logFilePath settings override is set (CGUI-75 escape hatch). */
+  overrideActive: boolean;
+  /** cowork_sessions or app_sessions has at least one row. */
+  hasHistoricalData: boolean;
+}
+
+// ---------------------------------------------------------------------------
 // Chat History
 // ---------------------------------------------------------------------------
 
@@ -479,6 +509,9 @@ export interface ElectronApi {
     getByDateRange(range: DateRange): Promise<CodeSession[]>;
     getByProject(project: string, range: DateRange): Promise<CodeSession[]>;
     getCleanupWarning(): Promise<CleanupWarning>;
+  };
+  cowork: {
+    getAvailability(): Promise<CoworkAvailability>;
   };
   coworkSessions: {
     getSummaryToday(): Promise<TodaySummary>;
