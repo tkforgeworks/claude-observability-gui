@@ -306,12 +306,14 @@ function LogPathSection(): React.JSX.Element {
 
 function LaunchOnStartupSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [platform, setPlatform] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     window.api.settings.get()
       .then((s) => setEnabled(s.launchOnStartup))
       .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
+    window.api.app.getPlatform().then(setPlatform).catch(() => {});
   }, []);
 
   const handleToggle = async () => {
@@ -339,8 +341,15 @@ function LaunchOnStartupSection(): React.JSX.Element {
             onChange={handleToggle}
             style={{ accentColor: 'var(--purple-primary)' }}
           />
-          Launch Claude Usage Monitor when I sign in to Windows
+          Launch Claude Usage Monitor when I sign in
         </label>
+      )}
+      {platform === 'linux' && (
+        <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, fontFamily: '"Poppins", sans-serif' }}>
+          Sign-in launches start in the system tray instead of opening a
+          window (if no usable tray is available, the window opens normally).
+          Applies to the installed app, not dev builds.
+        </p>
       )}
       <SettingError message={error} />
     </div>

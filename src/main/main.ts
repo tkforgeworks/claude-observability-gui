@@ -64,6 +64,13 @@ function createMainWindow(): BrowserWindow {
   }
 
   mainWindow.once('ready-to-show', () => {
+    // CGUI-78: autostart launches pass --hidden to start in the tray.
+    // Honoured only when the tray is viable (CGUI-77) — a launch with no
+    // usable tray must show the window rather than start unreachable.
+    if (app.commandLine.hasSwitch('hidden') && isTrayViable()) {
+      console.log('[main] --hidden launch — starting in tray');
+      return;
+    }
     mainWindow?.show();
   });
 
