@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import type { ViewId } from '../../../shared/ipc-types';
 import { useDashboardConfig } from '../../contexts/DashboardConfigContext';
+import { useCoworkAvailability } from '../../hooks/useCoworkAvailability';
 
 const TITLE_BAR_HEIGHT = 32;
 
@@ -262,9 +263,15 @@ export default function TitleBar(): React.JSX.Element {
 
   const closeMenu = useCallback(() => setOpenMenu(null), []);
 
-  const visibleViews = config
+  const availability = useCoworkAvailability();
+  // null (unknown) keeps the entry — Windows must not see a menu reshuffle
+  // during the availability fetch (CGUI-82)
+  const coworkUnavailable = availability !== null && !availability.available;
+
+  const visibleViews = (config
     ? config.views.filter(v => v.visible && v.id !== 'settings').map(v => v.id)
-    : (['today', 'cowork', 'code', 'chat', 'trends', 'heatmap'] as ViewId[]);
+    : (['today', 'cowork', 'code', 'chat', 'trends', 'heatmap'] as ViewId[])
+  ).filter(id => !(coworkUnavailable && id === 'cowork'));
 
   const menus: MenuDef[] = [
     {

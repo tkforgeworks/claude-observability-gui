@@ -10,8 +10,10 @@ import ModelMigrationChart from '../components/common/ModelMigrationChart';
 import ProjectTimelineChart from '../components/common/ProjectTimelineChart';
 import UsagePatternsCard from '../components/common/UsagePatternsCard';
 import { useApi } from '../hooks/useApi';
+import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import { useTopbar } from '../contexts/TopbarContext';
+import { COWORK_ONLY_WIDGETS } from '../utils/coworkOnlyWidgets';
 import type { TrendsWidgetId } from '../../shared/ipc-types';
 
 type TimeRange = '7d' | '30d' | '90d' | '1y';
@@ -41,6 +43,7 @@ function WidgetPlaceholder({ title, children }: { title: string; children: React
 
 export default function TrendsView(): React.JSX.Element {
   const { config: dashConfig, refreshConfig } = useDashboardConfig();
+  const availability = useCoworkAvailability();
   const { setRangeControls, clearRangeControls } = useTopbar();
   const [timeRange, setTimeRange] = React.useState<TimeRange>('30d');
   const [timeRangeInitialized, setTimeRangeInitialized] = React.useState(false);
@@ -142,11 +145,19 @@ export default function TrendsView(): React.JSX.Element {
     },
   };
 
+  // Cowork-only widgets vanish entirely when Cowork is unavailable — no empty
+  // shell, no gap; the grid reflows (CGUI-84). Render-time filter only, so
+  // dashboard.json round-trips untouched. `mode: 'historical'` counts as
+  // available (range selectors reach back into imported data), and while
+  // availability is still unknown (null) every widget renders as before.
+  const coworkHidden = availability !== null && !availability.available;
+
   // Ordered, visible widgets — empty/loading/error widgets stay in the list
   // and render placeholder cards instead of vanishing
   const orderedWidgets = dashConfig
     ? [...dashConfig.trendsWidgets]
         .filter(w => w.visible)
+        .filter(w => !(coworkHidden && COWORK_ONLY_WIDGETS.has(w.id)))
         .sort((a, b) => a.order - b.order)
         .map(w => ({ id: w.id, ...widgetRegistry[w.id] }))
     : [];
@@ -162,7 +173,9 @@ export default function TrendsView(): React.JSX.Element {
       ) : allSettledEmpty ? (
         <EmptyState
           title="No trend data available"
-          message="Trends will appear here once session data has been collected. Import Claude Code JSONL data or connect the log watcher to begin."
+          message={coworkHidden
+            ? 'Trends will appear here once session data has been collected. Claude Code sessions are picked up automatically on the next scan.'
+            : 'Trends will appear here once session data has been collected. Import Claude Code JSONL data or connect the log watcher to begin.'}
         />
       ) : (
         <>

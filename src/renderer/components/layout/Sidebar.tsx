@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NavLink } from 'react-router-dom';
 import type { ViewId } from '../../../shared/ipc-types';
 import { useDashboardConfig } from '../../contexts/DashboardConfigContext';
+import { useCoworkAvailability } from '../../hooks/useCoworkAvailability';
 import { Icons } from '../common/Icons';
 
 interface NavItem {
@@ -104,6 +105,7 @@ function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
 
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
+  const availability = useCoworkAvailability();
   const [watcherConnected, setWatcherConnected] = useState(false);
   // "n/a" rather than "offline" on platforms without Claude Desktop (CGUI-75)
   const [watcherUnsupported, setWatcherUnsupported] = useState(false);
@@ -139,6 +141,11 @@ export default function Sidebar(): React.JSX.Element {
       ? config.views.filter(v => !v.visible).map(v => v.id)
       : []
   );
+  // Same mechanism as dashboard-hidden views; null (unknown) keeps the entry
+  // so Windows never sees it blink out during the availability fetch (CGUI-82)
+  if (availability !== null && !availability.available) {
+    hiddenIds.add('cowork');
+  }
   const visibleIds = new Set<ViewId>(
     NAV_SECTIONS.flatMap(s => s.items).map(i => i.id).filter(id => !hiddenIds.has(id))
   );
