@@ -19,6 +19,7 @@ import { getAppIconPath } from './appIcon';
 import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
+import { getCoworkAvailability } from './services/coworkAvailability';
 import { LogWatcher } from './services/logWatcher';
 import { UsageLimitWatcher } from './services/usageLimitWatcher';
 import { applyLaunchOnStartup } from './services/launchOnStartup';
@@ -192,8 +193,11 @@ app.whenReady().then(() => {
     try {
       const today = queryTodaySummary(db);
       const usage = queryLatestUsageSnapshot(db);
+      // "Today:" is today-scoped, so historical-only installs count code alone —
+      // the tray must never report sessions the Today view doesn't show (CGUI-83)
+      const coworkLive = getCoworkAvailability(db).mode === 'live';
       updateTrayMenu(win, {
-        sessionCount: today.sessionCount,
+        sessionCount: coworkLive ? today.sessionCount : today.codeSessionCount,
         costUsd: today.codeCostUsd ?? undefined,
         usageSnapshot: usage ?? undefined,
       });

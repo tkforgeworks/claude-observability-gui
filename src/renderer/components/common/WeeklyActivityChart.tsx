@@ -19,6 +19,8 @@ import { formatCost, formatDayLabelWithWeekday, formatWeekday } from '../../util
 
 interface WeeklyActivityChartProps {
   data: DailyActivity[];
+  /** False collapses the chart to the code series only — installs where Cowork is not live (CGUI-83). */
+  showCowork?: boolean;
 }
 
 const COLORS = {
@@ -96,8 +98,8 @@ const legendDotStyles = (color: string): React.CSSProperties => ({
   verticalAlign: 'middle',
 });
 
-export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps): React.JSX.Element {
-  const totalSessions = data.reduce((sum, d) => sum + d.codeCount + d.coworkCount, 0);
+export default function WeeklyActivityChart({ data, showCowork = true }: WeeklyActivityChartProps): React.JSX.Element {
+  const totalSessions = data.reduce((sum, d) => sum + d.codeCount + (showCowork ? d.coworkCount : 0), 0);
   const totalCost = data.reduce((sum, d) => sum + d.codeCost, 0);
 
   return (
@@ -106,7 +108,7 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
         <h2>Last 7 Days</h2>
         <div className="legend">
           <span><span style={legendDotStyles(COLORS.code)} />Code</span>
-          <span><span style={legendDotStyles(COLORS.cowork)} />Cowork</span>
+          {showCowork && <span><span style={legendDotStyles(COLORS.cowork)} />Cowork</span>}
           <span style={{ color: 'var(--text-tertiary)' }}>
             {totalSessions} sessions · {formatCost(totalCost)}
           </span>
@@ -132,8 +134,12 @@ export default function WeeklyActivityChart({ data }: WeeklyActivityChartProps):
             content={<CustomTooltip />}
             cursor={{ fill: 'rgba(168, 85, 247, 0.08)' }}
           />
-          <Bar dataKey="codeCount" name="Code" stackId="sessions" fill={COLORS.code} radius={[0, 0, 0, 0]} />
-          <Bar dataKey="coworkCount" name="Cowork" stackId="sessions" fill={COLORS.cowork} radius={[3, 3, 0, 0]} />
+          {/* The topmost stacked bar carries the rounded corners, so code takes
+              them over when the cowork series is absent */}
+          <Bar dataKey="codeCount" name="Code" stackId="sessions" fill={COLORS.code} radius={showCowork ? [0, 0, 0, 0] : [3, 3, 0, 0]} />
+          {showCowork && (
+            <Bar dataKey="coworkCount" name="Cowork" stackId="sessions" fill={COLORS.cowork} radius={[3, 3, 0, 0]} />
+          )}
         </BarChart>
       </ResponsiveContainer>
     </div>
