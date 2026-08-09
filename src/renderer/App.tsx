@@ -22,6 +22,7 @@ import UsageView from './views/UsageView';
 import SettingsView from './views/SettingsView';
 import { DashboardConfigProvider, useDashboardConfig } from './contexts/DashboardConfigContext';
 import { TopbarProvider, useTopbar } from './contexts/TopbarContext';
+import { useCoworkAvailability } from './hooks/useCoworkAvailability';
 
 const appStyles: React.CSSProperties = {
   display: 'flex',
@@ -63,9 +64,30 @@ function TopbarBridge(): React.JSX.Element | null {
 
 function DefaultRedirect(): React.JSX.Element {
   const { config } = useDashboardConfig();
-  const landing = config?.views.find(v => v.defaultLanding && v.visible);
+  const availability = useCoworkAvailability();
+  // Cowork can be the configured landing view via a dashboard.json imported
+  // from Windows. Skipping it here (not just in CoworkRoute) matters: "/" →
+  // "/cowork" → back to "/" would otherwise loop forever (CGUI-82).
+  const coworkUnavailable = availability !== null && !availability.available;
+  const landing = config?.views.find(
+    v => v.defaultLanding && v.visible && !(coworkUnavailable && v.id === 'cowork')
+  );
   const target = landing ? `/${landing.id}` : '/today';
   return <Navigate to={target} replace />;
+}
+
+/**
+ * Gates /cowork on the availability model (CGUI-82): deep links, onNavigate
+ * pushes, and stale location.state all funnel through the route, so one gate
+ * covers every entry path. While availability is unknown (null) the view
+ * renders as before — hiding-then-showing would flicker on Windows.
+ */
+function CoworkRoute(): React.JSX.Element {
+  const availability = useCoworkAvailability();
+  if (availability !== null && !availability.available) {
+    return <Navigate to="/" replace />;
+  }
+  return <CoworkSessionsView />;
 }
 
 export default function App(): React.JSX.Element {
@@ -88,7 +110,7 @@ export default function App(): React.JSX.Element {
                   <Routes>
                     <Route path="/" element={<DefaultRedirect />} />
                     <Route path="/today" element={<TodayView />} />
-                    <Route path="/cowork" element={<CoworkSessionsView />} />
+                    <Route path="/cowork" element={<CoworkRoute />} />
                     <Route path="/code" element={<CodeSessionsView />} />
                     <Route path="/chat" element={<ChatHistoryView />} />
                     <Route path="/projects" element={<ProjectsView />} />
