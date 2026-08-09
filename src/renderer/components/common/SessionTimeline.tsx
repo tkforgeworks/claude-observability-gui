@@ -13,6 +13,8 @@ import type { TimelineEntry } from '../../../shared/ipc-types';
 
 interface SessionTimelineProps {
   entries: TimelineEntry[];
+  /** False collapses the cowork lane and legend entry — installs where Cowork is not live (CGUI-83). */
+  showCowork?: boolean;
 }
 
 const CODE_COLOR = 'var(--chart-1)';
@@ -65,11 +67,12 @@ function formatDuration(ms: number): string {
   return sharedFormatDuration(ms / 1000, { style: 'hm' });
 }
 
-function SessionBlock({ entry, axisStart, axisEnd, now }: {
+function SessionBlock({ entry, axisStart, axisEnd, now, singleLane }: {
   entry: TimelineEntry;
   axisStart: number;
   axisEnd: number;
   now: number;
+  singleLane: boolean;
 }) {
   const rawStartMs = new Date(entry.startedAt).getTime();
   const endMs = entry.endedAt ? new Date(entry.endedAt).getTime() : now;
@@ -100,7 +103,7 @@ function SessionBlock({ entry, axisStart, axisEnd, now }: {
 
   const blockStyle: React.CSSProperties = {
     position: 'absolute',
-    top: isCode ? 2 : 20,
+    top: singleLane ? 3 : isCode ? 2 : 20,
     height: 18,
     left: `${left}%`,
     width: `${width}%`,
@@ -136,7 +139,7 @@ function SessionBlock({ entry, axisStart, axisEnd, now }: {
   );
 }
 
-export default function SessionTimeline({ entries }: SessionTimelineProps): React.JSX.Element {
+export default function SessionTimeline({ entries, showCowork = true }: SessionTimelineProps): React.JSX.Element {
   const now = useMemo(() => new Date(), []);
   const { start: axisStart, end: axisEnd } = useMemo(
     () => computeAxis(entries, now),
@@ -166,7 +169,7 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
     <div className="card">
       <div className="card-head"><h2>Session Timeline</h2></div>
 
-      <div style={trackStyles}>
+      <div style={{ ...trackStyles, height: showCowork ? 40 : 24 }}>
         {/* Hour gridlines */}
         {hourMarkers.map((h, i) => {
           const pct = toPercent(h.getTime(), axisStart, axisEnd);
@@ -193,6 +196,7 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
             axisStart={axisStart}
             axisEnd={axisEnd}
             now={now.getTime()}
+            singleLane={!showCowork}
           />
         ))}
       </div>
@@ -222,7 +226,9 @@ export default function SessionTimeline({ entries }: SessionTimelineProps): Reac
 
       <div className="legend" style={{ marginTop: 4 }}>
         <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: CODE_COLOR, marginRight: 4, verticalAlign: 'middle' }} />Code</span>
-        <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: COWORK_COLOR, marginRight: 4, verticalAlign: 'middle' }} />Cowork</span>
+        {showCowork && (
+          <span><span style={{ display: 'inline-block', width: 8, height: 8, borderRadius: 2, backgroundColor: COWORK_COLOR, marginRight: 4, verticalAlign: 'middle' }} />Cowork</span>
+        )}
       </div>
     </div>
   );

@@ -7,6 +7,7 @@ import WeeklyActivityChart from '../components/common/WeeklyActivityChart';
 import SessionTimeline from '../components/common/SessionTimeline';
 import { Icons } from '../components/common/Icons';
 import { useApi } from '../hooks/useApi';
+import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import { formatCost, formatDuration, formatTime } from '../utils/format';
 
 const formatDurationHm = (s: number | null) => formatDuration(s, { style: 'hm' });
@@ -37,7 +38,18 @@ export default function TodayView(): React.JSX.Element {
     return () => { unsub?.(); };
   }, [refetch]);
 
-  const hasAnyData = summary && summary.sessionCount > 0;
+  // Historical mode counts as unavailable on a *today*-scoped surface — the
+  // imported data lives in the Cowork view (CGUI-83). Unknown (null) keeps the
+  // full layout so nothing flickers away while the hook resolves.
+  const availability = useCoworkAvailability();
+  const coworkVisible = availability === null || availability.mode === 'live';
+
+  // With cowork hidden, nothing may count a source the UI doesn't show — a
+  // same-day import could otherwise put cowork rows inside the 24h window
+  const visibleSessionCount = summary
+    ? (coworkVisible ? summary.sessionCount : summary.codeSessionCount)
+    : 0;
+  const hasAnyData = summary != null && visibleSessionCount > 0;
   const hasCodeData = summary && summary.codeSessionCount > 0;
   const hasCoworkData = summary && summary.coworkSessionCount > 0;
 
@@ -59,7 +71,7 @@ export default function TodayView(): React.JSX.Element {
   const sessionMeta = hasAnyData
     ? [
         hasCodeData ? `${summary.codeSessionCount} code` : null,
-        hasCoworkData ? `${summary.coworkSessionCount} cowork` : null,
+        coworkVisible && hasCoworkData ? `${summary.coworkSessionCount} cowork` : null,
       ].filter(Boolean).join(' · ')
     : noDataMeta;
 
@@ -79,19 +91,27 @@ export default function TodayView(): React.JSX.Element {
 
   return (
     <div className="page">
-      <div className="stats-grid">
+      {/* The Cowork Turns and Active Time cards are both LogWatcher-fed, so
+          without live collection they'd dash out forever — drop them and let
+          the grid reflow to the two cards that can populate (CGUI-83) */}
+      <div
+        className="stats-grid"
+        style={coworkVisible ? undefined : { gridTemplateColumns: 'repeat(auto-fit, minmax(min(158px, 100%), 1fr))' }}
+      >
         <StatCard
           label="Sessions"
-          value={hasAnyData ? summary.sessionCount : '—'}
+          value={hasAnyData ? visibleSessionCount : '—'}
           icon={Icons.layers}
           meta={sessionMeta}
         />
-        <StatCard
-          label="Cowork Turns"
-          value={hasCoworkData ? summary.coworkTurnCount : '—'}
-          icon={Icons.cowork}
-          meta={turnsMeta}
-        />
+        {coworkVisible && (
+          <StatCard
+            label="Cowork Turns"
+            value={hasCoworkData ? summary.coworkTurnCount : '—'}
+            icon={Icons.cowork}
+            meta={turnsMeta}
+          />
+        )}
         <StatCard
           label="Code Cost"
           value={hasCodeData ? formatCost(summary.codeCostUsd) : '—'}
@@ -99,16 +119,18 @@ export default function TodayView(): React.JSX.Element {
           icon={Icons.dollar}
           meta={costMeta}
         />
-        <StatCard
-          label="Active Time"
-          value={summary?.activeTimeSeconds ? formatDurationHm(summary.activeTimeSeconds) : '—'}
-          icon={Icons.clock}
-          meta={activeMeta}
-        />
+        {coworkVisible && (
+          <StatCard
+            label="Active Time"
+            value={summary?.activeTimeSeconds ? formatDurationHm(summary.activeTimeSeconds) : '—'}
+            icon={Icons.clock}
+            meta={activeMeta}
+          />
+        )}
       </div>
 
-      {weeklyActivity.some(d => d.codeCount > 0 || d.coworkCount > 0) && (
-        <WeeklyActivityChart data={weeklyActivity} />
+      {weeklyActivity.some(d => d.codeCount > 0 || (coworkVisible && d.coworkCount > 0)) && (
+        <WeeklyActivityChart data={weeklyActivity} showCowork={coworkVisible} />
       )}
 
       {initialLoading ? (
@@ -116,10 +138,15 @@ export default function TodayView(): React.JSX.Element {
       ) : !hasAnyData ? (
         <EmptyState
           title="No sessions recorded yet"
-          message="The app is scanning for Claude Code data and connecting to the log watcher. Data will appear here automatically."
+          message={coworkVisible
+            ? 'The app is scanning for Claude Code data and connecting to the log watcher. Data will appear here automatically.'
+            : 'The app is scanning for Claude Code data. Sessions will appear here automatically.'}
         />
       ) : (
-        <SessionTimeline entries={timeline} />
+        <SessionTimeline
+          entries={coworkVisible ? timeline : timeline.filter(e => e.type === 'code')}
+          showCowork={coworkVisible}
+        />
       )}
     </div>
   );
