@@ -8,6 +8,7 @@ import SortableTh from '../components/common/SortableTh';
 import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
+import { useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import {
   formatCost,
   formatDateFull,
@@ -27,6 +28,12 @@ export default function ProjectsView(): React.JSX.Element {
 
   const { setRangeControls, clearRangeControls } = useTopbar();
   const days = rangeDays(rangeLabel);
+
+  // Aggregate view over time, so historical mode keeps the cowork column and
+  // card (same stance as Trends/Heatmap); null renders pre-epic behavior
+  // (CGUI-86 — this view fell between the CGUI-80 epic's surface tickets)
+  const availability = useCoworkAvailability();
+  const showCowork = availability === null || availability.available;
 
   const handleRangeChange = useCallback((label: string) => {
     setRangeLabel(label);
@@ -97,7 +104,9 @@ export default function ProjectsView(): React.JSX.Element {
       <div className="page">
         <EmptyState
           title="No projects found"
-          message="Project aggregates will appear here once Claude Code sessions or Cowork sessions are imported with a project path."
+          message={showCowork
+            ? 'Project aggregates will appear here once Claude Code sessions or Cowork sessions are imported with a project path.'
+            : 'Project aggregates will appear here once Claude Code sessions are imported with a project path.'}
         />
       </div>
     );
@@ -114,7 +123,9 @@ export default function ProjectsView(): React.JSX.Element {
         <StatCard label="Projects" value={totals.projectCount} icon={Icons.projects} variant="minimal" />
         <StatCard label="Total Cost" value={formatCost(totals.cost)} icon={Icons.dollar} variant="minimal" />
         <StatCard label="Code Sessions" value={totals.codeSessions.toLocaleString()} icon={Icons.code} variant="minimal" />
-        <StatCard label="Cowork Sessions" value={totals.coworkSessions.toLocaleString()} icon={Icons.cowork} variant="minimal" />
+        {showCowork && (
+          <StatCard label="Cowork Sessions" value={totals.coworkSessions.toLocaleString()} icon={Icons.cowork} variant="minimal" />
+        )}
         <StatCard label="Input Tokens" value={formatTokens(totals.input)} icon={Icons.arrowUp} variant="minimal" />
         <StatCard label="Output Tokens" value={formatTokens(totals.output)} icon={Icons.arrowDown} variant="minimal" />
       </div>
@@ -126,7 +137,7 @@ export default function ProjectsView(): React.JSX.Element {
           <span className="sep">·</span>
           <span>Cost: <strong>{formatCost(totals.cost)}</strong></span>
           <span className="sep">·</span>
-          <span>Sessions: <strong>{(totals.codeSessions + totals.coworkSessions).toLocaleString()}</strong></span>
+          <span>Sessions: <strong>{(totals.codeSessions + (showCowork ? totals.coworkSessions : 0)).toLocaleString()}</strong></span>
         </div>
         <div style={{ flex: 1, overflow: 'auto' }}>
           <table className="data">
@@ -136,7 +147,9 @@ export default function ProjectsView(): React.JSX.Element {
                 <SortableTh label="Project" active={sortKey === 'displayName'} dir={sortDir} onSort={() => handleSort('displayName')} />
                 <SortableTh label="Cost" className="num" active={sortKey === 'totalCostUsd'} dir={sortDir} onSort={() => handleSort('totalCostUsd')} />
                 <SortableTh label="Code" className="num" active={sortKey === 'codeSessionCount'} dir={sortDir} onSort={() => handleSort('codeSessionCount')} />
-                <SortableTh label="Cowork" className="num" active={sortKey === 'coworkSessionCount'} dir={sortDir} onSort={() => handleSort('coworkSessionCount')} />
+                {showCowork && (
+                  <SortableTh label="Cowork" className="num" active={sortKey === 'coworkSessionCount'} dir={sortDir} onSort={() => handleSort('coworkSessionCount')} />
+                )}
                 <th className="num">Tokens (in/out)</th>
                 <SortableTh label="Active Days" className="num" active={sortKey === 'activeDays'} dir={sortDir} onSort={() => handleSort('activeDays')} />
                 <SortableTh label="Last Active" active={sortKey === 'lastActiveAt'} dir={sortDir} onSort={() => handleSort('lastActiveAt')} />
@@ -176,7 +189,7 @@ export default function ProjectsView(): React.JSX.Element {
                         {formatCost(p.totalCostUsd)}
                       </td>
                       <td className="num">{p.codeSessionCount || '—'}</td>
-                      <td className="num">{p.coworkSessionCount || '—'}</td>
+                      {showCowork && <td className="num">{p.coworkSessionCount || '—'}</td>}
                       {/* Token counts are only meaningful for Code sessions.
                           A Cowork-only project reports 0, which under the
                           null-vs-zero convention would read as a measured
@@ -193,8 +206,8 @@ export default function ProjectsView(): React.JSX.Element {
                     </tr>
                     {expandedProject === p.projectPath && (
                       <tr className="detail-row">
-                        <td colSpan={8} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
-                          <ProjectDetail project={p} />
+                        <td colSpan={showCowork ? 8 : 7} style={{ padding: '16px 20px', background: 'var(--surface-sunken)' }}>
+                          <ProjectDetail project={p} showCowork={showCowork} />
                         </td>
                       </tr>
                     )}
@@ -209,7 +222,7 @@ export default function ProjectsView(): React.JSX.Element {
   );
 }
 
-function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.Element {
+function ProjectDetail({ project, showCowork }: { project: ProjectAggregate; showCowork: boolean }): React.JSX.Element {
   const modelEntries = Object.entries(project.models).sort((a, b) => b[1] - a[1]);
 
   return (
@@ -233,7 +246,7 @@ function ProjectDetail({ project }: { project: ProjectAggregate }): React.JSX.El
           {project.projectPath}
         </div>
         <div style={{ marginTop: 4, fontSize: 11, color: 'var(--text-tertiary)' }}>
-          First seen: {formatDateFull(project.firstSeenAt)} · Cowork turns: {project.coworkTurnCount || '—'}
+          First seen: {formatDateFull(project.firstSeenAt)}{showCowork && <> · Cowork turns: {project.coworkTurnCount || '—'}</>}
         </div>
       </div>
 
