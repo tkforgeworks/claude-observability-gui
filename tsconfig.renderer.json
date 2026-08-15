@@ -25,6 +25,7 @@
     "node_modules",
     "dist",
     "src/main/**/*",
-    "src/preload/**/*"
+    "src/preload/**/*",
+    "src/renderer/**/__tests__/**"
   ]
 }
