@@ -1,5 +1,6 @@
 import React from 'react';
-import Sparkline from './Sparkline';
+import Sparkline, { hasSparkData } from './Sparkline';
+import type { SparkValue } from './Sparkline';
 import { DeltaChip } from './Chip';
 import type { IconComponent } from './Icons';
 
@@ -13,8 +14,11 @@ interface StatCardProps {
   meta?: string;
   subMeta?: string;
   icon?: IconComponent;
-  sparkData?: number[];
+  /** `null` entries are gaps (unknown), not zeros — see Sparkline */
+  sparkData?: SparkValue[];
   sparkColor?: string;
+  /** Pin the sparkline's y-scale bottom (e.g. 0); default is min-max normalised. */
+  sparkBaseline?: number;
   variant?: StatVariant;
 }
 
@@ -28,11 +32,12 @@ export default function StatCard({
   icon: Icon,
   sparkData,
   sparkColor,
+  sparkBaseline,
   variant = 'default',
 }: StatCardProps): React.JSX.Element {
   // `.minimal` hides the sparkline entirely, so only a non-minimal card with
-  // enough points reserves the bottom padding for one (CGUI-71).
-  const hasSpark = variant !== 'minimal' && !!sparkData && sparkData.length >= 2;
+  // enough known points reserves the bottom padding for one (CGUI-71).
+  const hasSpark = variant !== 'minimal' && hasSparkData(sparkData);
   const className = [
     'stat',
     variant !== 'default' ? variant : null,
@@ -60,7 +65,7 @@ export default function StatCard({
         </div>
       )}
       {hasSpark && sparkData && (
-        <Sparkline values={sparkData} color={sparkColor} />
+        <Sparkline values={sparkData} color={sparkColor} baseline={sparkBaseline} />
       )}
     </div>
   );
