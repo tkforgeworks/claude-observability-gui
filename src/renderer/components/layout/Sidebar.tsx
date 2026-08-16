@@ -105,7 +105,6 @@ function GearMark({ size = 20 }: { size?: number }): React.JSX.Element {
 export default function Sidebar(): React.JSX.Element {
   const { config } = useDashboardConfig();
   const [watcherConnected, setWatcherConnected] = useState(false);
-  const [appVersion, setAppVersion] = useState('');
 
   // Seed from the current status, then track pushes. Without the initial
   // fetch the dot claimed "offline" until the next connection event, which
@@ -124,8 +123,24 @@ export default function Sidebar(): React.JSX.Element {
     });
   }, []);
 
+  // A dev run and the installed build can be open at once — the single-instance
+  // lock is per-userData-path (CGUI-63/64) — and both report the same
+  // package.json version, so the dev one is marked (CGUI-73).
+  //
+  // Dev drops the "· local" suffix rather than appending to it: the brand's
+  // name column is only ~108px, and "v1.2.0-dev · local" wraps to a second
+  // line, growing the brand block by 15px. "v1.2.0-dev" leaves headroom even
+  // for a long RC version.
+  const [buildLabel, setBuildLabel] = useState('');
   useEffect(() => {
-    window.api.app.getVersion().then(setAppVersion).catch(() => {});
+    let cancelled = false;
+    Promise.all([window.api.app.getVersion(), window.api.app.isPackaged()])
+      .then(([version, packaged]) => {
+        if (cancelled) return;
+        setBuildLabel(packaged ? `v${version} · local` : `v${version}-dev`);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
   }, []);
 
   const hiddenIds = new Set<ViewId>(
@@ -144,10 +159,9 @@ export default function Sidebar(): React.JSX.Element {
         <div className="logo"><GearMark size={20} /></div>
         <div className="name">
           COG
-          {/* The separator belongs to the version, not the line — printing it
-              unconditionally left a dangling "· local" during the async
-              version fetch (CGUI-70). */}
-          <span className="sub">{appVersion ? `v${appVersion} · local` : 'local'}</span>
+          {/* Rendered empty until the async fetch resolves — printing the
+              separator unconditionally left a dangling "· local" (CGUI-70) */}
+          <span className="sub">{buildLabel}</span>
         </div>
       </div>
 

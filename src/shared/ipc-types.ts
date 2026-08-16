@@ -438,6 +438,9 @@ export interface LogEvent {
 export interface ElectronApi {
   app: {
     getVersion(): Promise<string>;
+    /** False in a dev run — the sidebar marks those so a dev window and the
+     *  installed one are distinguishable when both are open (CGUI-73). */
+    isPackaged(): Promise<boolean>;
   };
   windowControls: {
     minimize(): void;

@@ -158,6 +158,11 @@ export function registerIpcHandlers(db: Database.Database): void {
     return electronApp.getVersion();
   });
 
+  ipcMain.handle('app:isPackaged', (): boolean => {
+    const { app: electronApp } = require('electron');
+    return electronApp.isPackaged;
+  });
+
   ipcMain.handle('configPaths:get', (): ConfigPaths => {
     const { app: electronApp } = require('electron');
     return {
@@ -468,6 +473,7 @@ export function unregisterIpcHandlers(): void {
   const channels = [
     'dev:clearDatabase',
     'app:getVersion',
+    'app:isPackaged',
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
