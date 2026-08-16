@@ -6,7 +6,8 @@
     "types": ["jest", "node"]
   },
   "include": [
-    "src/main/**/*"
+    "src/main/**/*",
+    "src/renderer/utils/**/*"
   ],
   "exclude": [
     "node_modules",

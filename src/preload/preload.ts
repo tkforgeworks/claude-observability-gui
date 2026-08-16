@@ -51,6 +51,9 @@ const api: ElectronApi = {
     getPlatform(): Promise<NodeJS.Platform> {
       return ipcRenderer.invoke('app:getPlatform');
     },
+    isPackaged(): Promise<boolean> {
+      return ipcRenderer.invoke('app:isPackaged');
+    },
   },
 
   // -------------------------------------------------------------------------

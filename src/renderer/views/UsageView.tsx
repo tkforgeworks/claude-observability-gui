@@ -8,6 +8,8 @@ import { Icons } from '../components/common/Icons';
 import { useTopbar } from '../contexts/TopbarContext';
 import { useApi } from '../hooks/useApi';
 import { formatDateTime } from '../utils/format';
+import { buildWindowSeries } from '../utils/usageWindow';
+import type { WindowSample } from '../utils/usageWindow';
 
 const RANGE_HOURS: Record<string, number> = {
   '24h': 24,
@@ -16,6 +18,13 @@ const RANGE_HOURS: Record<string, number> = {
   '90d': 2160,
   'All': 999999,
 };
+
+const FIVE_HOUR_MS = 5 * 60 * 60_000;
+const SEVEN_DAY_MS = 7 * 24 * 60 * 60_000;
+// The 7-day card's sparkline needs the whole current 7-day window regardless
+// of the selected range, so the fetch never asks for less than that; the
+// history table is then filtered down to the range client-side (CGUI-72).
+const SPARK_FETCH_HOURS = SEVEN_DAY_MS / 3_600_000;
 
 function formatResetCountdown(resetsAt: string | null): string {
   if (!resetsAt) return 'no limit';
@@ -100,16 +109,17 @@ export default function UsageView(): React.JSX.Element {
   }, [rangeLabel, handleRangeChange, setRangeControls, clearRangeControls]);
 
   const hours = RANGE_HOURS[rangeLabel] ?? 24;
+  const fetchHours = Math.max(hours, SPARK_FETCH_HOURS);
 
   const { data, loading, error, refetch } = useApi(
     () =>
       Promise.all([
         window.api.usageSnapshots.getLatest(),
-        window.api.usageSnapshots.getRecent(hours),
+        window.api.usageSnapshots.getRecent(fetchHours),
       ]),
-    [hours]
+    [fetchHours]
   );
-  const [latest, snapshots] = data ?? [null, []];
+  const [latest, fetched] = data ?? [null, []];
 
   useEffect(() => {
     return window.api.onUsageSnapshot(() => {
@@ -127,8 +137,15 @@ export default function UsageView(): React.JSX.Element {
     return () => window.clearInterval(id);
   }, []);
 
-  // Oldest-first, matching getRecent ordering; pct zeroed when the window
-  // had already reset at capture time (stale resets_at in the source file).
+  // Snapshots inside the selected range, oldest-first (getRecent ordering);
+  // pct zeroed when the window had already reset at capture time (stale
+  // resets_at in the source file). `fetched` may reach further back than the
+  // range to feed the sparklines — the table only shows what's in range.
+  const snapshots = useMemo(() => {
+    const cutoff = Date.now() - hours * 3_600_000;
+    return fetched.filter(s => Date.parse(s.captured_at) >= cutoff);
+  }, [fetched, hours]);
+
   const historyRows: HistoryRow[] = useMemo(
     () => snapshots.map(s => ({
       snapshot: s,
@@ -136,6 +153,26 @@ export default function UsageView(): React.JSX.Element {
       sevenDay: effectivePctAtCapture(s.seven_day_pct, s.seven_day_resets_at, s.captured_at),
     })),
     [snapshots]
+  );
+
+  // Sparkline samples come from everything fetched, not the range: each
+  // card's line covers its own limit window (5h / 7d ending at the latest
+  // resets_at), which is independent of the history range selector.
+  const fiveHourSamples: WindowSample[] = useMemo(
+    () => fetched.map(s => ({
+      t: Date.parse(s.captured_at),
+      pct: s.five_hour_pct,
+      resetsAt: s.five_hour_resets_at ? Date.parse(s.five_hour_resets_at) : null,
+    })),
+    [fetched]
+  );
+  const sevenDaySamples: WindowSample[] = useMemo(
+    () => fetched.map(s => ({
+      t: Date.parse(s.captured_at),
+      pct: s.seven_day_pct,
+      resetsAt: s.seven_day_resets_at ? Date.parse(s.seven_day_resets_at) : null,
+    })),
+    [fetched]
   );
 
   if (loading && !data) {
@@ -154,7 +191,7 @@ export default function UsageView(): React.JSX.Element {
     );
   }
 
-  if (!latest && snapshots.length === 0) {
+  if (!latest && fetched.length === 0) {
     return (
       <div className="page">
         <EmptyState
@@ -175,14 +212,26 @@ export default function UsageView(): React.JSX.Element {
   const fiveHourMeta = latest ? formatResetCountdown(latest.five_hour_resets_at) : '';
   const sevenDayMeta = latest ? formatResetCountdown(latest.seven_day_resets_at) : '';
 
-  const recentRows = historyRows.slice(-20);
-  const fiveHourSpark = recentRows.map(r => r.fiveHour);
-  const sevenDaySpark = recentRows.map(r => r.sevenDay);
+  // Window-aligned sparklines (CGUI-72): each line spans the card's own
+  // current limit window and ends at "now". Empty when the window has already
+  // reset (nothing current to draw) or has no usable samples — StatCard then
+  // renders without a sparkline rather than showing a stale one.
+  const now = Date.now();
+  const fiveHourSpark = latest?.five_hour_resets_at
+    ? buildWindowSeries(fiveHourSamples, { windowEnd: Date.parse(latest.five_hour_resets_at), windowMs: FIVE_HOUR_MS, now })
+    : [];
+  const sevenDaySpark = latest?.seven_day_resets_at
+    ? buildWindowSeries(sevenDaySamples, { windowEnd: Date.parse(latest.seven_day_resets_at), windowMs: SEVEN_DAY_MS, now })
+    : [];
 
   // Highest value seen across the selected range, from the same
-  // effective-at-capture values the history table shows.
+  // effective-at-capture values the history table shows. Deliberately
+  // range-scoped, not window-scoped: usage only accumulates inside a window,
+  // so "peak in the current window" would always equal the current value.
+  // The label says so (CGUI-72).
   const fiveHourPeak = historyRows.length > 0 ? Math.max(...historyRows.map(r => r.fiveHour)) : null;
   const sevenDayPeak = historyRows.length > 0 ? Math.max(...historyRows.map(r => r.sevenDay)) : null;
+  const peakLabel = rangeLabel === 'All' ? 'All-time peak' : `Peak in last ${rangeLabel}`;
 
   const resetRows = deriveResetRows(historyRows, Date.now());
   const tableEntries: TableEntry[] = [
@@ -221,19 +270,21 @@ export default function UsageView(): React.JSX.Element {
           label="5-Hour Usage"
           value={effectiveFiveHour !== null ? `${effectiveFiveHour.toFixed(1)}%` : '—'}
           meta={fiveHourMeta}
-          subMeta={fiveHourPeak !== null ? `Peak usage in window: ${fiveHourPeak.toFixed(1)}%` : undefined}
+          subMeta={fiveHourPeak !== null ? `${peakLabel}: ${fiveHourPeak.toFixed(1)}%` : undefined}
           icon={Icons.bolt}
           sparkData={fiveHourSpark}
           sparkColor="var(--chart-1)"
+          sparkBaseline={0}
         />
         <StatCard
           label="7-Day Usage"
           value={effectiveSevenDay !== null ? `${effectiveSevenDay.toFixed(1)}%` : '—'}
           meta={sevenDayMeta}
-          subMeta={sevenDayPeak !== null ? `Peak usage in window: ${sevenDayPeak.toFixed(1)}%` : undefined}
+          subMeta={sevenDayPeak !== null ? `${peakLabel}: ${sevenDayPeak.toFixed(1)}%` : undefined}
           icon={Icons.clock}
           sparkData={sevenDaySpark}
           sparkColor="var(--chart-4)"
+          sparkBaseline={0}
         />
       </div>
 
@@ -258,7 +309,18 @@ export default function UsageView(): React.JSX.Element {
         </div>
       )}
 
-      {/* History table */}
+      {/* History table. An empty *range* is not an empty database (CGUI-70):
+          say so instead of silently dropping the card. */}
+      {historyRows.length === 0 && (
+        <div className="card" style={{ padding: 20 }}>
+          <EmptyState
+            title={`No snapshots in the last ${rangeLabel}`}
+            message={fetched.length > 0
+              ? `${fetched.length} older snapshot${fetched.length === 1 ? '' : 's'} on record — widen the range to see them.`
+              : 'Older snapshots are on record — widen the range to see them.'}
+          />
+        </div>
+      )}
       {historyRows.length > 0 && (
         <div className="card" style={{ padding: 20 }}>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 12 }}>
