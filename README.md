@@ -119,7 +119,7 @@ The export/import section bundles a consistent database snapshot, portable setti
 
 ### System Tray
 
-The app runs in the system tray with a context menu showing live session count and today's cost. On Windows, closing the window minimizes to tray by default; on Linux, closing quits the app unless you enable the tray option in Settings — and if no usable tray exists, closing always quits so the app can never get stranded in the background. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
+The app runs in the system tray with a context menu showing live session count and today's cost. On Windows, closing the window minimizes to tray by default; on Linux, closing quits the app unless you enable the tray option in Settings. The app falls back to quitting when its tray icon fails to load, but it cannot detect a desktop with no tray host at all (stock GNOME without an AppIndicator extension), so only enable the option once you can see the icon; if a window ever goes missing, launching the app again restores it. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
 
 ## Data sources
 

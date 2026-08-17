@@ -27,6 +27,27 @@ describe('samplesInWindow', () => {
   });
 });
 
+describe('samplesInWindow reset matching (CGUI-93)', () => {
+  it('drops previous-window samples whose capture time falls inside the derived window', () => {
+    // Previous 5h window reported an unrounded reset at 7:30; the next window's
+    // reset came back hour-rounded as 12:00, so the derived window starts at
+    // 7:00 and would otherwise admit the old window's 7:00–7:30 tail.
+    const prevEnd = 7.5 * H;
+    const end = 12 * H;
+    const prevTail = s(7.2 * H, 80, prevEnd);
+    const current = s(8 * H, 5, end);
+    const jittered = s(9 * H, 6, end + 1500); // sub-second/second-level jitter is the same window
+    expect(samplesInWindow([prevTail, current, jittered], end, FIVE_H)).toEqual([current, jittered]);
+  });
+
+  it('tolerates a resets_at up to an hour off but no more', () => {
+    const end = 12 * H;
+    const within = s(9 * H, 6, end + 59 * 60_000);
+    const beyond = s(9 * H, 6, end - 61 * 60_000);
+    expect(samplesInWindow([within, beyond], end, FIVE_H)).toEqual([within]);
+  });
+});
+
 describe('buildWindowSeries', () => {
   it('returns an empty series when the window has already reset', () => {
     expect(buildWindowSeries([s(H, 10)], { windowEnd: END, windowMs: FIVE_H, now: END })).toEqual([]);

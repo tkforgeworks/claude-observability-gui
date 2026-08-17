@@ -38,10 +38,42 @@ export function deriveCoworkAvailability(inputs: CoworkAvailabilityInputs): Cowo
   };
 }
 
+/**
+ * Cached `logFilePath` override presence (CGUI-93). `loadSettings()` is an
+ * uncached file read + JSON.parse, and the tray refresh asks for availability
+ * on every LogWatcher event — including each line of the startup backfill —
+ * so the override answer is read once and dropped only when `settings:update`
+ * carries a `logFilePath` (the one in-app path that changes it; a hand edit
+ * of settings.json needs a restart anyway, which is what the Settings copy
+ * says).
+ */
+let overrideActiveCache: boolean | null = null;
+
+export function invalidateCoworkOverrideCache(): void {
+  overrideActiveCache = null;
+}
+
+function isOverrideActive(): boolean {
+  if (overrideActiveCache === null) {
+    overrideActiveCache = Boolean(loadSettings().logFilePath);
+  }
+  return overrideActiveCache;
+}
+
+/**
+ * Cheap "can Cowork be collected on this install?" for hot paths (the tray
+ * refresh). On win32 this is decided by the platform alone — no settings
+ * read, no DB query — and elsewhere it costs one cached settings read.
+ */
+export function isCoworkLiveCapable(): boolean {
+  return process.platform === 'win32' || isOverrideActive();
+}
+
 export function getCoworkAvailability(db: Database.Database): CoworkAvailability {
+  const platformSupported = process.platform === 'win32';
   return deriveCoworkAvailability({
-    platformSupported: process.platform === 'win32',
-    overrideActive: Boolean(loadSettings().logFilePath),
+    platformSupported,
+    overrideActive: isOverrideActive(),
     hasHistoricalData: queryHasCoworkData(db),
   });
 }

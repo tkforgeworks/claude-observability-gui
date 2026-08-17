@@ -47,7 +47,23 @@ export interface WindowSeriesOptions {
 
 export const DEFAULT_SPARK_BUCKETS = 60;
 
-/** Snapshots that belong to the window: captured inside it and not stale at capture. */
+/**
+ * How far a sample's own `resets_at` may sit from the window end and still be
+ * "the same window" (CGUI-93). Within one window cship reports the reset with
+ * only seconds of jitter, but the *rounding* of `resets_at` has changed over
+ * time (unrounded in older data, hour-aligned now), so consecutive windows
+ * can be reported such that the previous window's tail lands inside
+ * `[windowEnd − windowMs, windowEnd]` by capture time alone. Those samples
+ * belong to a window that reset ≥ windowMs − rounding earlier, so an hour is
+ * comfortably below that gap for both the 5h and 7d limits while absorbing
+ * every observed jitter. Mirrors the reset-marker dedup in UsageView.
+ */
+export const RESET_MATCH_TOLERANCE_MS = 60 * 60_000;
+
+/**
+ * Snapshots that belong to the window: captured inside it, reporting (within
+ * tolerance) this window's reset, and not stale at capture.
+ */
 export function samplesInWindow(samples: WindowSample[], windowEnd: number, windowMs: number): WindowSample[] {
   const windowStart = windowEnd - windowMs;
   return samples.filter(s =>
@@ -55,6 +71,7 @@ export function samplesInWindow(samples: WindowSample[], windowEnd: number, wind
     && s.t <= windowEnd
     && s.resetsAt !== null
     && s.resetsAt > s.t
+    && Math.abs(s.resetsAt - windowEnd) <= RESET_MATCH_TOLERANCE_MS
   );
 }
 

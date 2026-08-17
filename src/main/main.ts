@@ -19,7 +19,7 @@ import { getAppIconPath } from './appIcon';
 import { queryTodaySummary } from './db/queries';
 import { JsonlImporter } from './importers/jsonlImporter';
 import { discoverLogPath, getLogPathStatus } from './services/logPathDiscovery';
-import { getCoworkAvailability } from './services/coworkAvailability';
+import { isCoworkLiveCapable } from './services/coworkAvailability';
 import { LogWatcher } from './services/logWatcher';
 import { UsageLimitWatcher } from './services/usageLimitWatcher';
 import { applyLaunchOnStartup } from './services/launchOnStartup';
@@ -194,8 +194,9 @@ app.whenReady().then(() => {
       const today = queryTodaySummary(db);
       const usage = queryLatestUsageSnapshot(db);
       // "Today:" is today-scoped, so historical-only installs count code alone —
-      // the tray must never report sessions the Today view doesn't show (CGUI-83)
-      const coworkLive = getCoworkAvailability(db).mode === 'live';
+      // the tray must never report sessions the Today view doesn't show (CGUI-83).
+      // Cheap, cached check — this runs per LogWatcher event (CGUI-93).
+      const coworkLive = isCoworkLiveCapable();
       updateTrayMenu(win, {
         sessionCount: coworkLive ? today.sessionCount : today.codeSessionCount,
         costUsd: today.codeCostUsd ?? undefined,
@@ -224,10 +225,14 @@ app.whenReady().then(() => {
     });
   });
   logWatcher.on('disconnected', (reason: string) => {
+    // Carry the platform gate on pushes too (CGUI-93): `stop()` emits
+    // 'stopped' during a retry on a non-win32 host, and without this the
+    // renderer read that as an offline/error state rather than "n/a".
     sendToRenderer('logWatcher:connectionStatus', {
       connected: false,
       path: null,
       reason,
+      unsupported: getLogPathStatus().source === 'unsupported-platform',
     });
   });
   logWatcher.start();

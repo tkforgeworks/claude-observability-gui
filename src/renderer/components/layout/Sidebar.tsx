@@ -128,6 +128,9 @@ export default function Sidebar(): React.JSX.Element {
   useEffect(() => {
     return window.api.onLogWatcherConnection((status) => {
       setWatcherConnected(status.connected);
+      // Pushes carry the platform gate as well (CGUI-93) — an override that
+      // was watching and then got removed must fall back to "n/a", not "offline"
+      if (status.unsupported !== undefined) setWatcherUnsupported(status.unsupported);
     });
   }, []);
 
