@@ -475,6 +475,9 @@ export interface ElectronApi {
     getVersion(): Promise<string>;
     /** `process.platform` of the main process — for platform-conditional UI copy (CGUI-77). */
     getPlatform(): Promise<NodeJS.Platform>;
+    /** False in a dev run — the sidebar marks those so a dev window and the
+     *  installed one are distinguishable when both are open (CGUI-73). */
+    isPackaged(): Promise<boolean>;
   };
   windowControls: {
     minimize(): void;

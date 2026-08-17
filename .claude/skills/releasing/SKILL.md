@@ -23,4 +23,6 @@ The `release-notes` job consumes the reusable workflow `tkforgeworks/.github/.gi
 
 ## Cadence
 
+**Version on a release branch:** `package.json` stays at the **last shipped stable** until an RC is actually cut — don't hand-bump it. Any version matching `(rc|alpha|beta)` pushed to a `v*/main` branch is a *release trigger* (`check-release` will build and publish a prerelease), and a hand-set stable like `1.2.1` makes `rc-tag.js` derive its next base from *that* (so `rc:patch` would jump to `1.2.2-rc.1`). Consequence: dev builds report the last shipped version until the first RC, since the sidebar reads `app.getVersion()` (CGUI-73 marks them `-dev`).
+
 On the release branch, `npm run rc:patch|minor|major` bumps to the next `-rc.N` (commit + push, no tag, refuses to run on `main`) and the push cuts a GitHub prerelease. `npm run release:final` promotes the RC to its stable version and opens the PR into `main`; merging it cuts the stable release. `npm run release:patch|minor|major` is the direct no-RC path (creates a `release/vX.Y.Z` branch + PR when run from `main`). Never run `npm version` + `git push --tags` manually — direct pushes to `main` are rejected by the ruleset and tags are CI-created.
