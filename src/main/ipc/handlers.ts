@@ -63,7 +63,7 @@ import {
 import { getDatabasePath } from '../db/database';
 import { exportAllData, importAllData } from '../services/dataExportImport';
 import { getLogPathStatus } from '../services/logPathDiscovery';
-import { getCoworkAvailability } from '../services/coworkAvailability';
+import { getCoworkAvailability, invalidateCoworkOverrideCache } from '../services/coworkAvailability';
 import { applyLaunchOnStartup } from '../services/launchOnStartup';
 import { ChatExportImporter } from '../importers/chatExportImporter';
 import fs from 'fs';
@@ -287,6 +287,9 @@ export function registerIpcHandlers(db: Database.Database): void {
     const merged = updateSettings(partial);
     if (Object.prototype.hasOwnProperty.call(partial, 'launchOnStartup')) {
       applyLaunchOnStartup(merged.launchOnStartup);
+    }
+    if (Object.prototype.hasOwnProperty.call(partial, 'logFilePath')) {
+      invalidateCoworkOverrideCache();
     }
     return merged;
   });

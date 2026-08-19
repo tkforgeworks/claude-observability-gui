@@ -16,7 +16,12 @@ jest.mock('../db/queries', () => ({
 
 import { loadSettings } from '../config/configStore';
 import { queryHasCoworkData } from '../db/queries';
-import { deriveCoworkAvailability, getCoworkAvailability } from '../services/coworkAvailability';
+import {
+  deriveCoworkAvailability,
+  getCoworkAvailability,
+  invalidateCoworkOverrideCache,
+  isCoworkLiveCapable,
+} from '../services/coworkAvailability';
 
 const mockLoadSettings = loadSettings as jest.Mock;
 const mockHasData = queryHasCoworkData as jest.Mock;
@@ -29,6 +34,7 @@ function setPlatform(platform: NodeJS.Platform): void {
 
 afterEach(() => {
   Object.defineProperty(process, 'platform', realPlatform);
+  invalidateCoworkOverrideCache();
   jest.clearAllMocks();
 });
 
@@ -117,5 +123,31 @@ describe('getCoworkAvailability input gathering', () => {
       overrideActive: false,
       hasHistoricalData: false,
     });
+  });
+});
+
+// CGUI-93: the tray refresh asks per LogWatcher event, so the hot-path answer
+// must not re-read settings.json (or touch the DB) every time.
+describe('isCoworkLiveCapable', () => {
+  it('decides by platform alone on win32 without reading settings', () => {
+    setPlatform('win32');
+    expect(isCoworkLiveCapable()).toBe(true);
+    expect(mockLoadSettings).not.toHaveBeenCalled();
+    expect(mockHasData).not.toHaveBeenCalled();
+  });
+
+  it('reads the override once on Linux and caches it until invalidated', () => {
+    setPlatform('linux');
+    mockLoadSettings.mockReturnValue({ logFilePath: null });
+    expect(isCoworkLiveCapable()).toBe(false);
+    expect(isCoworkLiveCapable()).toBe(false);
+    expect(mockLoadSettings).toHaveBeenCalledTimes(1);
+
+    mockLoadSettings.mockReturnValue({ logFilePath: '/var/log/claude/main.log' });
+    expect(isCoworkLiveCapable()).toBe(false); // still cached
+    invalidateCoworkOverrideCache();
+    expect(isCoworkLiveCapable()).toBe(true);
+    expect(mockLoadSettings).toHaveBeenCalledTimes(2);
+    expect(mockHasData).not.toHaveBeenCalled();
   });
 });

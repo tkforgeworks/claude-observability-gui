@@ -290,7 +290,7 @@ function LogPathSection(): React.JSX.Element {
         ) : (
           <span style={{ ...pathValueStyles, color: 'var(--text-tertiary)', fontStyle: 'italic' }}>
             {unsupported
-              ? 'Claude Desktop integration is Windows-only. Set a logFilePath override in settings.json to track a log file manually.'
+              ? 'Claude Desktop integration is Windows-only. To track a log file manually, set a logFilePath override in settings.json and restart the app.'
               : 'Claude Desktop not detected — install it or set a path override in settings.json'}
           </span>
         )}
@@ -349,8 +349,12 @@ function LaunchOnStartupSection(): React.JSX.Element {
       {platform === 'linux' && (
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, fontFamily: '"Poppins", sans-serif' }}>
           Sign-in launches start in the system tray instead of opening a
-          window (if no usable tray is available, the window opens normally).
-          Applies to the installed app, not dev builds.
+          window, so a tray host must be running (on GNOME, an AppIndicator
+          extension) — the app can tell when its tray icon failed to load and
+          opens the window instead, but not when the desktop simply has
+          nowhere to show it. If a launch seems to vanish, open the app again
+          from the app menu: it brings the running window back. Applies to
+          the installed app, not dev builds.
         </p>
       )}
       <SettingError message={error} />
@@ -401,8 +405,10 @@ function WindowBehaviorSection(): React.JSX.Element {
       {platform === 'linux' && (
         <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginTop: 6, fontFamily: '"Poppins", sans-serif' }}>
           Needs a working system tray (on GNOME, an AppIndicator extension).
-          If no usable tray is available, closing the window quits the app
-          regardless of this setting, so it can't get stranded in the background.
+          If the tray icon fails to load, closing the window quits the app
+          regardless of this setting — but the app can't detect a desktop with
+          no tray host at all, so leave this off unless you can see the icon.
+          If a window ever goes missing, launching the app again brings it back.
         </p>
       )}
       <SettingError message={error} />

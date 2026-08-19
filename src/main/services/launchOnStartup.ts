@@ -19,9 +19,34 @@ import path from 'path';
 /** Keep in sync with packaging identity — changes at the CGUI-54 rebrand. */
 const AUTOSTART_FILE = 'claude-usage-monitor.desktop';
 
+/**
+ * Marker key stamped into every entry this module writes (CGUI-93). The
+ * filename collides with what GNOME Tweaks / any XDG "Startup Applications"
+ * tool produces when a user autostarts the installed app themselves, so
+ * `applyLaunchOnStartup(false)` — which runs on every launch with the
+ * default setting — must only ever remove entries that carry this key.
+ */
+export const MANAGED_KEY = 'X-ClaudeUsageMonitor-Managed';
+
 export function autostartFilePath(): string {
   // app.getPath('appData') on Linux is $XDG_CONFIG_HOME or ~/.config
   return path.join(app.getPath('appData'), 'autostart', AUTOSTART_FILE);
+}
+
+/**
+ * Quotes a path as a single Desktop Entry `Exec` argument (CGUI-93).
+ *
+ * Two escaping layers per the freedesktop Desktop Entry spec: inside a
+ * double-quoted argument `"`, `` ` ``, `$` and `\` are backslash-escaped, and
+ * the whole value is then a desktop-file string in which `\` itself is
+ * written `\\` — so a literal backslash ends up as four. `%` introduces a
+ * field code anywhere in Exec and is written `%%`. AppImages live wherever
+ * the user saved them, so paths like `~/Apps/100%/` are reachable.
+ */
+export function quoteExecArg(value: string): string {
+  const quoted = value.replace(/[\\"`$]/g, (c) => '\\' + c);
+  const fileLevel = quoted.replace(/\\/g, '\\\\');
+  return '"' + fileLevel.replace(/%/g, '%%') + '"';
 }
 
 export function buildAutostartEntry(): string {
@@ -33,10 +58,20 @@ export function buildAutostartEntry(): string {
     'Type=Application',
     'Name=Claude Usage Monitor',
     'Comment=Claude AI usage tracking desktop application',
-    `Exec="${exec}" --hidden`,
+    `Exec=${quoteExecArg(exec)} --hidden`,
     'X-GNOME-Autostart-enabled=true',
+    `${MANAGED_KEY}=true`,
     '',
   ].join('\n');
+}
+
+/** True when the entry at `file` was written by this module (carries MANAGED_KEY). */
+export function isManagedEntry(file: string): boolean {
+  try {
+    return fs.readFileSync(file, 'utf-8').includes(`${MANAGED_KEY}=true`);
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -53,7 +88,10 @@ export function applyLaunchOnStartup(enabled: boolean): void {
       if (enabled) {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, buildAutostartEntry());
-      } else {
+      } else if (isManagedEntry(file)) {
+        // A same-named entry the user created themselves (GNOME Tweaks copies
+        // the installed .desktop under this exact filename) is not ours to
+        // delete — leave it and let the OS keep autostarting the app.
         fs.rmSync(file, { force: true });
       }
     } catch (err) {

@@ -29,9 +29,11 @@ jest.mock('electron', () => ({
 }));
 
 import {
+  MANAGED_KEY,
   applyLaunchOnStartup,
   autostartFilePath,
   buildAutostartEntry,
+  quoteExecArg,
 } from '../services/launchOnStartup';
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
@@ -88,6 +90,41 @@ describe('applyLaunchOnStartup on Linux', () => {
     process.env.APPIMAGE = '/home/user/Apps/claude-usage-monitor.AppImage';
     expect(buildAutostartEntry()).toContain(
       'Exec="/home/user/Apps/claude-usage-monitor.AppImage" --hidden'
+    );
+  });
+
+  // CGUI-93: the default setting is false and applyLaunchOnStartup runs on
+  // every launch, so removal must never touch an entry we didn't write.
+  it('stamps the entry it writes with the managed marker', () => {
+    applyLaunchOnStartup(true);
+    expect(fs.readFileSync(autostartFilePath(), 'utf-8')).toContain(`${MANAGED_KEY}=true`);
+  });
+
+  it('leaves a user-authored entry of the same name alone when disabled', () => {
+    const file = autostartFilePath();
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const foreign = '[Desktop Entry]\nType=Application\nName=Claude Usage Monitor\nExec=claude-usage-monitor\n';
+    fs.writeFileSync(file, foreign);
+
+    applyLaunchOnStartup(false);
+
+    expect(fs.existsSync(file)).toBe(true);
+    expect(fs.readFileSync(file, 'utf-8')).toBe(foreign);
+  });
+
+  it('Desktop-Entry-escapes hostile characters in the Exec path', () => {
+    process.env.APPIMAGE = '/home/u/Apps/100%/we"ird$ `dir\\x/claude-usage-monitor.AppImage';
+    const line = buildAutostartEntry().split('\n').find(l => l.startsWith('Exec='));
+    // % doubled; " $ ` backslash-escaped at the quoting layer, and every
+    // backslash doubled again at the desktop-file string layer.
+    expect(line).toBe(
+      'Exec="/home/u/Apps/100%%/we\\\\"ird\\\\$ \\\\`dir\\\\\\\\x/claude-usage-monitor.AppImage" --hidden'
+    );
+  });
+
+  it('leaves an ordinary path untouched apart from the quotes', () => {
+    expect(quoteExecArg('/opt/Claude Usage Monitor/claude-usage-monitor')).toBe(
+      '"/opt/Claude Usage Monitor/claude-usage-monitor"'
     );
   });
 });
