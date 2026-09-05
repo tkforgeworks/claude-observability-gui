@@ -1029,15 +1029,20 @@ export function queryUsagePatterns(
   const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
-  // All session timestamps and costs within range
+  // All session timestamps and costs within range. `day` is the LOCAL
+  // calendar day (CGUI-110): the streak/active-day scaffold below is keyed on
+  // localDateStr(), so the active set must be too — a UTC slice of started_at
+  // put evening sessions on the next day and broke streaks on days that had
+  // activity (the CGUI-52 bug class).
   const sessions = db.prepare<[string, string, string, string], {
     started_at: string;
+    day: string;
     cost: number;
   }>(`
-    SELECT started_at, COALESCE(cost_usd, 0) as cost FROM code_sessions
+    SELECT started_at, DATE(started_at, 'localtime') as day, COALESCE(cost_usd, 0) as cost FROM code_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
     UNION ALL
-    SELECT started_at, 0 as cost FROM cowork_sessions
+    SELECT started_at, DATE(started_at, 'localtime') as day, 0 as cost FROM cowork_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
   `).all(today, today, today, today);
 
@@ -1053,7 +1058,7 @@ export function queryUsagePatterns(
     const d = new Date(s.started_at);
     hourly[d.getHours()]++;
     daily[d.getDay()]++;
-    activeDateSet.add(s.started_at.slice(0, 10));
+    activeDateSet.add(s.day);
     totalCost += s.cost;
   }
 
