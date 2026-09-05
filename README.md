@@ -61,7 +61,7 @@ Aggregates metrics across both Claude Code and Cowork sessions, grouped by proje
 - Summary stat cards with cross-project totals
 - Time range filter (7d / 30d / 90d / 1y / All)
 
-Projects are matched by filesystem path (case-insensitive on Windows), so Code and Cowork sessions for the same project directory are rolled up together automatically.
+Projects are matched by filesystem path, so Code and Cowork sessions for the same project directory are rolled up together automatically. Case sensitivity follows the path's origin: Windows-style paths match case-insensitively, Linux paths match exactly (case-distinct directories stay separate projects).
 
 ### Chat History (claude.ai Export)
 

@@ -1277,9 +1277,23 @@ export function queryChatProjectHeatmap(
 // ---------------------------------------------------------------------------
 
 /**
+ * Project-key expression (CGUI-89): the key decides which sessions roll up
+ * into one project row. Case semantics follow the *path's* origin, not the
+ * host platform, because a DB can hold both (CGUI-49 bundles imported from a
+ * Windows machine carry `C:\...` paths): POSIX absolute paths (leading `/`)
+ * key exactly, so case-distinct Linux directories stay distinct projects;
+ * anything else (drive-letter, UNC) is case-folded as before, since Windows
+ * filesystems are case-insensitive.
+ */
+export function projectKeySql(col: string): string {
+  return `CASE WHEN ${col} LIKE '/%' THEN ${col} ELSE LOWER(${col}) END`;
+}
+
+/**
  * Returns per-project aggregates combining code_sessions and cowork_sessions
- * by project_path (case-insensitive on Windows). Includes cost, token totals,
- * session counts, date range, active days, and model breakdown.
+ * by project_path (case-insensitive for Windows-style paths, exact for POSIX
+ * paths — see projectKeySql). Includes cost, token totals, session counts,
+ * date range, active days, and model breakdown.
  */
 export function queryProjectAggregates(
   db: Database.Database,
@@ -1288,7 +1302,7 @@ export function queryProjectAggregates(
   const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
-  // Code session aggregates per project_path (lowercased for Windows)
+  // Code session aggregates per project key (see projectKeySql)
   const codeRows = db.prepare<[string, string], {
     project_key: string;
     project_path: string;
@@ -1302,7 +1316,7 @@ export function queryProjectAggregates(
     last_active: string;
     active_days: number;
   }>(`
-    SELECT LOWER(project_path) AS project_key,
+    SELECT ${projectKeySql('project_path')} AS project_key,
            project_path,
            SUM(COALESCE(cost_usd, 0)) AS total_cost,
            SUM(COALESCE(input_tokens, 0)) AS input_tokens,
@@ -1320,16 +1334,18 @@ export function queryProjectAggregates(
     GROUP BY project_key
   `).all(today, today);
 
-  // Cowork session aggregates per project_path (lowercased)
+  // Cowork session aggregates per project key (see projectKeySql)
   const coworkRows = db.prepare<[string, string], {
     project_key: string;
+    project_path: string;
     session_count: number;
     turn_count: number;
     first_seen: string;
     last_active: string;
     active_days: number;
   }>(`
-    SELECT LOWER(cs.project_path) AS project_key,
+    SELECT ${projectKeySql('cs.project_path')} AS project_key,
+           cs.project_path AS project_path,
            COUNT(DISTINCT cs.session_id) AS session_count,
            COUNT(ct.id) AS turn_count,
            MIN(cs.started_at) AS first_seen,
@@ -1349,7 +1365,7 @@ export function queryProjectAggregates(
     model: string;
     cnt: number;
   }>(`
-    SELECT LOWER(project_path) AS project_key,
+    SELECT ${projectKeySql('project_path')} AS project_key,
            COALESCE(model, 'unknown') AS model,
            COUNT(*) AS cnt
     FROM code_sessions
@@ -1377,7 +1393,7 @@ export function queryProjectAggregates(
     const code = codeMap.get(key);
     const cowork = coworkMap.get(key);
 
-    const projectPath = code?.project_path ?? cowork?.project_key ?? key;
+    const projectPath = code?.project_path ?? cowork?.project_path ?? key;
     const firstSeen = [code?.first_seen, cowork?.first_seen].filter(Boolean).sort()[0] ?? '';
     const lastActive = [code?.last_active, cowork?.last_active].filter(Boolean).sort().reverse()[0] ?? '';
 
