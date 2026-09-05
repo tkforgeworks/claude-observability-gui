@@ -16,8 +16,8 @@ import { app } from 'electron';
 import fs from 'fs';
 import path from 'path';
 
-/** Keep in sync with packaging identity — changes at the CGUI-54 rebrand. */
-const AUTOSTART_FILE = 'claude-usage-monitor.desktop';
+/** Keep in sync with packaging identity (renamed at the CGUI-54 rebrand). */
+const AUTOSTART_FILE = 'tkforgeworks-cog.desktop';
 
 /**
  * Marker key stamped into every entry this module writes (CGUI-93). The
@@ -25,6 +25,10 @@ const AUTOSTART_FILE = 'claude-usage-monitor.desktop';
  * tool produces when a user autostarts the installed app themselves, so
  * `applyLaunchOnStartup(false)` — which runs on every launch with the
  * default setting — must only ever remove entries that carry this key.
+ *
+ * Deliberately kept at its historical value through the CGUI-54 rebrand:
+ * legacyMigration uses it to recognise (and clean up) pre-rebrand entries
+ * this module wrote under the old filename.
  */
 export const MANAGED_KEY = 'X-ClaudeUsageMonitor-Managed';
 
@@ -56,8 +60,8 @@ export function buildAutostartEntry(): string {
   return [
     '[Desktop Entry]',
     'Type=Application',
-    'Name=Claude Usage Monitor',
-    'Comment=Claude AI usage tracking desktop application',
+    'Name=COG',
+    'Comment=COG (Claude Observability GUI) - Claude AI usage tracking desktop application',
     `Exec=${quoteExecArg(exec)} --hidden`,
     'X-GNOME-Autostart-enabled=true',
     `${MANAGED_KEY}=true`,

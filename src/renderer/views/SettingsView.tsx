@@ -343,7 +343,7 @@ function LaunchOnStartupSection(): React.JSX.Element {
             onChange={handleToggle}
             style={{ accentColor: 'var(--purple-primary)' }}
           />
-          Launch Claude Usage Monitor when I sign in
+          Launch COG when I sign in
         </label>
       )}
       {platform === 'linux' && (

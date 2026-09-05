@@ -17,6 +17,7 @@ import {
   filterPortableSettings,
   validateManifest,
   EXPORT_FORMAT,
+  COG_EXPORT_FORMAT,
   LATEST_SCHEMA_VERSION,
   PORTABLE_SETTINGS_KEYS,
 } from '../services/dataExportImport';
@@ -250,6 +251,11 @@ describe('validateManifest', () => {
 
   test('accepts a current-version bundle', () => {
     expect(validateManifest(valid)).toEqual({ ok: true, manifest: valid });
+  });
+
+  it('accepts the post-rebrand COG format identifier (CGUI-54)', () => {
+    const cog = { ...valid, format: COG_EXPORT_FORMAT };
+    expect(validateManifest(cog).ok).toBe(true);
   });
 
   test('accepts an older-schema bundle', () => {

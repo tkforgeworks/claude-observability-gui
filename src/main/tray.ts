@@ -48,7 +48,7 @@ export function createTray(mainWindow: BrowserWindow): Tray {
   }
 
   tray = new Tray(icon);
-  tray.setToolTip('Claude Usage Monitor');
+  tray.setToolTip('COG');
 
   updateTrayMenu(mainWindow);
 

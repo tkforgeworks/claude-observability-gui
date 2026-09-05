@@ -1,7 +1,7 @@
 {
-  "name": "claude-usage-monitor",
+  "name": "tkforgeworks-cog",
   "version": "2.0.0-rc.1",
-  "description": "Claude AI usage tracking desktop application",
+  "description": "COG (Claude Observability GUI) - Claude AI usage tracking desktop application",
   "main": "dist/main/main/main.js",
   "scripts": {
     "start": "electron .",
@@ -68,8 +68,8 @@
     "webpack-dev-server": "^5.1.0"
   },
   "build": {
-    "appId": "com.tkforgeworks.claude-usage-monitor",
-    "productName": "Claude Usage Monitor",
+    "appId": "com.tkforgeworks.cog",
+    "productName": "COG",
     "directories": {
       "output": "release"
     },
@@ -107,12 +107,13 @@
       "icon": "assets/icon.png",
       "category": "Utility",
       "artifactName": "${name}-${version}.${ext}",
-      "synopsis": "Claude AI usage tracking desktop application",
+      "synopsis": "COG (Claude Observability GUI) - Claude AI usage tracking desktop application",
       "desktop": {
         "entry": {
-          "StartupWMClass": "claude-usage-monitor"
+          "StartupWMClass": "tkforgeworks-cog"
         }
-      }
+      },
+      "executableName": "tkforgeworks-cog"
     },
     "nsis": {
       "oneClick": false,
@@ -120,7 +121,7 @@
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "Claude Usage Monitor",
+      "shortcutName": "COG",
       "deleteAppDataOnUninstall": false
     },
     "extraResources": [
@@ -128,6 +129,13 @@
         "from": "assets",
         "to": "assets"
       }
-    ]
+    ],
+    "deb": {
+      "packageName": "tkforgeworks-cog",
+      "fpm": [
+        "--conflicts=claude-usage-monitor",
+        "--replaces=claude-usage-monitor"
+      ]
+    }
   }
 }

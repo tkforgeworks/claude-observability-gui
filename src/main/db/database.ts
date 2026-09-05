@@ -5,14 +5,16 @@ import BetterSqlite3 from 'better-sqlite3';
 import type Database from 'better-sqlite3';
 import { runMigrations } from './migrations';
 
-const DB_DIR_NAME = 'ClaudeUsageMonitor';
+// Renamed from 'ClaudeUsageMonitor' at the CGUI-54 rebrand; legacyMigration
+// copies old data across. Keep in sync with CONFIG_DIR_NAME in configStore.ts.
+const DB_DIR_NAME = 'COG';
 const DB_FILE_NAME = 'usage.db';
 
 let _db: Database.Database | null = null;
 
 /**
  * Returns the path where the database will be stored.
- * Uses Electron's userData directory (%APPDATA%\ClaudeUsageMonitor\usage.db).
+ * Uses Electron's userData directory (%APPDATA%\tkforgeworks-cog\COG\usage.db).
  * @see §3 of architecture doc
  */
 export function getDatabasePath(): string {
