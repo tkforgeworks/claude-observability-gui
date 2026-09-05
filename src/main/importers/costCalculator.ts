@@ -52,6 +52,23 @@ export function calculateCost(model: string, tokens: TokenCounts): CostResult {
 }
 
 /**
+ * Estimated USD saved by serving `cacheReadTokens` from the prompt cache
+ * instead of as fresh input: tokens × (inputRate − cacheReadRate).
+ *
+ * Returns null for an unrecognised model (CGUI-109) — callers must treat
+ * that as zero savings, never fall back to another model's rate. Logs the
+ * same way calculateCost does so unknown models surface in one place.
+ */
+export function calculateCacheSavings(model: string, cacheReadTokens: number): number | null {
+  const pricing = getPricing(model);
+  if (!pricing) {
+    console.warn(`[costCalculator] Unrecognised model: ${model}`);
+    return null;
+  }
+  return (cacheReadTokens / 1_000_000) * (pricing.inputPerMillion - pricing.cacheReadPerMillion);
+}
+
+/**
  * Recalculates cost_usd for a set of existing session records.
  * Used by the "Recalculate costs" action in Settings > Data.
  */

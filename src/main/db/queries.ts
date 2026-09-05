@@ -34,6 +34,7 @@ import type {
   ProjectAggregate,
 } from '../../shared/ipc-types';
 import { getDatabasePath } from './database';
+import { calculateCacheSavings } from '../importers/costCalculator';
 import * as fs from 'fs';
 
 /**
@@ -647,29 +648,32 @@ export function queryCacheEfficiency(
                ELSE 0 END DESC
   `).all(today, today);
 
-  // Per-session savings: cache_read_tokens * (inputRate - cacheReadRate) / 1M
-  // Grouped by project to avoid per-row iteration in JS.
+  // Savings = cache_read_tokens × (inputRate − cacheReadRate) per model.
+  // Rates come from PRICING_TABLE via calculateCacheSavings (CGUI-109) —
+  // the previous SQL CASE expression hardcoded three models and silently
+  // priced every other one (Fable 5.1's 0.025× cache reads included) at the
+  // Sonnet 4.6 rate. Grouping by (project, model) keeps the JS side to one
+  // multiply per distinct pair.
   const savingsRows = db.prepare<[string, string], {
     project_path: string | null;
-    savings: number | null;
+    model: string | null;
+    cache_read: number;
   }>(`
-    SELECT project_path,
-           SUM(
-             COALESCE(cache_read_tokens, 0) *
-             CASE model
-               WHEN 'claude-opus-4-6'           THEN (5.0 - 0.5)  / 1000000.0
-               WHEN 'claude-sonnet-4-6'         THEN (3.0 - 0.3)  / 1000000.0
-               WHEN 'claude-haiku-4-5-20251001' THEN (1.0 - 0.1)  / 1000000.0
-               ELSE (3.0 - 0.3) / 1000000.0
-             END
-           ) as savings
+    SELECT project_path, model,
+           SUM(COALESCE(cache_read_tokens, 0)) as cache_read
     FROM code_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
       AND DATE(started_at, 'localtime') <= DATE(?)
-    GROUP BY project_path
+    GROUP BY project_path, model
   `).all(today, today);
 
-  const savingsMap = new Map(savingsRows.map(r => [r.project_path, r.savings ?? 0]));
+  const savingsMap = new Map<string | null, number>();
+  for (const r of savingsRows) {
+    if (r.cache_read <= 0) continue;
+    // Unknown (or NULL) model → zero savings, never another model's rate.
+    const saved = r.model ? calculateCacheSavings(r.model, r.cache_read) : null;
+    savingsMap.set(r.project_path, (savingsMap.get(r.project_path) ?? 0) + (saved ?? 0));
+  }
 
   return rows.map(r => {
     const denominator = r.cache_read + r.input;
@@ -1025,15 +1029,20 @@ export function queryUsagePatterns(
   const today = localDateStr();
   const daysBack = `'-${days - 1} days'`;
 
-  // All session timestamps and costs within range
+  // All session timestamps and costs within range. `day` is the LOCAL
+  // calendar day (CGUI-110): the streak/active-day scaffold below is keyed on
+  // localDateStr(), so the active set must be too — a UTC slice of started_at
+  // put evening sessions on the next day and broke streaks on days that had
+  // activity (the CGUI-52 bug class).
   const sessions = db.prepare<[string, string, string, string], {
     started_at: string;
+    day: string;
     cost: number;
   }>(`
-    SELECT started_at, COALESCE(cost_usd, 0) as cost FROM code_sessions
+    SELECT started_at, DATE(started_at, 'localtime') as day, COALESCE(cost_usd, 0) as cost FROM code_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
     UNION ALL
-    SELECT started_at, 0 as cost FROM cowork_sessions
+    SELECT started_at, DATE(started_at, 'localtime') as day, 0 as cost FROM cowork_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack}) AND DATE(started_at, 'localtime') <= DATE(?)
   `).all(today, today, today, today);
 
@@ -1049,7 +1058,7 @@ export function queryUsagePatterns(
     const d = new Date(s.started_at);
     hourly[d.getHours()]++;
     daily[d.getDay()]++;
-    activeDateSet.add(s.started_at.slice(0, 10));
+    activeDateSet.add(s.day);
     totalCost += s.cost;
   }
 
@@ -1125,16 +1134,43 @@ export function queryUsagePatterns(
 /** Bookkeeping, not user data — never shown in the Settings row counts. */
 const INTERNAL_TABLES = new Set(['meta']);
 
-export function queryTableCounts(db: Database.Database): Record<string, number> {
-  // Discovered from the schema rather than hardcoded. The old fixed list
-  // silently omitted usage_snapshots, and every future table would have been
-  // invisible in the Data tab until someone remembered to add it here as
-  // well as to the renderer's label map (CGUI-70).
-  const tables = (db
+/**
+ * Every user-data table in the schema, discovered from sqlite_master rather
+ * than hardcoded. The old fixed lists silently omitted usage_snapshots and
+ * code_session_hours (CGUI-70 for the Data tab counts, CGUI-111 for Clear
+ * Database), and every future table would have been invisible/unclearable
+ * until someone remembered to add it by hand. Table names come from the
+ * schema, not user input, so interpolating them into SQL is safe.
+ */
+export function listDataTables(db: Database.Database): string[] {
+  return (db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
     .all() as { name: string }[])
     .map(r => r.name)
     .filter(name => !INTERNAL_TABLES.has(name));
+}
+
+/**
+ * Empties every user-data table (Settings → Data → Clear Database). The meta
+ * table (schema_version, watcher offsets) is left alone. Foreign-key checks
+ * are deferred to commit so the alphabetical sqlite_master order works
+ * regardless of parent/child relationships (cowork_sessions sorts before
+ * cowork_turns).
+ */
+export function clearAllData(db: Database.Database): string[] {
+  const tables = listDataTables(db);
+  db.transaction(() => {
+    // Only meaningful inside a transaction; resets automatically at commit.
+    db.pragma('defer_foreign_keys = ON');
+    for (const table of tables) {
+      db.exec(`DELETE FROM "${table}"`);
+    }
+  })();
+  return tables;
+}
+
+export function queryTableCounts(db: Database.Database): Record<string, number> {
+  const tables = listDataTables(db);
 
   const counts: Record<string, number> = {};
   for (const table of tables) {

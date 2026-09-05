@@ -17,7 +17,7 @@ import os from 'os';
 import path from 'path';
 import Database from 'better-sqlite3';
 import { runMigrations } from '../db/migrations';
-import { localDateStr, queryWeeklyActivity } from '../db/queries';
+import { localDateStr, queryWeeklyActivity, queryUsagePatterns } from '../db/queries';
 
 // Same Electron-ABI guard as dataExportImport.test.ts: the native binding
 // can't load under jest's node runtime after an electron-rebuild. CI installs
@@ -89,5 +89,66 @@ describeDb('queryWeeklyActivity local-day bucketing', () => {
     const week = queryWeeklyActivity(db);
     expect(week).toHaveLength(7);
     expect(week[6].date).toBe(localDateStr());
+  });
+});
+
+describeDb('queryUsagePatterns active days and streaks (CGUI-110)', () => {
+  let tmpDir: string;
+  let db: Database.Database;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cum-tz-'));
+    db = new Database(path.join(tmpDir, 'tz.db'));
+    runMigrations(db);
+  });
+
+  afterEach(() => {
+    db.close();
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  test('a 23:30 local session yesterday and a 09:00 session today form a 2-day streak', () => {
+    // 23:30 EDT yesterday is 03:30Z today — a UTC slice of started_at put
+    // both sessions on the same (UTC) day, yielding 1 active day and a
+    // 1-day streak while the local scaffold saw activity on two days.
+    const lateYesterday = new Date();
+    lateYesterday.setDate(lateYesterday.getDate() - 1);
+    lateYesterday.setHours(23, 30, 0, 0);
+    const morningToday = new Date();
+    morningToday.setHours(9, 0, 0, 0);
+
+    // Sanity: the fixture only discriminates when the late session's UTC
+    // date differs from its local date (true under the pinned TZ).
+    expect(lateYesterday.toISOString().slice(0, 10)).toBe(localDateStr(morningToday));
+
+    const insert = db.prepare(`
+      INSERT INTO code_sessions (session_id, project_path, model, cost_usd, started_at)
+      VALUES (?, '/home/u/proj', 'claude-opus-5', 1.0, ?)
+    `);
+    insert.run('late-yesterday', lateYesterday.toISOString());
+    insert.run('morning-today', morningToday.toISOString());
+
+    const patterns = queryUsagePatterns(db, 30);
+    expect(patterns.totalActiveDays).toBe(2);
+    expect(patterns.currentStreak).toBe(2);
+    expect(patterns.longestStreak).toBe(2);
+    expect(patterns.totalSessions).toBe(2);
+  });
+
+  test('cowork sessions are bucketed on the same local-day key', () => {
+    const lateYesterday = new Date();
+    lateYesterday.setDate(lateYesterday.getDate() - 1);
+    lateYesterday.setHours(23, 30, 0, 0);
+
+    db.prepare(`
+      INSERT INTO cowork_sessions (session_id, started_at) VALUES ('cw-1', ?)
+    `).run(lateYesterday.toISOString());
+
+    const patterns = queryUsagePatterns(db, 30);
+    expect(patterns.totalActiveDays).toBe(1);
+    // Yesterday active, today not: the current streak is 0 because it
+    // counts back from today — but longest must see yesterday's activity.
+    expect(patterns.longestStreak).toBe(1);
+    expect(patterns.currentStreak).toBe(0);
   });
 });

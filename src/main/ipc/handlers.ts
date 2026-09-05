@@ -38,6 +38,7 @@ import {
   queryUsagePatterns,
   queryProjectAggregates,
   queryTableCounts,
+  clearAllData,
   queryDatabaseStats,
   recalculateAllCosts,
   queryUnsyncedCounts,
@@ -80,15 +81,12 @@ export function registerIpcHandlers(db: Database.Database): void {
   // -------------------------------------------------------------------------
 
   ipcMain.handle('dev:clearDatabase', () => {
-    // Delete children before parents to respect FK constraints
-    const tables = ['cowork_turns', 'app_focus_events', 'cowork_sessions', 'code_sessions', 'app_sessions', 'chat_conversations', 'chat_projects', 'chat_memories'];
-    const clear = db.transaction(() => {
-      for (const table of tables) {
-        db.exec(`DELETE FROM ${table}`);
-      }
-    });
-    clear();
-    console.log('[ipc] dev:clearDatabase — all data tables cleared');
+    // Tables are discovered from the schema (CGUI-111) — the previous
+    // hand-written list predated usage_snapshots and code_session_hours, so
+    // a "cleared" database kept every snapshot and a full set of orphaned
+    // hourly rows, which the Data tab's discovered counts then displayed.
+    const tables = clearAllData(db);
+    console.log(`[ipc] dev:clearDatabase — cleared ${tables.length} tables: ${tables.join(', ')}`);
   });
 
   // -------------------------------------------------------------------------
