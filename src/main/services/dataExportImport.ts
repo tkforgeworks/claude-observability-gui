@@ -79,6 +79,7 @@ export const MERGE_SPECS: ReadonlyArray<{ table: string; dedupKeys: string[] | n
   { table: 'cowork_sessions', dedupKeys: null },
   { table: 'cowork_turns', dedupKeys: ['session_id', 'started_at'] },
   { table: 'code_sessions', dedupKeys: null },
+  { table: 'code_session_hours', dedupKeys: null },
   { table: 'chat_conversations', dedupKeys: null },
   { table: 'chat_projects', dedupKeys: null },
   { table: 'chat_memories', dedupKeys: null },

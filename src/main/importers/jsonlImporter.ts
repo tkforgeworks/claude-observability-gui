@@ -58,6 +58,22 @@ export interface AggregatedSession {
   cacheCreation1hTokens: number;
   startedAt: string | null;
   endedAt: string | null;
+  hours: SessionHourBucket[];
+}
+
+/**
+ * Hour-granular token aggregate within a session (CGUI-87). hourStart is the
+ * request timestamp floored to the UTC hour, so window/day-bucketed queries
+ * can attribute usage to when it actually happened instead of dumping a
+ * session's lifetime totals on one bucket.
+ */
+export interface SessionHourBucket {
+  hourStart: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheCreationTokens: number;
+  cacheReadTokens: number;
+  cacheCreation1hTokens: number;
 }
 
 /**
@@ -130,6 +146,27 @@ export class JsonlImporter {
       `SELECT id, input_tokens, output_tokens FROM code_sessions WHERE session_id = ?`
     );
 
+    // Hourly usage buckets (CGUI-87): replaced wholesale per session on every
+    // upsert, so a rescan repopulates them from the JSONL ground truth.
+    const deleteHours = this.db.prepare<[string], void>(
+      `DELETE FROM code_session_hours WHERE session_id = ?`
+    );
+    const insertHour = this.db.prepare(`
+      INSERT INTO code_session_hours (session_id, hour_start, input_tokens, output_tokens,
+        cache_creation_tokens, cache_read_tokens, cost_usd)
+      VALUES (@sessionId, @hourStart, @inputTokens, @outputTokens,
+        @cacheCreationTokens, @cacheReadTokens, @costUsd)
+    `);
+
+    const writeSession = this.db.transaction((
+      sessionParams: Record<string, unknown>,
+      hourParams: Record<string, unknown>[]
+    ) => {
+      upsert.run(sessionParams);
+      deleteHours.run(sessionParams.sessionId as string);
+      for (const h of hourParams) insertHour.run(h);
+    });
+
     for (const [sessionId, files] of sessionGroups) {
       try {
         // Parse main file
@@ -166,10 +203,35 @@ export class JsonlImporter {
           costUsd = costResult.modelRecognised ? costResult.costUsd : null;
         }
 
+        // Per-hour costs (CGUI-87): same pricing math per bucket — the cost
+        // formula is linear in tokens, so bucket costs sum to the session cost
+        const hourRows = session.hours.map(h => {
+          let hourCost: number | null = null;
+          if (session.model) {
+            const r = calculateCost(session.model, {
+              inputTokens: h.inputTokens,
+              outputTokens: h.outputTokens,
+              cacheCreationTokens: h.cacheCreationTokens,
+              cacheReadTokens: h.cacheReadTokens,
+              cacheCreation1hTokens: h.cacheCreation1hTokens,
+            });
+            hourCost = r.modelRecognised ? r.costUsd : null;
+          }
+          return {
+            sessionId: session.sessionId,
+            hourStart: h.hourStart,
+            inputTokens: h.inputTokens,
+            outputTokens: h.outputTokens,
+            cacheCreationTokens: h.cacheCreationTokens,
+            cacheReadTokens: h.cacheReadTokens,
+            costUsd: hourCost,
+          };
+        });
+
         // Check if already exists for counting new vs updated
         const existing = checkExists.get(sessionId);
 
-        upsert.run({
+        writeSession({
           sessionId: session.sessionId,
           projectPath: session.projectPath,
           model: session.model,
@@ -181,7 +243,7 @@ export class JsonlImporter {
           costUsd,
           startedAt: session.startedAt,
           endedAt: session.endedAt,
-        });
+        }, hourRows);
 
         if (existing) {
           if (existing.input_tokens !== session.inputTokens || existing.output_tokens !== session.outputTokens) {
@@ -436,6 +498,39 @@ export class JsonlImporter {
       return null;
     }
 
+    // Hourly buckets (CGUI-87): same final chunks, grouped by request
+    // timestamp floored to the UTC hour. A chunk without its own timestamp
+    // falls back to the session start so bucket totals still sum to the
+    // session totals.
+    const hourMap = new Map<string, SessionHourBucket>();
+    for (const rec of finalChunks) {
+      const ts = rec.timestamp ?? startedAt;
+      if (!ts) continue;
+      const d = new Date(ts);
+      if (isNaN(d.getTime())) continue;
+      d.setUTCMinutes(0, 0, 0);
+      const hourStart = d.toISOString();
+      let bucket = hourMap.get(hourStart);
+      if (!bucket) {
+        bucket = {
+          hourStart,
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheCreationTokens: 0,
+          cacheReadTokens: 0,
+          cacheCreation1hTokens: 0,
+        };
+        hourMap.set(hourStart, bucket);
+      }
+      const u = rec.message!.usage!;
+      bucket.inputTokens += u.input_tokens ?? 0;
+      bucket.outputTokens += u.output_tokens ?? 0;
+      bucket.cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
+      bucket.cacheReadTokens += u.cache_read_input_tokens ?? 0;
+      bucket.cacheCreation1hTokens += u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+    }
+    const hours = [...hourMap.values()].sort((a, b) => (a.hourStart < b.hourStart ? -1 : 1));
+
     return {
       sessionId,
       projectPath,
@@ -448,6 +543,7 @@ export class JsonlImporter {
       cacheCreation1hTokens,
       startedAt,
       endedAt,
+      hours,
     };
   }
 }

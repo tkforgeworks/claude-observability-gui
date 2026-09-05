@@ -206,6 +206,38 @@ export const MIGRATIONS: Migration[] = [
         AND CAST(strftime('%s', captured_at) AS INTEGER) > expires_at;
     `,
   },
+  {
+    version: 8,
+    sql: `
+      -- -----------------------------------------------------------------------
+      -- v8 (CGUI-87): Per-hour usage buckets for code sessions.
+      -- A code_sessions row spans a session's whole lifetime, so any
+      -- window/day-bucketed query summing cost_usd attributes a multi-day
+      -- session's entire cost to one bucket. This table holds hour-granular
+      -- token/cost aggregates derived from per-request JSONL timestamps at
+      -- import time; the importer replaces a session's rows on every upsert,
+      -- so a rescan (including the first one after this migration) populates
+      -- it for every session whose JSONL files still exist.
+      -- hour_start is UTC ISO — hour buckets aggregate to local days via
+      -- DATE(hour_start, 'localtime') and to rolling windows by comparison.
+      -- -----------------------------------------------------------------------
+
+      CREATE TABLE IF NOT EXISTS code_session_hours (
+        id                     INTEGER PRIMARY KEY AUTOINCREMENT,
+        session_id             TEXT NOT NULL,
+        hour_start             TEXT NOT NULL,
+        input_tokens           INTEGER DEFAULT 0,
+        output_tokens          INTEGER DEFAULT 0,
+        cache_creation_tokens  INTEGER DEFAULT 0,
+        cache_read_tokens      INTEGER DEFAULT 0,
+        cost_usd               REAL,
+        UNIQUE(session_id, hour_start)
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_code_session_hours_hour_start
+        ON code_session_hours (hour_start);
+    `,
+  },
 ];
 
 /**
