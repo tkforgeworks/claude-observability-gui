@@ -4,8 +4,11 @@ describe('PRICING_TABLE', () => {
   it('should contain entries for all expected models', () => {
     expect(Object.keys(PRICING_TABLE)).toEqual(
       expect.arrayContaining([
+        'claude-fable-5-1',
+        'claude-fable-5',
         'claude-opus-5',
         'claude-opus-4-6',
+        'claude-sonnet-5',
         'claude-sonnet-4-6',
         'claude-haiku-4-5-20251001',
       ])
@@ -29,6 +32,30 @@ describe('getPricing', () => {
       expect(pricing!.cacheWritePerMillion).toBe(3.75);
       expect(pricing!.cacheReadPerMillion).toBe(0.3);
       expect(pricing!.cacheWrite1hPerMillion).toBe(6.0);
+    });
+
+    // CGUI-56: $2/$10 launched as introductory pricing, but the scheduled
+    // 2026-09-01 increase to $3/$15 was cancelled — these ARE the standard
+    // rates, verified against the live pricing page on 2026-09-05.
+    it('should return standard (former introductory) pricing for claude-sonnet-5', () => {
+      const pricing = getPricing('claude-sonnet-5');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputPerMillion).toBe(2.0);
+      expect(pricing!.outputPerMillion).toBe(10.0);
+      expect(pricing!.cacheWritePerMillion).toBe(2.5);
+      expect(pricing!.cacheReadPerMillion).toBe(0.2);
+      expect(pricing!.cacheWrite1hPerMillion).toBe(4.0);
+    });
+
+    it('should return pricing for claude-fable-5-1 with the 0.025x cache-read rate', () => {
+      const pricing = getPricing('claude-fable-5-1');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputPerMillion).toBe(10.0);
+      expect(pricing!.outputPerMillion).toBe(50.0);
+      expect(pricing!.cacheWritePerMillion).toBe(12.5);
+      // Fable 5.1 cache reads are 0.025x input, not the standard 0.1x
+      expect(pricing!.cacheReadPerMillion).toBe(0.25);
+      expect(pricing!.cacheWrite1hPerMillion).toBe(20.0);
     });
 
     it('should return pricing for claude-opus-5', () => {
