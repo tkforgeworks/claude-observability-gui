@@ -93,12 +93,13 @@ export function queryCodeSessionsByProject(
  */
 export function queryTodaySummary(db: Database.Database): TodaySummary {
   // Rolling 24-hour window from now
-  const cutoff = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+  const cutoffDate = new Date(Date.now() - 24 * 60 * 60 * 1000);
+  const cutoff = cutoffDate.toISOString();
 
   // Code sessions active in the last 24h:
   // started in window, OR ended in window, OR still running (ended_at IS NULL) and started before now
-  const codeRow = db.prepare<[string, string], { cnt: number; total_cost: number | null }>(`
-    SELECT COUNT(*) as cnt, SUM(cost_usd) as total_cost
+  const codeRow = db.prepare<[string, string], { cnt: number }>(`
+    SELECT COUNT(*) as cnt
     FROM code_sessions
     WHERE started_at >= ?
        OR (ended_at IS NOT NULL AND ended_at >= ?)
@@ -106,7 +107,41 @@ export function queryTodaySummary(db: Database.Database): TodaySummary {
   `).get(cutoff, cutoff);
 
   const codeSessionCount = codeRow?.cnt ?? 0;
-  const codeCostUsd = codeRow?.total_cost ?? null;
+
+  // Cost in the window from hourly buckets (CGUI-87): a session row spans its
+  // whole lifetime, so summing cost_usd over "active in window" sessions
+  // attributed a multi-day session's entire cost to today. Buckets attribute
+  // usage to when it happened. The cutoff is floored to the hour so the
+  // boundary bucket counts in full (bounded overstatement of < 1 bucket-hour,
+  // vs. days of overstatement before).
+  const hourCutoffDate = new Date(cutoffDate);
+  hourCutoffDate.setUTCMinutes(0, 0, 0);
+  const hourCutoff = hourCutoffDate.toISOString();
+
+  const hourCostRow = db.prepare<[string], { total_cost: number | null }>(`
+    SELECT SUM(cost_usd) as total_cost
+    FROM code_session_hours
+    WHERE hour_start >= ?
+  `).get(hourCutoff);
+
+  // Legacy fallback: sessions with no hourly rows yet (imported before the
+  // CGUI-87 migration and not yet rescanned, or JSONL since deleted) keep the
+  // old whole-session attribution rather than vanishing. Self-heals on the
+  // next scan for any session whose JSONL still exists.
+  const legacyCostRow = db.prepare<[string, string], { total_cost: number | null }>(`
+    SELECT SUM(cost_usd) as total_cost
+    FROM code_sessions
+    WHERE session_id NOT IN (SELECT DISTINCT session_id FROM code_session_hours)
+      AND (started_at >= ?
+       OR (ended_at IS NOT NULL AND ended_at >= ?)
+       OR (ended_at IS NULL AND started_at IS NOT NULL))
+  `).get(cutoff, cutoff);
+
+  const hourCost = hourCostRow?.total_cost ?? null;
+  const legacyCost = legacyCostRow?.total_cost ?? null;
+  const codeCostUsd = hourCost == null && legacyCost == null
+    ? null
+    : (hourCost ?? 0) + (legacyCost ?? 0);
 
   // Cowork sessions active in the last 24h
   const coworkRow = db.prepare<[string, string], { cnt: number }>(`
@@ -726,33 +761,66 @@ export function queryDailyCosts(
   const today = localDateStr();
   const daysBack = `'-${totalDays - 1} days'`;
 
-  const rows = db.prepare<[string, string], {
+  // Session counts stay keyed by start day (a session "belongs" to the day it
+  // started); cost comes from hourly buckets (CGUI-87) so a multi-day session
+  // spreads its spend over the days it was actually used instead of dumping
+  // its lifetime total on the start day.
+  const countRows = db.prepare<[string, string], {
     date: string;
-    cost: number;
     cnt: number;
   }>(`
     SELECT DATE(started_at, 'localtime') as date,
-           SUM(COALESCE(cost_usd, 0)) as cost,
            COUNT(*) as cnt
     FROM code_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
       AND DATE(started_at, 'localtime') <= DATE(?)
     GROUP BY DATE(started_at, 'localtime')
-    ORDER BY date ASC
   `).all(today, today);
 
-  const dataMap = new Map(rows.map(r => [r.date, r]));
+  const hourCostRows = db.prepare<[string, string], {
+    date: string;
+    cost: number;
+  }>(`
+    SELECT DATE(hour_start, 'localtime') as date,
+           SUM(COALESCE(cost_usd, 0)) as cost
+    FROM code_session_hours
+    WHERE DATE(hour_start, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(hour_start, 'localtime') <= DATE(?)
+    GROUP BY DATE(hour_start, 'localtime')
+  `).all(today, today);
+
+  // Legacy fallback, same rationale as queryTodaySummary: sessions without
+  // hourly rows keep whole-cost-on-start-day attribution until a rescan
+  // provides better data.
+  const legacyCostRows = db.prepare<[string, string], {
+    date: string;
+    cost: number;
+  }>(`
+    SELECT DATE(started_at, 'localtime') as date,
+           SUM(COALESCE(cost_usd, 0)) as cost
+    FROM code_sessions
+    WHERE session_id NOT IN (SELECT DISTINCT session_id FROM code_session_hours)
+      AND DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
+      AND DATE(started_at, 'localtime') <= DATE(?)
+    GROUP BY DATE(started_at, 'localtime')
+  `).all(today, today);
+
+  const countMap = new Map(countRows.map(r => [r.date, r.cnt]));
+  const costMap = new Map<string, number>();
+  for (const r of [...hourCostRows, ...legacyCostRows]) {
+    costMap.set(r.date, (costMap.get(r.date) ?? 0) + r.cost);
+  }
 
   const result: DailyCostData[] = [];
   for (let i = totalDays - 1; i >= 0; i--) {
     const d = new Date();
     d.setDate(d.getDate() - i);
     const dateStr = localDateStr(d);
-    const row = dataMap.get(dateStr);
+    const cost = costMap.get(dateStr);
     result.push({
       date: dateStr,
-      costUsd: row ? Math.round(row.cost * 10000) / 10000 : 0,
-      sessionCount: row?.cnt ?? 0,
+      costUsd: cost != null ? Math.round(cost * 10000) / 10000 : 0,
+      sessionCount: countMap.get(dateStr) ?? 0,
     });
   }
   return result;

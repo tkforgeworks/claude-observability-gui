@@ -103,3 +103,62 @@ describe('aggregateSession model derivation (CGUI-58)', () => {
     expect(session?.model).toBe('claude-opus-5');
   });
 });
+
+describe('aggregateSession hourly bucketing (CGUI-87)', () => {
+  it('buckets final chunks by UTC hour and bucket totals sum to session totals', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        assistantRecord({ model: 'claude-opus-5', requestId: 'r1', timestamp: '2026-08-06T10:05:00.000Z', inputTokens: 100, outputTokens: 10 }),
+        assistantRecord({ model: 'claude-opus-5', requestId: 'r2', timestamp: '2026-08-06T10:59:59.999Z', inputTokens: 200, outputTokens: 20 }),
+        assistantRecord({ model: 'claude-opus-5', requestId: 'r3', timestamp: '2026-08-08T14:00:00.000Z', inputTokens: 400, outputTokens: 40 }),
+      ],
+      []
+    );
+    expect(session?.hours).toEqual([
+      expect.objectContaining({ hourStart: '2026-08-06T10:00:00.000Z', inputTokens: 300, outputTokens: 30 }),
+      expect.objectContaining({ hourStart: '2026-08-08T14:00:00.000Z', inputTokens: 400, outputTokens: 40 }),
+    ]);
+    const summedIn = session!.hours.reduce((s, h) => s + h.inputTokens, 0);
+    const summedOut = session!.hours.reduce((s, h) => s + h.outputTokens, 0);
+    expect(summedIn).toBe(session!.inputTokens);
+    expect(summedOut).toBe(session!.outputTokens);
+  });
+
+  it('attributes a chunk without its own timestamp to the session start hour', () => {
+    const noTs: JsonlRecord = {
+      type: 'assistant',
+      sessionId: 'session-1',
+      requestId: 'r-nots',
+      message: {
+        model: 'claude-opus-5',
+        stop_reason: 'end_turn',
+        usage: { input_tokens: 50, output_tokens: 5 },
+      },
+    };
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        assistantRecord({ model: 'claude-opus-5', requestId: 'r1', timestamp: '2026-08-06T10:05:00.000Z', inputTokens: 100, outputTokens: 10 }),
+        noTs,
+      ],
+      []
+    );
+    expect(session?.hours).toHaveLength(1);
+    expect(session?.hours[0]).toEqual(
+      expect.objectContaining({ hourStart: '2026-08-06T10:00:00.000Z', inputTokens: 150, outputTokens: 15 })
+    );
+  });
+
+  it('includes subagent usage in the hour it occurred', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [assistantRecord({ model: 'claude-opus-5', requestId: 'r1', timestamp: '2026-08-06T10:05:00.000Z', inputTokens: 100, outputTokens: 10 })],
+      [[assistantRecord({ model: 'claude-opus-5', requestId: 'r-sub', timestamp: '2026-08-06T11:10:00.000Z', inputTokens: 30, outputTokens: 3 })]]
+    );
+    expect(session?.hours.map(h => h.hourStart)).toEqual([
+      '2026-08-06T10:00:00.000Z',
+      '2026-08-06T11:00:00.000Z',
+    ]);
+  });
+});
