@@ -226,7 +226,10 @@ Each version gets a release branch (`vX.Y.Z/main`) cut from `main`. Release cand
 
 ## License
 
-MIT
+[Apache License 2.0](LICENSE), with exclusions listed in [NOTICE](NOTICE):
+
+- **Image assets are not covered by the Apache grant.** All raster and vector images in this repository (logos, wordmarks, app icons, illustrations, screenshots — `.svg`, `.png`, `.ico`, etc.) are Copyright Tim Klimpel (TK ForgeWorks), all rights reserved, unless a file or its directory states otherwise. Third-party assets keep their own licenses.
+- **No trademark license.** "TK ForgeWorks" and the forge/anvil mark identify the origin of this work; forks and derivatives must not present themselves as TK ForgeWorks products.
 
 ## Author
 
