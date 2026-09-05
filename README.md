@@ -22,7 +22,7 @@ Claude doesn't give you a single place to see how much you're spending, which pr
 
 1. Download the `.deb` (Debian/Ubuntu/Pop!_OS) or `.AppImage` (any distro) from the [Releases page](../../releases).
 2. Install with `sudo apt install ./claude-usage-monitor-<version>.deb`, or make the AppImage executable and run it directly. The deb upgrades in place when you install a newer version.
-3. Tray features need a StatusNotifier/AppIndicator host (GNOME needs the AppIndicator extension; Pop!_OS ships one).
+3. Tray features need a StatusNotifier/AppIndicator host with working menu support — this varies a lot across Linux desktops; see [System Tray](#system-tray).
 4. Launch from your desktop's app grid (or `gtk-launch claude-usage-monitor`). Running the binary directly in a terminal keeps it attached to that terminal — useful for watching logs, but closing the terminal kills the app.
 
 That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking (Windows only) starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
@@ -119,7 +119,17 @@ The export/import section bundles a consistent database snapshot, portable setti
 
 ### System Tray
 
-The app runs in the system tray with a context menu showing live session count and today's cost. On Windows, closing the window minimizes to tray by default; on Linux, closing quits the app unless you enable the tray option in Settings. The app falls back to quitting when its tray icon fails to load, but it cannot detect a desktop with no tray host at all (stock GNOME without an AppIndicator extension), so only enable the option once you can see the icon; if a window ever goes missing, launching the app again restores it. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
+The app runs in the system tray with a context menu showing live session count and today's cost. On Windows, closing the window minimizes to tray by default; on Linux, closing quits the app unless you enable the tray option in Settings.
+
+On Linux the tray depends on your desktop providing two things: a StatusNotifier host (renders the icon) and a working DBusMenu implementation (opens the menu). Support varies:
+
+- **KDE Plasma** — full support built in (icon, menu, tooltip).
+- **GNOME** — no tray host at all without an AppIndicator/KStatusNotifierItem extension.
+- **COSMIC (Pop!_OS 24.04)** — renders the icon but currently never opens the menu, and tooltips aren't shown (upstream applet limitation).
+- **sway** — works with the default swaybar; a custom bar without a tray module means no host, and the icon silently appears nowhere.
+- **Hyprland** — ships no tray; it depends entirely on your bar. Waybar's tray module has known gaps with Electron app menus. Quickshell supports the full tray + menu protocol, but only if your shell config actually implements a tray (wiring `SystemTray` items to a `QsMenuAnchor`/`QsMenuOpener`).
+
+The app falls back to quitting on close when its tray icon fails to load, but it cannot detect a desktop with no tray host at all — and a visible icon is not proof the menu works (see COSMIC and Waybar above). Only enable minimize-to-tray once you've confirmed clicking the icon opens the menu; if a window ever goes missing, launching the app again restores it. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
 
 ## Data sources
 
