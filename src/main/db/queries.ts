@@ -34,6 +34,7 @@ import type {
   ProjectAggregate,
 } from '../../shared/ipc-types';
 import { getDatabasePath } from './database';
+import { calculateCacheSavings } from '../importers/costCalculator';
 import * as fs from 'fs';
 
 /**
@@ -647,29 +648,32 @@ export function queryCacheEfficiency(
                ELSE 0 END DESC
   `).all(today, today);
 
-  // Per-session savings: cache_read_tokens * (inputRate - cacheReadRate) / 1M
-  // Grouped by project to avoid per-row iteration in JS.
+  // Savings = cache_read_tokens × (inputRate − cacheReadRate) per model.
+  // Rates come from PRICING_TABLE via calculateCacheSavings (CGUI-109) —
+  // the previous SQL CASE expression hardcoded three models and silently
+  // priced every other one (Fable 5.1's 0.025× cache reads included) at the
+  // Sonnet 4.6 rate. Grouping by (project, model) keeps the JS side to one
+  // multiply per distinct pair.
   const savingsRows = db.prepare<[string, string], {
     project_path: string | null;
-    savings: number | null;
+    model: string | null;
+    cache_read: number;
   }>(`
-    SELECT project_path,
-           SUM(
-             COALESCE(cache_read_tokens, 0) *
-             CASE model
-               WHEN 'claude-opus-4-6'           THEN (5.0 - 0.5)  / 1000000.0
-               WHEN 'claude-sonnet-4-6'         THEN (3.0 - 0.3)  / 1000000.0
-               WHEN 'claude-haiku-4-5-20251001' THEN (1.0 - 0.1)  / 1000000.0
-               ELSE (3.0 - 0.3) / 1000000.0
-             END
-           ) as savings
+    SELECT project_path, model,
+           SUM(COALESCE(cache_read_tokens, 0)) as cache_read
     FROM code_sessions
     WHERE DATE(started_at, 'localtime') >= DATE(?, ${daysBack})
       AND DATE(started_at, 'localtime') <= DATE(?)
-    GROUP BY project_path
+    GROUP BY project_path, model
   `).all(today, today);
 
-  const savingsMap = new Map(savingsRows.map(r => [r.project_path, r.savings ?? 0]));
+  const savingsMap = new Map<string | null, number>();
+  for (const r of savingsRows) {
+    if (r.cache_read <= 0) continue;
+    // Unknown (or NULL) model → zero savings, never another model's rate.
+    const saved = r.model ? calculateCacheSavings(r.model, r.cache_read) : null;
+    savingsMap.set(r.project_path, (savingsMap.get(r.project_path) ?? 0) + (saved ?? 0));
+  }
 
   return rows.map(r => {
     const denominator = r.cache_read + r.input;
