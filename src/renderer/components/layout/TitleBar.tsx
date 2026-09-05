@@ -345,7 +345,7 @@ export default function TitleBar(): React.JSX.Element {
           textOverflow: 'ellipsis',
         }}
       >
-        Claude Usage Monitor
+        COG
       </div>
 
       {/* Window controls */}

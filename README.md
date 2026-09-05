@@ -1,10 +1,10 @@
-# Claude Usage Monitor
+# COG — Claude Observability GUI
 
-A free, local-first desktop app that tracks your Claude AI usage across **Claude Code**, **Claude Desktop (Cowork)**, and **claude.ai chat exports**. All data stays on your machine in a local SQLite database — nothing is sent anywhere.
+**COG** (formerly *Claude Usage Monitor*) is a free, local-first desktop app that tracks your Claude AI usage across **Claude Code**, **Claude Desktop (Cowork)**, and **claude.ai chat exports**. All data stays on your machine in a local SQLite database — nothing is sent anywhere.
 
 Built with Electron, React, TypeScript, and better-sqlite3.
 
-> **Windows only for now.** Pre-built installers are available for 64-bit Windows. See [Platform Support](#platform-support) for details.
+> Pre-built packages are available for 64-bit Windows (NSIS installer) and Linux (deb + AppImage). See [Platform Support](#platform-support) for details.
 
 ## Why this exists
 
@@ -21,11 +21,13 @@ Claude doesn't give you a single place to see how much you're spending, which pr
 **Linux**
 
 1. Download the `.deb` (Debian/Ubuntu/Pop!_OS) or `.AppImage` (any distro) from the [Releases page](../../releases).
-2. Install with `sudo apt install ./claude-usage-monitor-<version>.deb`, or make the AppImage executable and run it directly. The deb upgrades in place when you install a newer version.
+2. Install with `sudo apt install ./tkforgeworks-cog-<version>.deb`, or make the AppImage executable and run it directly. The deb upgrades in place when you install a newer version, and upgrading from a pre-2.0 `claude-usage-monitor` deb removes the old package automatically (`Conflicts:`/`Replaces:`).
 3. Tray features need a StatusNotifier/AppIndicator host with working menu support — this varies a lot across Linux desktops; see [System Tray](#system-tray).
-4. Launch from your desktop's app grid (or `gtk-launch claude-usage-monitor`). Running the binary directly in a terminal keeps it attached to that terminal — useful for watching logs, but closing the terminal kills the app.
+4. Launch from your desktop's app grid (or `gtk-launch tkforgeworks-cog`). Running the binary directly in a terminal keeps it attached to that terminal — useful for watching logs, but closing the terminal kills the app.
 
 That's it. Claude Code session data is picked up from `~/.claude/projects/` within a few minutes. Cowork tracking (Windows only) starts as soon as Claude Desktop's `main.log` is found. Chat history requires a one-time manual import (see below).
+
+**Upgrading from 1.x (Claude Usage Monitor)?** Your database and settings are migrated automatically on COG's first launch — the old data directory is left in place as a backup. On Linux the deb replaces the old package. On Windows the renamed installer counts as a new product, so the old "Claude Usage Monitor" entry stays in Apps until you uninstall it yourself (uninstalling it does not touch your data).
 
 ## Features
 
@@ -140,7 +142,7 @@ The app falls back to quitting on close when its tray icon fails to load, but it
 | **claude.ai chat history** | Imports from a manually downloaded data export ZIP | No — one-time manual import per export |
 | **Subscription usage limits** | Polls the usage-limit files Claude Code writes during an active session | Yes — every 60s by default, while a session is running |
 
-All data is stored locally in a SQLite database (`%APPDATA%\claude-usage-monitor\ClaudeUsageMonitor\usage.db` on Windows, `~/.config/claude-usage-monitor/ClaudeUsageMonitor/usage.db` on Linux). Nothing leaves your machine.
+All data is stored locally in a SQLite database (`%APPDATA%\tkforgeworks-cog\COG\usage.db` on Windows, `~/.config/tkforgeworks-cog/COG/usage.db` on Linux). Nothing leaves your machine.
 
 Settings and dashboard layout live alongside it as `settings.json` and `dashboard.json`. Installing a new version never touches any of these, and uninstalling leaves them in place.
 

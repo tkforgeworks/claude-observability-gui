@@ -23,6 +23,7 @@ import { isCoworkLiveCapable } from './services/coworkAvailability';
 import { LogWatcher } from './services/logWatcher';
 import { UsageLimitWatcher } from './services/usageLimitWatcher';
 import { applyLaunchOnStartup } from './services/launchOnStartup';
+import { migrateLegacyUserData } from './services/legacyMigration';
 import { queryLatestUsageSnapshot } from './db/queries';
 
 let mainWindow: BrowserWindow | null = null;
@@ -44,7 +45,7 @@ function createMainWindow(): BrowserWindow {
     minWidth: 900,
     minHeight: 600,
     frame: false,
-    title: 'Claude Usage Monitor',
+    title: 'COG',
     icon: getAppIconPath(),
     webPreferences: {
       preload: path.join(__dirname, '../preload/preload.js'),
@@ -112,19 +113,25 @@ if (process.platform === 'win32') {
   // instead of the window icon. The packaged ID must match build.appId.
   app.setAppUserModelId(
     app.isPackaged
-      ? 'com.tkforgeworks.claude-usage-monitor'
-      : 'com.tkforgeworks.claude-usage-monitor.dev'
+      ? 'com.tkforgeworks.cog'
+      : 'com.tkforgeworks.cog.dev'
   );
 }
 
 // Dev/prod data isolation (CGUI-64): package.json has no top-level
 // productName, so dev and the installed build otherwise resolve the SAME
-// userData directory (%APPDATA%\claude-usage-monitor) and fight over the
+// userData directory (%APPDATA%\tkforgeworks-cog) and fight over the
 // Chromium cache profile and usage.db. Must run before anything consumes
 // userData (config files, database, window/session).
 if (!app.isPackaged) {
   app.setPath('userData', app.getPath('userData') + '-dev');
 }
+
+// One-time pre-rebrand data migration (CGUI-54): copies usage.db, settings
+// and dashboard config from the old claude-usage-monitor userData path into
+// the new one when missing there. Must run after the -dev override (so each
+// variant migrates its own data) and before the DB/config stores initialise.
+migrateLegacyUserData();
 
 // Single-instance lock (CGUI-63). Must come after the userData override —
 // the lock is scoped to the userData path, which is exactly what lets a dev

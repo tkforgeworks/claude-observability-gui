@@ -5,7 +5,9 @@ import type { AppSettings, DashboardConfig } from '../../shared/ipc-types';
 import { DEFAULT_SETTINGS } from './defaultSettings';
 import { DEFAULT_DASHBOARD } from './defaultDashboard';
 
-const CONFIG_DIR_NAME = 'ClaudeUsageMonitor';
+// Renamed from 'ClaudeUsageMonitor' at the CGUI-54 rebrand; legacyMigration
+// copies old data across. Keep in sync with DB_DIR_NAME in db/database.ts.
+const CONFIG_DIR_NAME = 'COG';
 const SETTINGS_FILE = 'settings.json';
 const DASHBOARD_FILE = 'dashboard.json';
 

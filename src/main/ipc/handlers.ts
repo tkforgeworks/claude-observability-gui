@@ -239,7 +239,7 @@ export function registerIpcHandlers(db: Database.Database): void {
     const now = new Date().toISOString().slice(0, 10);
     const result = await dialog.showSaveDialog({
       title: 'Export All Data',
-      defaultPath: `claude-usage-monitor-export-${now}.zip`,
+      defaultPath: `cog-export-${now}.zip`,
       filters: [{ name: 'Export Bundle', extensions: ['zip'] }],
     });
     if (result.canceled || !result.filePath) {

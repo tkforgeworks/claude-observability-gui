@@ -28,7 +28,14 @@ import {
   saveDashboard,
 } from '../config/configStore';
 
+// Written into every bundle manifest. Deliberately still the pre-rebrand
+// identifier (CGUI-54): a bundle exported by this version must import into a
+// 1.2.1 install, whose validator only accepts the old string. Flip the
+// written value to COG_EXPORT_FORMAT once pre-rebrand installs are gone.
 export const EXPORT_FORMAT = 'claude-usage-monitor-export';
+// Accepted on import alongside EXPORT_FORMAT, so bundles keep working
+// whichever identifier a future exporter writes.
+export const COG_EXPORT_FORMAT = 'tkforgeworks-cog-export';
 export const EXPORT_FORMAT_VERSION = 1;
 
 export const LATEST_SCHEMA_VERSION = MIGRATIONS[MIGRATIONS.length - 1].version;
@@ -95,8 +102,8 @@ export function validateManifest(
     return { ok: false, error: 'Bundle manifest is missing or malformed.' };
   }
   const m = manifest as Partial<ExportManifest>;
-  if (m.format !== EXPORT_FORMAT) {
-    return { ok: false, error: 'File is not a Claude Usage Monitor export bundle.' };
+  if (m.format !== EXPORT_FORMAT && m.format !== COG_EXPORT_FORMAT) {
+    return { ok: false, error: 'File is not a COG export bundle.' };
   }
   if (typeof m.schemaVersion !== 'number') {
     return { ok: false, error: 'Bundle manifest has no schema version.' };
@@ -246,7 +253,7 @@ export function importAllData(db: Database.Database, srcPath: string): DataImpor
   const manifestEntry = zip.getEntry(BUNDLE_MANIFEST_NAME);
   const dbEntry = zip.getEntry(BUNDLE_DB_NAME);
   if (!manifestEntry || !dbEntry) {
-    throw new Error('File is not a Claude Usage Monitor export bundle.');
+    throw new Error('File is not a COG export bundle.');
   }
 
   let manifestRaw: unknown;
