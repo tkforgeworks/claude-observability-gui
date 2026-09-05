@@ -1134,16 +1134,43 @@ export function queryUsagePatterns(
 /** Bookkeeping, not user data — never shown in the Settings row counts. */
 const INTERNAL_TABLES = new Set(['meta']);
 
-export function queryTableCounts(db: Database.Database): Record<string, number> {
-  // Discovered from the schema rather than hardcoded. The old fixed list
-  // silently omitted usage_snapshots, and every future table would have been
-  // invisible in the Data tab until someone remembered to add it here as
-  // well as to the renderer's label map (CGUI-70).
-  const tables = (db
+/**
+ * Every user-data table in the schema, discovered from sqlite_master rather
+ * than hardcoded. The old fixed lists silently omitted usage_snapshots and
+ * code_session_hours (CGUI-70 for the Data tab counts, CGUI-111 for Clear
+ * Database), and every future table would have been invisible/unclearable
+ * until someone remembered to add it by hand. Table names come from the
+ * schema, not user input, so interpolating them into SQL is safe.
+ */
+export function listDataTables(db: Database.Database): string[] {
+  return (db
     .prepare(`SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%' ORDER BY name`)
     .all() as { name: string }[])
     .map(r => r.name)
     .filter(name => !INTERNAL_TABLES.has(name));
+}
+
+/**
+ * Empties every user-data table (Settings → Data → Clear Database). The meta
+ * table (schema_version, watcher offsets) is left alone. Foreign-key checks
+ * are deferred to commit so the alphabetical sqlite_master order works
+ * regardless of parent/child relationships (cowork_sessions sorts before
+ * cowork_turns).
+ */
+export function clearAllData(db: Database.Database): string[] {
+  const tables = listDataTables(db);
+  db.transaction(() => {
+    // Only meaningful inside a transaction; resets automatically at commit.
+    db.pragma('defer_foreign_keys = ON');
+    for (const table of tables) {
+      db.exec(`DELETE FROM "${table}"`);
+    }
+  })();
+  return tables;
+}
+
+export function queryTableCounts(db: Database.Database): Record<string, number> {
+  const tables = listDataTables(db);
 
   const counts: Record<string, number> = {};
   for (const table of tables) {
