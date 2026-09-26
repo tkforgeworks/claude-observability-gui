@@ -16,4 +16,8 @@ module.exports = {
     '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.test.json' }],
   },
   moduleFileExtensions: ['ts', 'js', 'json'],
+  // Every worker runs its own ts-jest compiler; uncapped, a 20-core dev box
+  // spawned 19 of them, exhausted RAM + swap, and systemd-oomd killed the
+  // whole desktop session.
+  maxWorkers: '50%',
 };

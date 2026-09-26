@@ -24,6 +24,7 @@ import type {
   DateRange,
   AppSettings,
   CleanupWarning,
+  UnpricedModel,
   ConfigPaths,
   DashboardConfig,
   LogEvent,
@@ -164,6 +165,9 @@ const api: ElectronApi = {
     },
     getCleanupWarning(): Promise<CleanupWarning> {
       return ipcRenderer.invoke('codeSessions:getCleanupWarning');
+    },
+    getUnpricedModels(): Promise<UnpricedModel[]> {
+      return ipcRenderer.invoke('codeSessions:getUnpricedModels');
     },
   },
 

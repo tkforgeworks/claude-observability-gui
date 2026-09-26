@@ -41,6 +41,7 @@ import {
   clearAllData,
   queryDatabaseStats,
   recalculateAllCosts,
+  queryUnpricedModels,
   queryUnsyncedCounts,
   queryChatConversationCounts,
   queryChatStats,
@@ -108,6 +109,10 @@ export function registerIpcHandlers(db: Database.Database): void {
       return queryCodeSessionsByProject(db, project, range);
     }
   );
+
+  ipcMain.handle('codeSessions:getUnpricedModels', () => {
+    return queryUnpricedModels(db);
+  });
 
   ipcMain.handle('codeSessions:getCleanupWarning', (): CleanupWarning => {
     try {
@@ -503,6 +508,7 @@ export function unregisterIpcHandlers(): void {
     'codeSessions:getByDateRange',
     'codeSessions:getByProject',
     'codeSessions:getCleanupWarning',
+    'codeSessions:getUnpricedModels',
     'coworkSessions:getSummaryToday',
     'coworkSessions:getTimeline',
     'coworkSessions:getAll',

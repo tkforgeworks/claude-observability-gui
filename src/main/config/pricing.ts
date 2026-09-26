@@ -6,9 +6,10 @@
  * All rates are USD per million tokens.
  * Divide by 1,000,000 to get per-token rate for multiplication.
  *
- * Last updated: September 2026 (added claude-fable-5-1; Sonnet 5 intro
- * pricing confirmed permanent; rates verified against
- * platform.claude.com/docs/en/about-claude/pricing on 2026-09-05)
+ * Last updated: September 2026 (added claude-opus-5-5 on 2026-09-26;
+ * added claude-fable-5-1; Sonnet 5 intro pricing confirmed permanent; rates
+ * verified against platform.claude.com/docs/en/about-claude/pricing on
+ * 2026-09-05)
  */
 
 export interface ModelPricing {
@@ -44,6 +45,15 @@ export const PRICING_TABLE: Record<string, ModelPricing> = {
     cacheWritePerMillion: 12.5,
     cacheReadPerMillion: 1.0,
     cacheWrite1hPerMillion: 20.0, // 2× input price
+  },
+  // Opus 5.5 launched below Opus 5 ($4/$20); cache reads are the standard
+  // 0.1× input and cache writes the standard 1.25× / 2× (CGUI-137).
+  'claude-opus-5-5': {
+    inputPerMillion: 4.0,
+    outputPerMillion: 20.0,
+    cacheWritePerMillion: 5.0,
+    cacheReadPerMillion: 0.2,
+    cacheWrite1hPerMillion: 8.0, // 2× input price
   },
   // $2/$10 launched as introductory pricing through 2026-08-31, but the
   // scheduled increase to $3/$15 was cancelled — the pricing page now
