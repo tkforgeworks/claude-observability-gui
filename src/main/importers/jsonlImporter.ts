@@ -79,9 +79,91 @@ export interface SessionHourBucket {
 /**
  * Discovered JSONL files grouped by session ID.
  */
-interface SessionFiles {
+export interface SessionFiles {
   mainFile: string;
   subagentFiles: string[];
+}
+
+/**
+ * Recursively discovers JSONL files and groups them by session ID.
+ *
+ * Every JSONL at any depth under {sessionId}/subagents/ belongs to that
+ * session — both the flat agent-*.jsonl layout and the workflow layout at
+ * subagents/workflows/wf_<id>/agent-*.jsonl (CGUI-138). Nothing under a
+ * subagents/ directory is ever a session of its own.
+ */
+export function discoverSessionFiles(projectsDir: string): Map<string, SessionFiles> {
+  const sessions = new Map<string, SessionFiles>();
+
+  const scanDir = (dir: string): void => {
+    let entries: fs.Dirent[];
+    try {
+      entries = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+
+    for (const entry of entries) {
+      const fullPath = path.join(dir, entry.name);
+
+      if (entry.isDirectory()) {
+        // Collected by the parent session below — never scanned for sessions
+        if (entry.name === 'subagents') continue;
+
+        const subFiles = findJsonlFilesRecursive(path.join(fullPath, 'subagents'));
+        if (subFiles.length > 0) {
+          const sessionId = entry.name;
+          const existing = sessions.get(sessionId);
+          if (existing) {
+            existing.subagentFiles.push(...subFiles);
+          } else {
+            // Subagent dir exists but we haven't found the main file yet —
+            // it will be added when we encounter the .jsonl in the parent dir
+            sessions.set(sessionId, { mainFile: '', subagentFiles: subFiles });
+          }
+        }
+        scanDir(fullPath);
+      } else if (entry.name.endsWith('.jsonl')) {
+        const sessionId = entry.name.replace('.jsonl', '');
+        const existing = sessions.get(sessionId);
+        if (existing) {
+          existing.mainFile = fullPath;
+        } else {
+          sessions.set(sessionId, { mainFile: fullPath, subagentFiles: [] });
+        }
+      }
+    }
+  };
+
+  scanDir(projectsDir);
+
+  // Remove entries that have no main file (orphaned subagent dirs)
+  for (const [id, files] of sessions) {
+    if (!files.mainFile) {
+      sessions.delete(id);
+    }
+  }
+
+  return sessions;
+}
+
+function findJsonlFilesRecursive(dir: string): string[] {
+  let entries: fs.Dirent[];
+  try {
+    entries = fs.readdirSync(dir, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  const files: string[] = [];
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...findJsonlFilesRecursive(fullPath));
+    } else if (entry.name.endsWith('.jsonl')) {
+      files.push(fullPath);
+    }
+  }
+  return files;
 }
 
 export class JsonlImporter {
@@ -119,7 +201,8 @@ export class JsonlImporter {
     }
 
     // Discover all JSONL files grouped by session
-    const sessionGroups = this.discoverFiles(projectsDir);
+    const sessionGroups = discoverSessionFiles(projectsDir);
+    this.removeSubagentSessions(sessionGroups);
     console.log(`[jsonlImporter] Session scan starting - ${new Date(Date.now())}`);
     console.log(`[jsonlImporter] Found ${sessionGroups.size} session(s) to process`);
 
@@ -278,75 +361,33 @@ export class JsonlImporter {
   }
 
   /**
-   * Recursively discovers JSONL files and groups them by session ID.
-   * Subagent files at {sessionId}/subagents/agent-*.jsonl are grouped
-   * under their parent session.
+   * Deletes rows that earlier scans imported from subagent transcripts as
+   * sessions of their own — workflow agents at subagents/workflows/wf_<id>/
+   * weren't recognised as subagents before CGUI-138. The importer only
+   * upserts, so a rescan alone would leave them behind. Only IDs whose parent
+   * session was discovered are removed: that parent is re-aggregated in the
+   * same scan, so their usage moves to it rather than disappearing.
    */
-  private discoverFiles(projectsDir: string): Map<string, SessionFiles> {
-    const sessions = new Map<string, SessionFiles>();
-
-    const scanDir = (dir: string): void => {
-      let entries: fs.Dirent[];
-      try {
-        entries = fs.readdirSync(dir, { withFileTypes: true });
-      } catch {
-        return;
-      }
-
-      for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name);
-
-        if (entry.isDirectory()) {
-          // Check for subagents directory
-          const subagentsDir = path.join(fullPath, 'subagents');
-          if (fs.existsSync(subagentsDir)) {
-            const sessionId = entry.name;
-            const existing = sessions.get(sessionId);
-            const subFiles = this.findJsonlFiles(subagentsDir);
-            if (existing) {
-              existing.subagentFiles.push(...subFiles);
-            } else if (subFiles.length > 0) {
-              // Subagent dir exists but we haven't found the main file yet —
-              // it will be added when we encounter the .jsonl in the parent dir
-              sessions.set(sessionId, { mainFile: '', subagentFiles: subFiles });
-            }
-          }
-          scanDir(fullPath);
-        } else if (entry.name.endsWith('.jsonl')) {
-          const sessionId = entry.name.replace('.jsonl', '');
-          // Skip files in subagents directories (handled above)
-          if (path.basename(path.dirname(fullPath)) === 'subagents') {
-            continue;
-          }
-          const existing = sessions.get(sessionId);
-          if (existing) {
-            existing.mainFile = fullPath;
-          } else {
-            sessions.set(sessionId, { mainFile: fullPath, subagentFiles: [] });
-          }
-        }
-      }
-    };
-
-    scanDir(projectsDir);
-
-    // Remove entries that have no main file (orphaned subagent dirs)
-    for (const [id, files] of sessions) {
-      if (!files.mainFile) {
-        sessions.delete(id);
-      }
+  private removeSubagentSessions(sessionGroups: Map<string, SessionFiles>): void {
+    const ids: string[] = [];
+    for (const files of sessionGroups.values()) {
+      for (const f of files.subagentFiles) ids.push(path.basename(f, '.jsonl'));
     }
+    if (ids.length === 0) return;
 
-    return sessions;
-  }
-
-  private findJsonlFiles(dir: string): string[] {
-    try {
-      return fs.readdirSync(dir)
-        .filter(f => f.endsWith('.jsonl'))
-        .map(f => path.join(dir, f));
-    } catch {
-      return [];
+    const deleteSession = this.db.prepare<[string]>(`DELETE FROM code_sessions WHERE session_id = ?`);
+    const deleteHours = this.db.prepare<[string]>(`DELETE FROM code_session_hours WHERE session_id = ?`);
+    const removed = this.db.transaction(() => {
+      let n = 0;
+      for (const id of ids) {
+        if (sessionGroups.has(id)) continue;
+        deleteHours.run(id);
+        n += deleteSession.run(id).changes;
+      }
+      return n;
+    })();
+    if (removed > 0) {
+      console.log(`[jsonlImporter] Removed ${removed} subagent transcript(s) previously imported as sessions`);
     }
   }
 
