@@ -53,10 +53,62 @@ export function quoteExecArg(value: string): string {
   return '"' + fileLevel.replace(/%/g, '%%') + '"';
 }
 
-export function buildAutostartEntry(): string {
+/**
+ * A stable launcher for the running AppImage, if the user started it through
+ * one (CGUI-140).
+ *
+ * The AppImage runtime resolves APPIMAGE to the real file, e.g.
+ * `~/.local/opt/cog/2.0.0-rc.3/tkforgeworks-cog-2.0.0-rc.3.AppImage`, even
+ * when the app was launched through a symlink like `~/.local/bin/cog` that an
+ * install/upgrade script repoints at each new version. Writing APPIMAGE into
+ * the autostart entry pins login launches to the old version until the new
+ * one is opened by hand, and breaks them outright if the old file is pruned
+ * first. ARGV0 carries the path as invoked (relative ones against OWD, the
+ * runtime's original working directory; bare names via PATH): when that is a
+ * different path resolving to the same file, it's the one that survives
+ * upgrades.
+ */
+export function stableAppImageLauncher(
+  appImage: string,
+  argv0: string | undefined,
+  env: { OWD?: string; PATH?: string } = process.env,
+): string | null {
+  if (!argv0) return null;
+
+  let target: string;
+  try {
+    target = fs.realpathSync(appImage);
+  } catch {
+    return null;
+  }
+
+  const candidates = argv0.includes('/')
+    ? [path.resolve(env.OWD ?? process.cwd(), argv0)]
+    : (env.PATH ?? '').split(':').filter(Boolean).map((dir) => path.join(dir, argv0));
+
+  for (const candidate of candidates) {
+    if (candidate === target || candidate === appImage) continue;
+    try {
+      if (fs.realpathSync(candidate) === target) return candidate;
+    } catch {
+      // not on this PATH entry / dangling — keep looking
+    }
+  }
+  return null;
+}
+
+/** The executable path a login launch should run. */
+export function resolveLaunchPath(): string {
   // For AppImage launches process.execPath points inside the transient
-  // squashfs mount; APPIMAGE carries the persistent file path.
-  const exec = process.env.APPIMAGE ?? process.execPath;
+  // squashfs mount; APPIMAGE carries the persistent file path, and a stable
+  // launcher pointing at it beats both (CGUI-140).
+  const appImage = process.env.APPIMAGE;
+  if (!appImage) return process.execPath;
+  return stableAppImageLauncher(appImage, process.env.ARGV0) ?? appImage;
+}
+
+export function buildAutostartEntry(): string {
+  const exec = resolveLaunchPath();
   return [
     '[Desktop Entry]',
     'Type=Application',

@@ -34,6 +34,7 @@ import {
   autostartFilePath,
   buildAutostartEntry,
   quoteExecArg,
+  stableAppImageLauncher,
 } from '../services/launchOnStartup';
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
@@ -46,6 +47,8 @@ beforeEach(() => {
   mockAppData = fs.mkdtempSync(path.join(os.tmpdir(), 'cgui78-'));
   mockIsPackaged = true;
   delete process.env.APPIMAGE;
+  delete process.env.ARGV0;
+  delete process.env.OWD;
 });
 
 afterEach(() => {
@@ -139,5 +142,71 @@ describe('applyLaunchOnStartup on Windows', () => {
       openAsHidden: false,
     });
     expect(fs.existsSync(autostartFilePath())).toBe(false);
+  });
+});
+
+/**
+ * CGUI-140: the AppImage runtime resolves APPIMAGE to the real, versioned
+ * file even when the user launched through a stable symlink, so the entry
+ * must prefer the launcher the user actually ran (ARGV0) when it resolves to
+ * the same AppImage.
+ */
+describe('stable AppImage launcher (CGUI-140)', () => {
+  let root: string;
+  let appImage: string;
+  let launcher: string;
+
+  beforeEach(() => {
+    setPlatform('linux');
+    // ~/.local/bin/cog -> ../opt/cog/current/cog.AppImage, current -> 2.0.0
+    root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), 'cgui140-')));
+    const versionDir = path.join(root, 'opt', 'cog', '2.0.0');
+    fs.mkdirSync(versionDir, { recursive: true });
+    appImage = path.join(versionDir, 'cog.AppImage');
+    fs.writeFileSync(appImage, '');
+    fs.symlinkSync('2.0.0', path.join(root, 'opt', 'cog', 'current'));
+    fs.mkdirSync(path.join(root, 'bin'));
+    launcher = path.join(root, 'bin', 'cog');
+    fs.symlinkSync('../opt/cog/current/cog.AppImage', launcher);
+  });
+
+  afterEach(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+  });
+
+  it('returns an absolute ARGV0 that resolves to the running AppImage', () => {
+    expect(stableAppImageLauncher(appImage, launcher, {})).toBe(launcher);
+  });
+
+  it('resolves a relative ARGV0 against OWD', () => {
+    expect(stableAppImageLauncher(appImage, './bin/cog', { OWD: root })).toBe(launcher);
+  });
+
+  it('resolves a bare ARGV0 through PATH', () => {
+    const PATH = ['/nonexistent', path.join(root, 'bin')].join(':');
+    expect(stableAppImageLauncher(appImage, 'cog', { PATH })).toBe(launcher);
+  });
+
+  it('returns null when ARGV0 is the AppImage itself or missing', () => {
+    expect(stableAppImageLauncher(appImage, appImage, {})).toBeNull();
+    expect(stableAppImageLauncher(appImage, undefined, {})).toBeNull();
+  });
+
+  it('returns null when ARGV0 resolves to a different file', () => {
+    const other = path.join(root, 'bin', 'other');
+    fs.writeFileSync(other, '');
+    expect(stableAppImageLauncher(appImage, other, {})).toBeNull();
+  });
+
+  it('writes the stable launcher into the autostart entry', () => {
+    process.env.APPIMAGE = appImage;
+    process.env.ARGV0 = launcher;
+    expect(buildAutostartEntry()).toContain(`Exec="${launcher}" --hidden`);
+  });
+
+  it('falls back to APPIMAGE when there is no stable launcher', () => {
+    process.env.APPIMAGE = appImage;
+    process.env.ARGV0 = appImage;
+    expect(buildAutostartEntry()).toContain(`Exec="${appImage}" --hidden`);
   });
 });
