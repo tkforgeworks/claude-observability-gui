@@ -32,9 +32,11 @@ import type {
   ChatMemoryEntry,
   ChatDayCount,
   ProjectAggregate,
+  UnpricedModel,
 } from '../../shared/ipc-types';
 import { getDatabasePath } from './database';
-import { calculateCacheSavings } from '../importers/costCalculator';
+import { calculateCacheSavings, recalculateCost } from '../importers/costCalculator';
+import { getPricing } from '../config/pricing';
 import * as fs from 'fs';
 
 /**
@@ -1239,6 +1241,74 @@ export function recalculateAllCosts(db: Database.Database): void {
   // 2. For each row, call costCalculator.calculateCost(...)
   // 3. Batch UPDATE in a single transaction
   throw new UnsupportedOperationError('recalculateAllCosts');
+}
+
+/**
+ * Prices sessions stored with a NULL cost whose model has since been added to
+ * the pricing table (CGUI-137), in both code_sessions and code_session_hours.
+ *
+ * Sessions whose JSONL still exists are repriced exactly by the next scan
+ * (every upsert rewrites cost_usd); this covers the ones Claude Code has
+ * already cleaned up. Stored rows don't keep the 5m/1h cache-write split, so
+ * every cache write is priced at the 5-minute rate — a slight undercount
+ * rather than leaving the session out of totals entirely.
+ *
+ * Returns the number of sessions repriced.
+ */
+export function repriceUnpricedSessions(db: Database.Database): number {
+  type Row = {
+    model: string;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    cache_creation_tokens: number | null;
+    cache_read_tokens: number | null;
+  };
+
+  const sessions = db.prepare<[], Row & { session_id: string }>(`
+    SELECT session_id, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+    FROM code_sessions
+    WHERE cost_usd IS NULL AND model IS NOT NULL
+  `).all().filter((r) => getPricing(r.model) !== null);
+
+  if (sessions.length === 0) return 0;
+
+  const hoursFor = db.prepare<[string], Row & { id: number }>(`
+    SELECT h.id, s.model, h.input_tokens, h.output_tokens, h.cache_creation_tokens, h.cache_read_tokens
+    FROM code_session_hours h
+    JOIN code_sessions s ON s.session_id = h.session_id
+    WHERE h.session_id = ? AND h.cost_usd IS NULL
+  `);
+  const updateSession = db.prepare(`UPDATE code_sessions SET cost_usd = ? WHERE session_id = ?`);
+  const updateHour = db.prepare(`UPDATE code_session_hours SET cost_usd = ? WHERE id = ?`);
+
+  const price = (r: Row) => recalculateCost(
+    r.model, r.input_tokens, r.output_tokens, r.cache_creation_tokens, r.cache_read_tokens
+  );
+
+  db.transaction(() => {
+    for (const s of sessions) {
+      updateSession.run(price(s), s.session_id);
+      for (const h of hoursFor.all(s.session_id)) updateHour.run(price(h), h.id);
+    }
+  })();
+
+  return sessions.length;
+}
+
+/**
+ * Models that have Code sessions but no pricing entry (CGUI-137). Their
+ * sessions are stored with a NULL cost and drop out of every total, so the
+ * renderer surfaces them instead of letting spend under-report silently.
+ */
+export function queryUnpricedModels(db: Database.Database): UnpricedModel[] {
+  const rows = db.prepare<[], { model: string; sessionCount: number }>(`
+    SELECT model, COUNT(*) AS sessionCount
+    FROM code_sessions
+    WHERE cost_usd IS NULL AND model IS NOT NULL
+    GROUP BY model
+    ORDER BY sessionCount DESC
+  `).all();
+  return rows.filter((r) => getPricing(r.model) === null);
 }
 
 // ---------------------------------------------------------------------------

@@ -6,6 +6,7 @@ describe('PRICING_TABLE', () => {
       expect.arrayContaining([
         'claude-fable-5-1',
         'claude-fable-5',
+        'claude-opus-5-5',
         'claude-opus-5',
         'claude-opus-4-6',
         'claude-sonnet-5',
@@ -56,6 +57,16 @@ describe('getPricing', () => {
       // Fable 5.1 cache reads are 0.025x input, not the standard 0.1x
       expect(pricing!.cacheReadPerMillion).toBe(0.25);
       expect(pricing!.cacheWrite1hPerMillion).toBe(20.0);
+    });
+
+    it('should return pricing for claude-opus-5-5 (CGUI-137)', () => {
+      const pricing = getPricing('claude-opus-5-5');
+      expect(pricing).not.toBeNull();
+      expect(pricing!.inputPerMillion).toBe(4.0);
+      expect(pricing!.outputPerMillion).toBe(20.0);
+      expect(pricing!.cacheWritePerMillion).toBe(5.0);
+      expect(pricing!.cacheReadPerMillion).toBe(0.2);
+      expect(pricing!.cacheWrite1hPerMillion).toBe(8.0);
     });
 
     it('should return pricing for claude-opus-5', () => {

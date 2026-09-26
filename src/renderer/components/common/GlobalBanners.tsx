@@ -1,7 +1,8 @@
 /**
  * Global warning/status banners rendered at the top of the content area
- * on every view. Subscribes to LogWatcher connection + health events and
- * renders a StatusBanner per active condition.
+ * on every view. Subscribes to LogWatcher connection + health events, checks
+ * for Code sessions on models with no pricing entry (CGUI-137), and renders a
+ * StatusBanner per active condition.
  *
  * Dismissal re-arms automatically: a new trigger (unhealthy event or
  * disconnect) advances an internal counter so any prior dismissal no
@@ -12,7 +13,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import type { LogConnectionStatus, LogHealthStatus } from '../../../shared/ipc-types';
+import type { LogConnectionStatus, LogHealthStatus, UnpricedModel } from '../../../shared/ipc-types';
 import StatusBanner, { type BannerAction } from './StatusBanner';
 
 interface HealthState {
@@ -33,6 +34,22 @@ export default function GlobalBanners(): React.JSX.Element | null {
   const [healthDismissedAt, setHealthDismissedAt] = useState<number>(-1);
   const [connection, setConnection] = useState<ConnectionState>({ disconnected: false, reason: null });
   const [retrying, setRetrying] = useState(false);
+  const [unpriced, setUnpriced] = useState<UnpricedModel[]>([]);
+  const [unpricedDismissedKey, setUnpricedDismissedKey] = useState<string | null>(null);
+
+  // Sessions on a model with no pricing entry drop out of every cost total
+  // (CGUI-137). Re-checked after each scan, since a scan is what imports them.
+  useEffect(() => {
+    let cancelled = false;
+    const load = () => {
+      window.api.codeSessions.getUnpricedModels?.()
+        .then((models) => { if (!cancelled) setUnpriced(models); })
+        .catch((err) => console.error('[GlobalBanners] Unpriced model check failed:', err));
+    };
+    load();
+    const unsub = window.api.onImportComplete?.(load);
+    return () => { cancelled = true; unsub?.(); };
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -107,7 +124,12 @@ export default function GlobalBanners(): React.JSX.Element | null {
 
   const showHealth = health.unhealthy && healthDismissedAt < health.triggerId;
 
-  if (!connection.disconnected && !showHealth) return null;
+  // Dismissal is keyed on the set of models, so a newly unpriced model re-arms it
+  const unpricedKey = unpriced.map((m) => m.model).join(',');
+  const showUnpriced = unpriced.length > 0 && unpricedDismissedKey !== unpricedKey;
+  const unpricedSessions = unpriced.reduce((n, m) => n + m.sessionCount, 0);
+
+  if (!connection.disconnected && !showHealth && !showUnpriced) return null;
 
   return (
     // Banners sit outside the page's scroll container, so they own their own
@@ -130,6 +152,17 @@ export default function GlobalBanners(): React.JSX.Element | null {
           variant="warning"
           message="Log format may have changed — no events parsed in several minutes despite log file growth. Some activity may not be tracked."
           onDismiss={() => setHealthDismissedAt(health.triggerId)}
+        />
+      )}
+      {showUnpriced && (
+        <StatusBanner
+          variant="warning"
+          message={
+            `COG has no pricing for ${unpriced.map((m) => m.model).join(', ')} — ` +
+            `${unpricedSessions} Code session${unpricedSessions === 1 ? '' : 's'} ` +
+            `${unpricedSessions === 1 ? 'is' : 'are'} excluded from cost totals until a COG update adds it.`
+          }
+          onDismiss={() => setUnpricedDismissedKey(unpricedKey)}
         />
       )}
     </div>

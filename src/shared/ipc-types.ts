@@ -163,6 +163,12 @@ export interface CleanupWarning {
   warningNeeded: boolean;
 }
 
+/** A model with Code sessions but no pricing entry — their cost is NULL (CGUI-137). */
+export interface UnpricedModel {
+  model: string;
+  sessionCount: number;
+}
+
 // ---------------------------------------------------------------------------
 // Log Path Discovery
 // ---------------------------------------------------------------------------
@@ -512,6 +518,7 @@ export interface ElectronApi {
     getByDateRange(range: DateRange): Promise<CodeSession[]>;
     getByProject(project: string, range: DateRange): Promise<CodeSession[]>;
     getCleanupWarning(): Promise<CleanupWarning>;
+    getUnpricedModels(): Promise<UnpricedModel[]>;
   };
   cowork: {
     getAvailability(): Promise<CoworkAvailability>;

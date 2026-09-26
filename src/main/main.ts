@@ -12,6 +12,7 @@ import { app, BrowserWindow, Notification, ipcMain } from 'electron';
 import path from 'path';
 import type { LogConnectionStatus } from '../shared/ipc-types';
 import { initDatabase, closeDatabase } from './db/database';
+import { repriceUnpricedSessions } from './db/queries';
 import { registerIpcHandlers, unregisterIpcHandlers } from './ipc/handlers';
 import { ensureConfigFiles, loadSettings } from './config/configStore';
 import { createTray, destroyTray, updateTrayMenu, isTrayViable } from './tray';
@@ -162,6 +163,15 @@ app.whenReady().then(() => {
 
   // Initialise database — must happen before IPC handlers are registered
   const db = initDatabase();
+
+  // Price sessions left NULL by a model the pricing table has since learned
+  // (CGUI-137) — the scan reprices the rest, but not ones whose JSONL is gone
+  try {
+    const repriced = repriceUnpricedSessions(db);
+    if (repriced > 0) console.log(`[main] Repriced ${repriced} previously unpriced session(s)`);
+  } catch (err) {
+    console.error('[main] Repricing unpriced sessions failed:', err);
+  }
 
   // Register all IPC handlers
   registerIpcHandlers(db);
