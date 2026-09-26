@@ -10,6 +10,7 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import type {
   ElectronApi,
+  AutostartInfo,
   CacheEfficiencyData,
   DailyCostData,
   ModelMixDay,
@@ -53,6 +54,9 @@ const api: ElectronApi = {
     },
     isPackaged(): Promise<boolean> {
       return ipcRenderer.invoke('app:isPackaged');
+    },
+    getAutostartInfo(): Promise<AutostartInfo> {
+      return ipcRenderer.invoke('app:getAutostartInfo');
     },
   },
 

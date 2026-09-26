@@ -33,7 +33,9 @@ import {
   applyLaunchOnStartup,
   autostartFilePath,
   buildAutostartEntry,
+  getAutostartInfo,
   quoteExecArg,
+  shellQuote,
   stableAppImageLauncher,
 } from '../services/launchOnStartup';
 
@@ -208,5 +210,60 @@ describe('stable AppImage launcher (CGUI-140)', () => {
     process.env.APPIMAGE = appImage;
     process.env.ARGV0 = appImage;
     expect(buildAutostartEntry()).toContain(`Exec="${appImage}" --hidden`);
+  });
+});
+
+/**
+ * CGUI-139: standalone compositors never run XDG autostart entries, so
+ * Settings needs to know when to show the manual-startup hint.
+ */
+describe('getAutostartInfo (CGUI-139)', () => {
+  const never = () => false;
+
+  beforeEach(() => setPlatform('linux'));
+
+  it('flags a standalone compositor as not honouring autostart', () => {
+    const info = getAutostartInfo({ XDG_CURRENT_DESKTOP: 'Hyprland' }, never);
+    expect(info.desktop).toBe('Hyprland');
+    expect(info.likelyHonoured).toBe(false);
+  });
+
+  it('recognises full desktops from any XDG_CURRENT_DESKTOP token', () => {
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'ubuntu:GNOME' }, never).likelyHonoured).toBe(true);
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'KDE' }, never).likelyHonoured).toBe(true);
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'X-Cinnamon' }, never).likelyHonoured).toBe(true);
+  });
+
+  it('treats an active systemd autostart target (uwsm) as honoured', () => {
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'Hyprland' }, () => true).likelyHonoured).toBe(true);
+  });
+
+  it('treats a missing XDG_CURRENT_DESKTOP as not honoured', () => {
+    const info = getAutostartInfo({}, never);
+    expect(info.desktop).toBeNull();
+    expect(info.likelyHonoured).toBe(false);
+  });
+
+  it('offers the shell-quoted login command in packaged builds only', () => {
+    process.env.APPIMAGE = '/home/u/My Apps/cog.AppImage';
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'Hyprland' }, never).command).toBe(
+      "'/home/u/My Apps/cog.AppImage' --hidden"
+    );
+    mockIsPackaged = false;
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'Hyprland' }, never).command).toBeNull();
+  });
+
+  it('reports nothing off Linux', () => {
+    setPlatform('win32');
+    expect(getAutostartInfo({ XDG_CURRENT_DESKTOP: 'Hyprland' }, never)).toEqual({
+      desktop: null,
+      likelyHonoured: null,
+      command: null,
+    });
+  });
+
+  it('shell-quotes only when needed, escaping single quotes', () => {
+    expect(shellQuote('/home/u/.local/bin/cog')).toBe('/home/u/.local/bin/cog');
+    expect(shellQuote("/home/u/it's here/cog")).toBe("'/home/u/it'\\''s here/cog'");
   });
 });

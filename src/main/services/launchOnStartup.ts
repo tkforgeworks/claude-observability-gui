@@ -13,8 +13,10 @@
  */
 
 import { app } from 'electron';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import type { AutostartInfo } from '../../shared/ipc-types';
 
 /** Keep in sync with packaging identity (renamed at the CGUI-54 rebrand). */
 const AUTOSTART_FILE = 'tkforgeworks-cog.desktop';
@@ -160,4 +162,57 @@ export function applyLaunchOnStartup(enabled: boolean): void {
     openAtLogin: enabled,
     openAsHidden: false,
   });
+}
+
+/**
+ * Desktops whose session starts XDG autostart entries on its own (CGUI-139).
+ * Matched against the colon-separated XDG_CURRENT_DESKTOP tokens,
+ * case-insensitively. Standalone compositors (Hyprland, sway, niri, river…)
+ * are deliberately absent: they only run autostart entries when something
+ * like uwsm, dex or systemd's xdg-autostart-generator does it for them.
+ */
+const AUTOSTART_DESKTOPS = new Set([
+  'gnome', 'kde', 'xfce', 'x-cinnamon', 'cinnamon', 'mate', 'lxqt', 'lxde',
+  'budgie', 'cosmic', 'pantheon', 'unity', 'deepin', 'ukui',
+]);
+
+/** True when systemd's generated autostart target is running (uwsm and friends). */
+function systemdAutostartActive(): boolean {
+  try {
+    const out = execFileSync('systemctl', ['--user', 'is-active', 'xdg-desktop-autostart.target'], {
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return out.trim() === 'active';
+  } catch {
+    // is-active exits non-zero for inactive; missing systemctl lands here too
+    return false;
+  }
+}
+
+/** Quotes a path for a POSIX shell / compositor exec line, only when needed. */
+export function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_\/.,:=+@%~-]+$/.test(value)) return value;
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Whether the autostart entry is likely to be honoured, and the command to
+ * wire up by hand when it isn't (CGUI-139). Only meaningful on Linux — on
+ * other platforms login items are an OS API that either works or doesn't.
+ */
+export function getAutostartInfo(
+  env: NodeJS.ProcessEnv = process.env,
+  systemdActive: () => boolean = systemdAutostartActive,
+): AutostartInfo {
+  if (process.platform !== 'linux') {
+    return { desktop: null, likelyHonoured: null, command: null };
+  }
+  const desktop = env.XDG_CURRENT_DESKTOP || null;
+  const tokens = (desktop ?? '').split(':').map((t) => t.trim().toLowerCase());
+  const likelyHonoured = tokens.some((t) => AUTOSTART_DESKTOPS.has(t)) || systemdActive();
+  // Dev builds never write an entry, so there's no packaged command to offer
+  const command = app.isPackaged ? `${shellQuote(resolveLaunchPath())} --hidden` : null;
+  return { desktop, likelyHonoured, command };
 }

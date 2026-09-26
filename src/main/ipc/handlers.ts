@@ -65,7 +65,7 @@ import { getDatabasePath } from '../db/database';
 import { exportAllData, importAllData } from '../services/dataExportImport';
 import { getLogPathStatus } from '../services/logPathDiscovery';
 import { getCoworkAvailability, invalidateCoworkOverrideCache } from '../services/coworkAvailability';
-import { applyLaunchOnStartup } from '../services/launchOnStartup';
+import { applyLaunchOnStartup, getAutostartInfo } from '../services/launchOnStartup';
 import { ChatExportImporter } from '../importers/chatExportImporter';
 import fs from 'fs';
 import path from 'path';
@@ -160,6 +160,8 @@ export function registerIpcHandlers(db: Database.Database): void {
   ipcMain.handle('app:getPlatform', (): NodeJS.Platform => {
     return process.platform;
   });
+
+  ipcMain.handle('app:getAutostartInfo', () => getAutostartInfo());
 
   ipcMain.handle('app:isPackaged', (): boolean => {
     const { app: electronApp } = require('electron');
@@ -489,6 +491,7 @@ export function unregisterIpcHandlers(): void {
     'app:getVersion',
     'app:getPlatform',
     'app:isPackaged',
+    'app:getAutostartInfo',
     'configPaths:get',
     'configPaths:openFolder',
     'logPath:getStatus',
