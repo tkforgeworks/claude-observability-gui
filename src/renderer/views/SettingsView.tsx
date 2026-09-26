@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useLocation } from 'react-router-dom';
-import type { ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
+import type { AutostartInfo, ConfigPaths, LogPathStatus, DashboardConfig, ViewId, TrendsWidgetId, DatabaseStats, BackupResult } from '../../shared/ipc-types';
 import { useDashboardConfig } from '../contexts/DashboardConfigContext';
 import { invalidateCoworkAvailability, useCoworkAvailability } from '../hooks/useCoworkAvailability';
 import Loading from '../components/common/Loading';
@@ -215,6 +215,18 @@ const statusBadgeStyles = (color: string): React.CSSProperties => ({
   border: `1px solid ${color === 'green' ? 'rgba(74, 222, 128, 0.25)' : color === 'amber' ? 'rgba(251, 191, 36, 0.25)' : color === 'gray' ? 'rgba(148, 163, 184, 0.25)' : 'rgba(248, 113, 113, 0.25)'}`,
 });
 
+const copyButtonStyles: React.CSSProperties = {
+  flexShrink: 0,
+  padding: '4px 12px',
+  fontSize: 12,
+  fontFamily: 'var(--font-header)',
+  color: 'var(--text-primary)',
+  backgroundColor: 'transparent',
+  border: '1px solid var(--border)',
+  borderRadius: 'var(--radius-sm)',
+  cursor: 'pointer',
+};
+
 const warningBannerStyles: React.CSSProperties = {
   padding: '10px 14px',
   backgroundColor: 'rgba(251, 191, 36, 0.08)',
@@ -309,6 +321,8 @@ function LogPathSection(): React.JSX.Element {
 function LaunchOnStartupSection(): React.JSX.Element {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [platform, setPlatform] = useState<string | null>(null);
+  const [autostart, setAutostart] = useState<AutostartInfo | null>(null);
+  const [copied, setCopied] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -316,7 +330,20 @@ function LaunchOnStartupSection(): React.JSX.Element {
       .then((s) => setEnabled(s.launchOnStartup))
       .catch((err: unknown) => setError(`Couldn't load setting: ${errMsg(err)}`));
     window.api.app.getPlatform().then(setPlatform).catch(() => {});
+    // Informational only — if the check fails, the section just omits the hint
+    window.api.app.getAutostartInfo?.().then(setAutostart).catch(() => {});
   }, []);
+
+  const copyCommand = async () => {
+    if (!autostart?.command) return;
+    try {
+      await navigator.clipboard.writeText(autostart.command);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      // the command stays selectable in the box below
+    }
+  };
 
   const handleToggle = async () => {
     const newValue = !enabled;
@@ -356,6 +383,49 @@ function LaunchOnStartupSection(): React.JSX.Element {
           from the app menu: it brings the running window back. Applies to
           the installed app, not dev builds.
         </p>
+      )}
+      {/* CGUI-139: standalone compositors never run the autostart entry */}
+      {autostart?.likelyHonoured === false && (
+        <div style={warningBannerStyles}>
+          <div>
+            {autostart.desktop ? `Your desktop (${autostart.desktop})` : 'Your desktop'} doesn't
+            run autostart entries on its own, so this setting may not start COG at
+            sign-in. Add this command to your compositor's startup config instead
+            (e.g. <code style={{ fontFamily: 'var(--font-code)', whiteSpace: 'nowrap' }}>exec-once</code> in
+            Hyprland), or run a session manager that handles autostart, such as
+            uwsm or dex.
+          </div>
+          {autostart.command ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 8, minWidth: 0 }}>
+              <code
+                title={autostart.command}
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  userSelect: 'all',
+                  fontFamily: 'var(--font-code)',
+                  fontSize: 12,
+                  color: 'var(--text-primary)',
+                  padding: '4px 8px',
+                  borderRadius: 'var(--radius-sm)',
+                  backgroundColor: 'rgba(15, 23, 42, 0.6)',
+                }}
+              >
+                {autostart.command}
+              </code>
+              <button type="button" onClick={copyCommand} style={copyButtonStyles}>
+                {copied ? 'Copied' : 'Copy'}
+              </button>
+            </div>
+          ) : (
+            <div style={{ marginTop: 6, fontSize: 12 }}>
+              The command appears here in the installed app (dev builds never autostart).
+            </div>
+          )}
+        </div>
       )}
       <SettingError message={error} />
     </div>

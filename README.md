@@ -133,6 +133,16 @@ On Linux the tray depends on your desktop providing two things: a StatusNotifier
 
 The app falls back to quitting on close when its tray icon fails to load, but it cannot detect a desktop with no tray host at all — and a visible icon is not proof the menu works (see COSMIC and Waybar above). Only enable minimize-to-tray once you've confirmed clicking the icon opens the menu; if a window ever goes missing, launching the app again restores it. With launch-on-startup enabled on Linux, sign-in launches start hidden in the tray (open the window from the tray menu). Tray notifications fire for stale chat imports.
 
+### Launch on startup on Linux
+
+On Linux, launch-on-startup writes an XDG autostart entry to `~/.config/autostart/tkforgeworks-cog.desktop`. Full desktops (GNOME, KDE Plasma, Xfce, Cinnamon, MATE, LXQt, Budgie, COSMIC and others) run these entries at sign-in. Standalone compositors such as **Hyprland, sway, niri and river don't**, unless your session runs them through uwsm, dex or systemd's `xdg-desktop-autostart.target`. On those desktops, Settings → General shows the exact command to add to your compositor's startup config instead, for example in Hyprland:
+
+```
+exec-once = ~/.local/bin/cog --hidden
+```
+
+If you launch the AppImage through a stable path such as a `~/.local/bin/cog` symlink that you repoint on upgrade, the autostart entry uses that path rather than the versioned AppImage file, so sign-in launches keep working after an upgrade. Launch the app through that path once after enabling the setting so the entry picks it up.
+
 ## Data sources
 
 | Source | How it's collected | Automatic? |

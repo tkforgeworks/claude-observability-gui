@@ -13,8 +13,10 @@
  */
 
 import { app } from 'electron';
+import { execFileSync } from 'child_process';
 import fs from 'fs';
 import path from 'path';
+import type { AutostartInfo } from '../../shared/ipc-types';
 
 /** Keep in sync with packaging identity (renamed at the CGUI-54 rebrand). */
 const AUTOSTART_FILE = 'tkforgeworks-cog.desktop';
@@ -53,10 +55,62 @@ export function quoteExecArg(value: string): string {
   return '"' + fileLevel.replace(/%/g, '%%') + '"';
 }
 
-export function buildAutostartEntry(): string {
+/**
+ * A stable launcher for the running AppImage, if the user started it through
+ * one (CGUI-140).
+ *
+ * The AppImage runtime resolves APPIMAGE to the real file, e.g.
+ * `~/.local/opt/cog/2.0.0-rc.3/tkforgeworks-cog-2.0.0-rc.3.AppImage`, even
+ * when the app was launched through a symlink like `~/.local/bin/cog` that an
+ * install/upgrade script repoints at each new version. Writing APPIMAGE into
+ * the autostart entry pins login launches to the old version until the new
+ * one is opened by hand, and breaks them outright if the old file is pruned
+ * first. ARGV0 carries the path as invoked (relative ones against OWD, the
+ * runtime's original working directory; bare names via PATH): when that is a
+ * different path resolving to the same file, it's the one that survives
+ * upgrades.
+ */
+export function stableAppImageLauncher(
+  appImage: string,
+  argv0: string | undefined,
+  env: { OWD?: string; PATH?: string } = process.env,
+): string | null {
+  if (!argv0) return null;
+
+  let target: string;
+  try {
+    target = fs.realpathSync(appImage);
+  } catch {
+    return null;
+  }
+
+  const candidates = argv0.includes('/')
+    ? [path.resolve(env.OWD ?? process.cwd(), argv0)]
+    : (env.PATH ?? '').split(':').filter(Boolean).map((dir) => path.join(dir, argv0));
+
+  for (const candidate of candidates) {
+    if (candidate === target || candidate === appImage) continue;
+    try {
+      if (fs.realpathSync(candidate) === target) return candidate;
+    } catch {
+      // not on this PATH entry / dangling — keep looking
+    }
+  }
+  return null;
+}
+
+/** The executable path a login launch should run. */
+export function resolveLaunchPath(): string {
   // For AppImage launches process.execPath points inside the transient
-  // squashfs mount; APPIMAGE carries the persistent file path.
-  const exec = process.env.APPIMAGE ?? process.execPath;
+  // squashfs mount; APPIMAGE carries the persistent file path, and a stable
+  // launcher pointing at it beats both (CGUI-140).
+  const appImage = process.env.APPIMAGE;
+  if (!appImage) return process.execPath;
+  return stableAppImageLauncher(appImage, process.env.ARGV0) ?? appImage;
+}
+
+export function buildAutostartEntry(): string {
+  const exec = resolveLaunchPath();
   return [
     '[Desktop Entry]',
     'Type=Application',
@@ -108,4 +162,57 @@ export function applyLaunchOnStartup(enabled: boolean): void {
     openAtLogin: enabled,
     openAsHidden: false,
   });
+}
+
+/**
+ * Desktops whose session starts XDG autostart entries on its own (CGUI-139).
+ * Matched against the colon-separated XDG_CURRENT_DESKTOP tokens,
+ * case-insensitively. Standalone compositors (Hyprland, sway, niri, river…)
+ * are deliberately absent: they only run autostart entries when something
+ * like uwsm, dex or systemd's xdg-autostart-generator does it for them.
+ */
+const AUTOSTART_DESKTOPS = new Set([
+  'gnome', 'kde', 'xfce', 'x-cinnamon', 'cinnamon', 'mate', 'lxqt', 'lxde',
+  'budgie', 'cosmic', 'pantheon', 'unity', 'deepin', 'ukui',
+]);
+
+/** True when systemd's generated autostart target is running (uwsm and friends). */
+function systemdAutostartActive(): boolean {
+  try {
+    const out = execFileSync('systemctl', ['--user', 'is-active', 'xdg-desktop-autostart.target'], {
+      encoding: 'utf-8',
+      timeout: 2000,
+      stdio: ['ignore', 'pipe', 'ignore'],
+    });
+    return out.trim() === 'active';
+  } catch {
+    // is-active exits non-zero for inactive; missing systemctl lands here too
+    return false;
+  }
+}
+
+/** Quotes a path for a POSIX shell / compositor exec line, only when needed. */
+export function shellQuote(value: string): string {
+  if (/^[A-Za-z0-9_\/.,:=+@%~-]+$/.test(value)) return value;
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+/**
+ * Whether the autostart entry is likely to be honoured, and the command to
+ * wire up by hand when it isn't (CGUI-139). Only meaningful on Linux — on
+ * other platforms login items are an OS API that either works or doesn't.
+ */
+export function getAutostartInfo(
+  env: NodeJS.ProcessEnv = process.env,
+  systemdActive: () => boolean = systemdAutostartActive,
+): AutostartInfo {
+  if (process.platform !== 'linux') {
+    return { desktop: null, likelyHonoured: null, command: null };
+  }
+  const desktop = env.XDG_CURRENT_DESKTOP || null;
+  const tokens = (desktop ?? '').split(':').map((t) => t.trim().toLowerCase());
+  const likelyHonoured = tokens.some((t) => AUTOSTART_DESKTOPS.has(t)) || systemdActive();
+  // Dev builds never write an entry, so there's no packaged command to offer
+  const command = app.isPackaged ? `${shellQuote(resolveLaunchPath())} --hidden` : null;
+  return { desktop, likelyHonoured, command };
 }

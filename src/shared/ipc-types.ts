@@ -158,6 +158,20 @@ export interface DashboardConfig {
 // Cleanup Warning
 // ---------------------------------------------------------------------------
 
+/**
+ * Whether launch-on-startup will actually fire (CGUI-139). Linux only: on
+ * standalone compositors the XDG autostart entry is written but nothing runs
+ * it, so the user needs the command to add to their own startup config.
+ * All fields are null off Linux.
+ */
+export interface AutostartInfo {
+  /** Raw XDG_CURRENT_DESKTOP, e.g. "Hyprland" or "ubuntu:GNOME" */
+  desktop: string | null;
+  likelyHonoured: boolean | null;
+  /** Shell-ready login command (null in dev builds, which never autostart) */
+  command: string | null;
+}
+
 export interface CleanupWarning {
   cleanupPeriodDays: number | null;
   warningNeeded: boolean;
@@ -484,6 +498,7 @@ export interface ElectronApi {
     /** False in a dev run — the sidebar marks those so a dev window and the
      *  installed one are distinguishable when both are open (CGUI-73). */
     isPackaged(): Promise<boolean>;
+    getAutostartInfo(): Promise<AutostartInfo>;
   };
   windowControls: {
     minimize(): void;
