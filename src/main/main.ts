@@ -364,6 +364,10 @@ app.on('before-quit', () => {
 });
 
 app.on('will-quit', () => {
+  // Under systemd autostart stdout lands in the unit's journal, so this line
+  // is how a logout is seen taking the quit path rather than a signal death
+  // (CGUI-142).
+  console.log('[main] will-quit: cleaning up');
   if (importerInterval) clearInterval(importerInterval);
   if (stalenessInterval) clearInterval(stalenessInterval);
   if (logWatcher) logWatcher.stop();

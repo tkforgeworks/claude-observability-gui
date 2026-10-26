@@ -32,11 +32,14 @@ import {
   MANAGED_KEY,
   applyLaunchOnStartup,
   autostartFilePath,
+  autostartUnitName,
   buildAutostartEntry,
   getAutostartInfo,
+  killModeDropInPath,
   quoteExecArg,
   shellQuote,
   stableAppImageLauncher,
+  systemdEscape,
 } from '../services/launchOnStartup';
 
 const realPlatform = Object.getOwnPropertyDescriptor(process, 'platform')!;
@@ -125,6 +128,71 @@ describe('applyLaunchOnStartup on Linux', () => {
     expect(line).toBe(
       'Exec="/home/u/Apps/100%%/we\\\\"ird\\\\$ \\\\`dir\\\\\\\\x/claude-usage-monitor.AppImage" --hidden'
     );
+  });
+
+  // CGUI-142: logout must SIGTERM only the app, not the AppImage's FUSE daemon.
+  describe('KillMode drop-in for the systemd autostart unit', () => {
+    it('targets the unit the xdg-autostart generator makes from our entry', () => {
+      expect(autostartUnitName()).toBe('app-tkforgeworks\\x2dcog@autostart.service');
+      expect(killModeDropInPath()).toBe(
+        path.join(
+          mockAppData,
+          'systemd',
+          'user',
+          'app-tkforgeworks\\x2dcog@autostart.service.d',
+          'cog-kill-mode.conf',
+        ),
+      );
+    });
+
+    it('is written with the entry and sets KillMode=mixed', () => {
+      applyLaunchOnStartup(true);
+
+      const content = fs.readFileSync(killModeDropInPath(), 'utf-8');
+      expect(content).toContain('[Service]\nKillMode=mixed');
+      expect(content).toContain(`${MANAGED_KEY}=true`);
+    });
+
+    it('is removed with its directory when disabled', () => {
+      applyLaunchOnStartup(true);
+      applyLaunchOnStartup(false);
+
+      expect(fs.existsSync(killModeDropInPath())).toBe(false);
+      expect(fs.existsSync(path.dirname(killModeDropInPath()))).toBe(false);
+    });
+
+    it("keeps the user's own drop-ins for the unit when disabled", () => {
+      applyLaunchOnStartup(true);
+      const own = path.join(path.dirname(killModeDropInPath()), 'override.conf');
+      fs.writeFileSync(own, '[Service]\nNice=5\n');
+
+      applyLaunchOnStartup(false);
+
+      expect(fs.existsSync(killModeDropInPath())).toBe(false);
+      expect(fs.readFileSync(own, 'utf-8')).toBe('[Service]\nNice=5\n');
+    });
+
+    it('leaves a same-named drop-in it did not write alone', () => {
+      const file = killModeDropInPath();
+      fs.mkdirSync(path.dirname(file), { recursive: true });
+      fs.writeFileSync(file, '[Service]\nKillMode=process\n');
+
+      applyLaunchOnStartup(false);
+
+      expect(fs.readFileSync(file, 'utf-8')).toBe('[Service]\nKillMode=process\n');
+    });
+
+    it('is never written from a dev build', () => {
+      mockIsPackaged = false;
+      applyLaunchOnStartup(true);
+      expect(fs.existsSync(killModeDropInPath())).toBe(false);
+    });
+  });
+
+  it('escapes unit-name components the way systemd does', () => {
+    expect(systemdEscape('tkforgeworks-cog')).toBe('tkforgeworks\\x2dcog');
+    expect(systemdEscape('.hidden/a b')).toBe('\\x2ehidden-a\\x20b');
+    expect(systemdEscape('a.b:c_d')).toBe('a.b:c_d');
   });
 
   it('leaves an ordinary path untouched apart from the quotes', () => {

@@ -123,6 +123,90 @@ export function buildAutostartEntry(): string {
   ].join('\n');
 }
 
+/**
+ * systemd's escaping of one unit-name component (`unit_name_escape`): `/`
+ * becomes `-`; `-`, `\`, a leading `.` and anything else outside
+ * `[A-Za-z0-9:_.]` become `\xNN`. The xdg-autostart generator names its unit
+ * from the .desktop basename escaped this way (CGUI-142).
+ */
+export function systemdEscape(value: string): string {
+  let out = '';
+  for (let i = 0; i < value.length; i++) {
+    const c = value[i];
+    if (c === '/') {
+      out += '-';
+    } else if (/[A-Za-z0-9:_]/.test(c) || (c === '.' && i > 0)) {
+      out += c;
+    } else {
+      for (const byte of Buffer.from(c, 'utf-8')) {
+        out += '\\x' + byte.toString(16).padStart(2, '0');
+      }
+    }
+  }
+  return out;
+}
+
+/**
+ * The unit systemd's xdg-autostart generator makes from our entry on Plasma 6
+ * and GNOME: `app-tkforgeworks\x2dcog@autostart.service`.
+ */
+export function autostartUnitName(): string {
+  return `app-${systemdEscape(AUTOSTART_FILE.replace(/\.desktop$/, ''))}@autostart.service`;
+}
+
+/**
+ * Drop-in for the generated autostart unit (CGUI-142).
+ *
+ * The generated unit keeps the default KillMode=control-group, so logout
+ * SIGTERMs every process in the cgroup at once, the AppImage runtime's FUSE
+ * daemon included. The squashfs mount vanishes under the Electron main
+ * process, which faults on its own unmapped executable and dies with SIGBUS
+ * before any quit handler runs, then stalls the stop job while it dumps core.
+ * KillMode=mixed sends SIGTERM to the main process only (Electron turns it
+ * into a normal quit, so will-quit cleanup runs) and SIGKILLs whatever is
+ * left in the cgroup once it has exited.
+ *
+ * It lives under $XDG_CONFIG_HOME/systemd/user, where systemd also reads
+ * drop-ins for generated units. It is inert where the generator isn't used,
+ * so it is written whenever the entry is rather than gated on
+ * xdg-desktop-autostart.target, which can still be activating while an
+ * autostarted launch runs this. Like the entry, it carries MANAGED_KEY and is
+ * only removed when it does.
+ */
+const KILL_MODE_DROPIN_FILE = 'cog-kill-mode.conf';
+
+export function killModeDropInPath(): string {
+  return path.join(
+    app.getPath('appData'),
+    'systemd',
+    'user',
+    `${autostartUnitName()}.d`,
+    KILL_MODE_DROPIN_FILE,
+  );
+}
+
+export function buildKillModeDropIn(): string {
+  return [
+    `# ${MANAGED_KEY}=true`,
+    '# Written by COG alongside its autostart entry; removed when Launch on startup is turned off.',
+    '[Service]',
+    'KillMode=mixed',
+    '',
+  ].join('\n');
+}
+
+/** Removes the drop-in, and its directory once empty, if this module wrote it. */
+function removeKillModeDropIn(): void {
+  const file = killModeDropInPath();
+  if (!isManagedEntry(file)) return;
+  fs.rmSync(file, { force: true });
+  try {
+    fs.rmdirSync(path.dirname(file));
+  } catch {
+    // not empty: the user keeps drop-ins of their own there
+  }
+}
+
 /** True when the entry at `file` was written by this module (carries MANAGED_KEY). */
 export function isManagedEntry(file: string): boolean {
   try {
@@ -146,11 +230,17 @@ export function applyLaunchOnStartup(enabled: boolean): void {
       if (enabled) {
         fs.mkdirSync(path.dirname(file), { recursive: true });
         fs.writeFileSync(file, buildAutostartEntry());
-      } else if (isManagedEntry(file)) {
-        // A same-named entry the user created themselves (GNOME Tweaks copies
-        // the installed .desktop under this exact filename) is not ours to
-        // delete — leave it and let the OS keep autostarting the app.
-        fs.rmSync(file, { force: true });
+        const dropIn = killModeDropInPath();
+        fs.mkdirSync(path.dirname(dropIn), { recursive: true });
+        fs.writeFileSync(dropIn, buildKillModeDropIn());
+      } else {
+        if (isManagedEntry(file)) {
+          // A same-named entry the user created themselves (GNOME Tweaks copies
+          // the installed .desktop under this exact filename) is not ours to
+          // delete — leave it and let the OS keep autostarting the app.
+          fs.rmSync(file, { force: true });
+        }
+        removeKillModeDropIn();
       }
     } catch (err) {
       console.error('[launchOnStartup] Failed to update autostart entry:', err);
