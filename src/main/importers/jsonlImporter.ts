@@ -12,7 +12,8 @@ import os from 'os';
 import readline from 'readline';
 import type Database from 'better-sqlite3';
 import type { ImportSummary } from '../../shared/ipc-types';
-import { calculateCost } from './costCalculator';
+import { calculateRequestCost, TokenCounts } from './costCalculator';
+import { getPricing } from '../config/pricing';
 import { loadSettings } from '../config/configStore';
 
 /**
@@ -56,6 +57,12 @@ export interface AggregatedSession {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   cacheCreation1hTokens: number;
+  /**
+   * Sum of per-request costs at `model`'s rates (CGUI-143), or null when the
+   * model is missing or unpriced. Never derived from the token totals: a
+   * prompt-length-tiered model can only be priced request by request.
+   */
+  costUsd: number | null;
   startedAt: string | null;
   endedAt: string | null;
   hours: SessionHourBucket[];
@@ -74,6 +81,8 @@ export interface SessionHourBucket {
   cacheCreationTokens: number;
   cacheReadTokens: number;
   cacheCreation1hTokens: number;
+  /** Sum of the bucket's per-request costs; null exactly when the session's is. */
+  costUsd: number | null;
 }
 
 /**
@@ -273,33 +282,10 @@ export class JsonlImporter {
           continue;
         }
 
-        // Compute cost
-        let costUsd: number | null = null;
-        if (session.model) {
-          const costResult = calculateCost(session.model, {
-            inputTokens: session.inputTokens,
-            outputTokens: session.outputTokens,
-            cacheCreationTokens: session.cacheCreationTokens,
-            cacheReadTokens: session.cacheReadTokens,
-            cacheCreation1hTokens: session.cacheCreation1hTokens,
-          });
-          costUsd = costResult.modelRecognised ? costResult.costUsd : null;
-        }
-
-        // Per-hour costs (CGUI-87): same pricing math per bucket — the cost
-        // formula is linear in tokens, so bucket costs sum to the session cost
+        // Costs were priced per request during aggregation (CGUI-143), so
+        // session and hour costs both come from the same per-request sums
+        const costUsd = session.costUsd;
         const hourRows = session.hours.map(h => {
-          let hourCost: number | null = null;
-          if (session.model) {
-            const r = calculateCost(session.model, {
-              inputTokens: h.inputTokens,
-              outputTokens: h.outputTokens,
-              cacheCreationTokens: h.cacheCreationTokens,
-              cacheReadTokens: h.cacheReadTokens,
-              cacheCreation1hTokens: h.cacheCreation1hTokens,
-            });
-            hourCost = r.modelRecognised ? r.costUsd : null;
-          }
           return {
             sessionId: session.sessionId,
             hourStart: h.hourStart,
@@ -307,7 +293,7 @@ export class JsonlImporter {
             outputTokens: h.outputTokens,
             cacheCreationTokens: h.cacheCreationTokens,
             cacheReadTokens: h.cacheReadTokens,
-            costUsd: hourCost,
+            costUsd: h.costUsd,
           };
         });
 
@@ -472,22 +458,6 @@ export class JsonlImporter {
       r => r.message?.stop_reason && r.message?.usage
     );
 
-    // Sum tokens
-    let inputTokens = 0;
-    let outputTokens = 0;
-    let cacheCreationTokens = 0;
-    let cacheReadTokens = 0;
-    let cacheCreation1hTokens = 0;
-
-    for (const rec of finalChunks) {
-      const u = rec.message!.usage!;
-      inputTokens += u.input_tokens ?? 0;
-      outputTokens += u.output_tokens ?? 0;
-      cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
-      cacheReadTokens += u.cache_read_input_tokens ?? 0;
-      cacheCreation1hTokens += u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
-    }
-
     // Model from first assistant record with a real model field.
     // Claude Code injects locally-generated error records (e.g. a 401 before
     // /login) with model '<synthetic>' — never a session's actual model, so
@@ -498,6 +468,34 @@ export class JsonlImporter {
         model = rec.message.model;
         break;
       }
+    }
+
+    // Each request is priced on its own (CGUI-143): a prompt-length-tiered
+    // model (Haiku 5.5) picks its tier per request, which summed totals can't
+    // express. An unknown model yields null costs and one warning per session.
+    const pricing = model ? getPricing(model) : null;
+    if (model && !pricing) {
+      console.warn(`[costCalculator] Unrecognised model: ${model}`);
+    }
+    const requestCost = (t: TokenCounts): number =>
+      pricing ? calculateRequestCost(pricing, t) : 0;
+
+    // Sum tokens
+    let inputTokens = 0;
+    let outputTokens = 0;
+    let cacheCreationTokens = 0;
+    let cacheReadTokens = 0;
+    let cacheCreation1hTokens = 0;
+    let costUsd = 0;
+
+    for (const rec of finalChunks) {
+      const t = requestTokens(rec);
+      inputTokens += t.inputTokens;
+      outputTokens += t.outputTokens;
+      cacheCreationTokens += t.cacheCreationTokens;
+      cacheReadTokens += t.cacheReadTokens;
+      cacheCreation1hTokens += t.cacheCreation1hTokens ?? 0;
+      costUsd += requestCost(t);
     }
 
     // Project path from cwd (most common value)
@@ -560,15 +558,17 @@ export class JsonlImporter {
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
           cacheCreation1hTokens: 0,
+          costUsd: pricing ? 0 : null,
         };
         hourMap.set(hourStart, bucket);
       }
-      const u = rec.message!.usage!;
-      bucket.inputTokens += u.input_tokens ?? 0;
-      bucket.outputTokens += u.output_tokens ?? 0;
-      bucket.cacheCreationTokens += u.cache_creation_input_tokens ?? 0;
-      bucket.cacheReadTokens += u.cache_read_input_tokens ?? 0;
-      bucket.cacheCreation1hTokens += u.cache_creation?.ephemeral_1h_input_tokens ?? 0;
+      const t = requestTokens(rec);
+      bucket.inputTokens += t.inputTokens;
+      bucket.outputTokens += t.outputTokens;
+      bucket.cacheCreationTokens += t.cacheCreationTokens;
+      bucket.cacheReadTokens += t.cacheReadTokens;
+      bucket.cacheCreation1hTokens += t.cacheCreation1hTokens ?? 0;
+      if (bucket.costUsd !== null) bucket.costUsd += requestCost(t);
     }
     const hours = [...hourMap.values()].sort((a, b) => (a.hourStart < b.hourStart ? -1 : 1));
 
@@ -582,9 +582,22 @@ export class JsonlImporter {
       cacheCreationTokens,
       cacheReadTokens,
       cacheCreation1hTokens,
+      costUsd: pricing ? costUsd : null,
       startedAt,
       endedAt,
       hours,
     };
   }
+}
+
+/** One final chunk's usage as TokenCounts (missing fields count as 0). */
+function requestTokens(rec: JsonlRecord): TokenCounts {
+  const u = rec.message!.usage!;
+  return {
+    inputTokens: u.input_tokens ?? 0,
+    outputTokens: u.output_tokens ?? 0,
+    cacheCreationTokens: u.cache_creation_input_tokens ?? 0,
+    cacheReadTokens: u.cache_read_input_tokens ?? 0,
+    cacheCreation1hTokens: u.cache_creation?.ephemeral_1h_input_tokens ?? 0,
+  };
 }

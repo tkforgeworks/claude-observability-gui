@@ -6,6 +6,7 @@ jest.mock('../config/configStore', () => ({
 
 import type Database from 'better-sqlite3';
 import { JsonlImporter, JsonlRecord } from '../importers/jsonlImporter';
+import { calculateCost } from '../importers/costCalculator';
 
 // aggregateSession does not use the db — a null handle is safe here.
 const importer = new JsonlImporter(null as unknown as Database.Database);
@@ -160,5 +161,80 @@ describe('aggregateSession hourly bucketing (CGUI-87)', () => {
       '2026-08-06T10:00:00.000Z',
       '2026-08-06T11:00:00.000Z',
     ]);
+  });
+});
+
+describe('aggregateSession per-request pricing (CGUI-143)', () => {
+  const haiku = (requestId: string, timestamp: string, inputTokens: number) =>
+    assistantRecord({ model: 'claude-haiku-5-5', requestId, timestamp, inputTokens, outputTokens: 1_000 });
+
+  it('prices each Haiku 5.5 request at its own tier and sums them', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        haiku('r1', '2026-10-24T10:05:00.000Z', 80_000), // base tier
+        haiku('r2', '2026-10-24T10:30:00.000Z', 150_000), // long-context tier
+      ],
+      []
+    );
+    const small = 80_000 * 0.1e-6 + 1_000 * 0.5e-6;
+    const large = 150_000 * 0.5e-6 + 1_000 * 2.5e-6;
+    expect(session!.costUsd).toBeCloseTo(small + large, 10);
+    // Pricing the 230K total at either tier would be wrong
+    expect(session!.costUsd).not.toBeCloseTo(
+      calculateCost('claude-haiku-5-5', {
+        inputTokens: 230_000, outputTokens: 2_000, cacheCreationTokens: 0, cacheReadTokens: 0,
+      }).costUsd,
+      6
+    );
+  });
+
+  it('keeps hour-bucket costs summing to the session cost across tiers', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        haiku('r1', '2026-10-24T10:05:00.000Z', 80_000),
+        haiku('r2', '2026-10-24T11:30:00.000Z', 150_000),
+        haiku('r3', '2026-10-24T11:45:00.000Z', 20_000),
+      ],
+      []
+    );
+    expect(session!.hours).toHaveLength(2);
+    expect(session!.hours[0].costUsd).toBeCloseTo(80_000 * 0.1e-6 + 1_000 * 0.5e-6, 10);
+    const summed = session!.hours.reduce((s, h) => s + (h.costUsd ?? 0), 0);
+    expect(summed).toBeCloseTo(session!.costUsd!, 10);
+  });
+
+  it('gives a flat-rate session the same cost as pricing its totals', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        assistantRecord({ model: 'claude-sonnet-5-5', requestId: 'r1', inputTokens: 300_000, outputTokens: 5_000 }),
+        assistantRecord({ model: 'claude-sonnet-5-5', requestId: 'r2', inputTokens: 40_000, outputTokens: 2_000 }),
+      ],
+      []
+    );
+    expect(session!.costUsd).toBeCloseTo(
+      calculateCost('claude-sonnet-5-5', {
+        inputTokens: 340_000, outputTokens: 7_000, cacheCreationTokens: 0, cacheReadTokens: 0,
+      }).costUsd,
+      10
+    );
+  });
+
+  it('leaves session and hour costs null for an unpriced model', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        assistantRecord({ model: 'claude-unknown-x', requestId: 'r1', inputTokens: 100, outputTokens: 10 }),
+        assistantRecord({ model: 'claude-unknown-x', requestId: 'r2', inputTokens: 100, outputTokens: 10 }),
+      ],
+      []
+    );
+    expect(session!.costUsd).toBeNull();
+    expect(session!.hours.every(h => h.costUsd === null)).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1); // once per session, not per request
+    warn.mockRestore();
   });
 });
