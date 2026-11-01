@@ -238,3 +238,79 @@ describe('aggregateSession per-request pricing (CGUI-143)', () => {
     warn.mockRestore();
   });
 });
+
+describe('aggregateSession per-request models (CGUI-144)', () => {
+  const rec = (model: string | undefined, requestId: string, timestamp: string, inputTokens: number, outputTokens: number) =>
+    assistantRecord({ model, requestId, timestamp, inputTokens, outputTokens });
+  const flat = (model: string, inputTokens: number, outputTokens: number) =>
+    calculateCost(model, { inputTokens, outputTokens, cacheCreationTokens: 0, cacheReadTokens: 0 }).costUsd;
+
+  it('prices subagent requests at their own model, not the session model', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [rec('claude-fable-5-1', 'r1', '2026-10-30T10:05:00.000Z', 10_000, 1_000)],
+      [
+        [rec('claude-haiku-5-5', 'r-h', '2026-10-30T10:20:00.000Z', 20_000, 2_000)],
+        [rec('claude-opus-5-5', 'r-o', '2026-10-30T11:10:00.000Z', 30_000, 3_000)],
+      ]
+    );
+    expect(session!.model).toBe('claude-fable-5-1');
+    expect(session!.unpricedModel).toBeNull();
+    const expected =
+      flat('claude-fable-5-1', 10_000, 1_000) +
+      flat('claude-haiku-5-5', 20_000, 2_000) +
+      flat('claude-opus-5-5', 30_000, 3_000);
+    expect(session!.costUsd).toBeCloseTo(expected, 10);
+    // and not the old all-at-Fable figure
+    expect(session!.costUsd).toBeLessThan(flat('claude-fable-5-1', 60_000, 6_000));
+    // hour buckets carry their own requests' models and still sum to the session
+    expect(session!.hours[0].costUsd).toBeCloseTo(
+      flat('claude-fable-5-1', 10_000, 1_000) + flat('claude-haiku-5-5', 20_000, 2_000), 10
+    );
+    const summed = session!.hours.reduce((s, h) => s + (h.costUsd ?? 0), 0);
+    expect(summed).toBeCloseTo(session!.costUsd!, 10);
+  });
+
+  it('prices a request with no model or a <synthetic> model at the session model', () => {
+    const session = importer.aggregateSession(
+      'session-1',
+      [
+        rec('claude-sonnet-5-5', 'r1', '2026-10-30T10:05:00.000Z', 10_000, 1_000),
+        rec(undefined, 'r2', '2026-10-30T10:06:00.000Z', 10_000, 1_000),
+        rec('<synthetic>', 'r3', '2026-10-30T10:07:00.000Z', 10_000, 1_000),
+      ],
+      []
+    );
+    expect(session!.costUsd).toBeCloseTo(flat('claude-sonnet-5-5', 30_000, 3_000), 10);
+  });
+
+  it('leaves the session unpriced and names the model when a subagent model has no pricing', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const session = importer.aggregateSession(
+      'session-1',
+      [rec('claude-fable-5-1', 'r1', '2026-10-30T10:05:00.000Z', 10_000, 1_000)],
+      [
+        [rec('claude-future-9', 'r-f1', '2026-10-30T10:20:00.000Z', 20_000, 2_000)],
+        [rec('claude-future-9', 'r-f2', '2026-10-30T11:20:00.000Z', 20_000, 2_000)],
+      ]
+    );
+    expect(session!.model).toBe('claude-fable-5-1');
+    expect(session!.costUsd).toBeNull();
+    expect(session!.unpricedModel).toBe('claude-future-9');
+    expect(session!.hours.every(h => h.costUsd === null)).toBe(true);
+    expect(warn).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+  });
+
+  it('records the session model as unpriced when it is the one missing', () => {
+    const warn = jest.spyOn(console, 'warn').mockImplementation(() => {});
+    const session = importer.aggregateSession(
+      'session-1',
+      [rec('claude-future-9', 'r1', '2026-10-30T10:05:00.000Z', 100, 10)],
+      []
+    );
+    expect(session!.costUsd).toBeNull();
+    expect(session!.unpricedModel).toBe('claude-future-9');
+    warn.mockRestore();
+  });
+});

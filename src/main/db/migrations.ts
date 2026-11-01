@@ -238,6 +238,23 @@ export const MIGRATIONS: Migration[] = [
         ON code_session_hours (hour_start);
     `,
   },
+  {
+    version: 9,
+    sql: `
+      -- -----------------------------------------------------------------------
+      -- v9 (CGUI-144): The model that left a Code session unpriced.
+      -- Requests are now priced at their own model, so a session can be
+      -- unpriced because one subagent ran on a model with no pricing entry
+      -- while code_sessions.model (the first real model) is priced. The
+      -- unpriced-models banner reads COALESCE(unpriced_model, model) so it
+      -- names the model that's actually missing. NULL on every priced row and
+      -- on pre-v9 rows, which a rescan fills in for sessions whose JSONL
+      -- still exists.
+      -- -----------------------------------------------------------------------
+
+      ALTER TABLE code_sessions ADD COLUMN unpriced_model TEXT;
+    `,
+  },
 ];
 
 /**

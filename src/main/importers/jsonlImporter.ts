@@ -13,7 +13,7 @@ import readline from 'readline';
 import type Database from 'better-sqlite3';
 import type { ImportSummary } from '../../shared/ipc-types';
 import { calculateRequestCost, TokenCounts } from './costCalculator';
-import { getPricing } from '../config/pricing';
+import { getPricing, ModelPricing } from '../config/pricing';
 import { loadSettings } from '../config/configStore';
 
 /**
@@ -58,11 +58,15 @@ export interface AggregatedSession {
   cacheReadTokens: number;
   cacheCreation1hTokens: number;
   /**
-   * Sum of per-request costs at `model`'s rates (CGUI-143), or null when the
-   * model is missing or unpriced. Never derived from the token totals: a
-   * prompt-length-tiered model can only be priced request by request.
+   * Sum of per-request costs, each at the model named in its own record
+   * (CGUI-143/144), or null when any request's model is unpriced or the
+   * session has no real model. Never derived from the token totals: a
+   * prompt-length-tiered model can only be priced request by request, and a
+   * session's subagents can run on other models.
    */
   costUsd: number | null;
+  /** First request model with no pricing entry, or null (CGUI-144). */
+  unpricedModel: string | null;
   startedAt: string | null;
   endedAt: string | null;
   hours: SessionHourBucket[];
@@ -217,9 +221,9 @@ export class JsonlImporter {
 
     const upsert = this.db.prepare(`
       INSERT INTO code_sessions (session_id, project_path, model, slug, input_tokens, output_tokens,
-        cache_creation_tokens, cache_read_tokens, cost_usd, started_at, ended_at)
+        cache_creation_tokens, cache_read_tokens, cost_usd, unpriced_model, started_at, ended_at)
       VALUES (@sessionId, @projectPath, @model, @slug, @inputTokens, @outputTokens,
-        @cacheCreationTokens, @cacheReadTokens, @costUsd, @startedAt, @endedAt)
+        @cacheCreationTokens, @cacheReadTokens, @costUsd, @unpricedModel, @startedAt, @endedAt)
       ON CONFLICT(session_id) DO UPDATE SET
         project_path = excluded.project_path,
         model = excluded.model,
@@ -229,6 +233,7 @@ export class JsonlImporter {
         cache_creation_tokens = excluded.cache_creation_tokens,
         cache_read_tokens = excluded.cache_read_tokens,
         cost_usd = excluded.cost_usd,
+        unpriced_model = excluded.unpriced_model,
         started_at = excluded.started_at,
         ended_at = excluded.ended_at,
         synced_to_influx = 0
@@ -310,6 +315,7 @@ export class JsonlImporter {
           cacheCreationTokens: session.cacheCreationTokens,
           cacheReadTokens: session.cacheReadTokens,
           costUsd,
+          unpricedModel: session.unpricedModel,
           startedAt: session.startedAt,
           endedAt: session.endedAt,
         }, hourRows);
@@ -470,15 +476,36 @@ export class JsonlImporter {
       }
     }
 
-    // Each request is priced on its own (CGUI-143): a prompt-length-tiered
-    // model (Haiku 5.5) picks its tier per request, which summed totals can't
-    // express. An unknown model yields null costs and one warning per session.
-    const pricing = model ? getPricing(model) : null;
-    if (model && !pricing) {
-      console.warn(`[costCalculator] Unrecognised model: ${model}`);
-    }
-    const requestCost = (t: TokenCounts): number =>
-      pricing ? calculateRequestCost(pricing, t) : 0;
+    // Each request is priced on its own, at the model in its own record
+    // (CGUI-143/144): a prompt-length-tiered model (Haiku 5.5) picks its tier
+    // per request, and subagents often run on a different model than the
+    // session's first one. A request with no real model (absent or
+    // '<synthetic>') is priced at the session's model. If any request's model
+    // is unpriced, the whole session is left unpriced (never a silent partial
+    // total — CGUI-137) and that model is recorded for the banner, with one
+    // warning per model per session.
+    const pricingByModel = new Map<string, ModelPricing | null>();
+    let unpricedModel: string | null = null;
+    const requestPricing = (rec: JsonlRecord): ModelPricing | null => {
+      const own = rec.message?.model;
+      const reqModel = own && own !== '<synthetic>' ? own : model;
+      if (!reqModel) return null;
+      if (!pricingByModel.has(reqModel)) {
+        const p = getPricing(reqModel);
+        if (!p) {
+          console.warn(`[costCalculator] Unrecognised model: ${reqModel}`);
+          unpricedModel ??= reqModel;
+        }
+        pricingByModel.set(reqModel, p);
+      }
+      return pricingByModel.get(reqModel) ?? null;
+    };
+    const chunkPricing = new Map(finalChunks.map(rec => [rec, requestPricing(rec)]));
+    const priced = model !== null && unpricedModel === null;
+    const requestCost = (rec: JsonlRecord, t: TokenCounts): number => {
+      const p = chunkPricing.get(rec);
+      return priced && p ? calculateRequestCost(p, t) : 0;
+    };
 
     // Sum tokens
     let inputTokens = 0;
@@ -495,7 +522,7 @@ export class JsonlImporter {
       cacheCreationTokens += t.cacheCreationTokens;
       cacheReadTokens += t.cacheReadTokens;
       cacheCreation1hTokens += t.cacheCreation1hTokens ?? 0;
-      costUsd += requestCost(t);
+      costUsd += requestCost(rec, t);
     }
 
     // Project path from cwd (most common value)
@@ -558,7 +585,7 @@ export class JsonlImporter {
           cacheCreationTokens: 0,
           cacheReadTokens: 0,
           cacheCreation1hTokens: 0,
-          costUsd: pricing ? 0 : null,
+          costUsd: priced ? 0 : null,
         };
         hourMap.set(hourStart, bucket);
       }
@@ -568,7 +595,7 @@ export class JsonlImporter {
       bucket.cacheCreationTokens += t.cacheCreationTokens;
       bucket.cacheReadTokens += t.cacheReadTokens;
       bucket.cacheCreation1hTokens += t.cacheCreation1hTokens ?? 0;
-      if (bucket.costUsd !== null) bucket.costUsd += requestCost(t);
+      if (bucket.costUsd !== null) bucket.costUsd += requestCost(rec, t);
     }
     const hours = [...hourMap.values()].sort((a, b) => (a.hourStart < b.hourStart ? -1 : 1));
 
@@ -582,7 +609,8 @@ export class JsonlImporter {
       cacheCreationTokens,
       cacheReadTokens,
       cacheCreation1hTokens,
-      costUsd: pricing ? costUsd : null,
+      costUsd: priced ? costUsd : null,
+      unpricedModel,
       startedAt,
       endedAt,
       hours,
