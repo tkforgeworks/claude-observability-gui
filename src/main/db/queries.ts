@@ -1251,7 +1251,10 @@ export function recalculateAllCosts(db: Database.Database): void {
  * (every upsert rewrites cost_usd); this covers the ones Claude Code has
  * already cleaned up. Stored rows don't keep the 5m/1h cache-write split, so
  * every cache write is priced at the 5-minute rate — a slight undercount
- * rather than leaving the session out of totals entirely.
+ * rather than leaving the session out of totals entirely. They don't keep
+ * per-request models either (CGUI-144), so the whole session is priced at its
+ * first model: a session left unpriced by a subagent's model is only repriced
+ * once that model has pricing, and then at the parent's rates.
  *
  * Returns the number of sessions repriced.
  */
@@ -1264,11 +1267,14 @@ export function repriceUnpricedSessions(db: Database.Database): number {
     cache_read_tokens: number | null;
   };
 
-  const sessions = db.prepare<[], Row & { session_id: string }>(`
-    SELECT session_id, model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
+  const sessions = db.prepare<[], Row & { session_id: string; unpriced_model: string | null }>(`
+    SELECT session_id, model, unpriced_model, input_tokens, output_tokens, cache_creation_tokens, cache_read_tokens
     FROM code_sessions
     WHERE cost_usd IS NULL AND model IS NOT NULL
-  `).all().filter((r) => getPricing(r.model) !== null);
+  `).all().filter((r) =>
+    getPricing(r.model) !== null &&
+    (r.unpriced_model === null || getPricing(r.unpriced_model) !== null)
+  );
 
   if (sessions.length === 0) return 0;
 
@@ -1278,7 +1284,9 @@ export function repriceUnpricedSessions(db: Database.Database): number {
     JOIN code_sessions s ON s.session_id = h.session_id
     WHERE h.session_id = ? AND h.cost_usd IS NULL
   `);
-  const updateSession = db.prepare(`UPDATE code_sessions SET cost_usd = ? WHERE session_id = ?`);
+  const updateSession = db.prepare(
+    `UPDATE code_sessions SET cost_usd = ?, unpriced_model = NULL WHERE session_id = ?`
+  );
   const updateHour = db.prepare(`UPDATE code_session_hours SET cost_usd = ? WHERE id = ?`);
 
   const price = (r: Row) => recalculateCost(
@@ -1299,13 +1307,15 @@ export function repriceUnpricedSessions(db: Database.Database): number {
  * Models that have Code sessions but no pricing entry (CGUI-137). Their
  * sessions are stored with a NULL cost and drop out of every total, so the
  * renderer surfaces them instead of letting spend under-report silently.
+ * Names unpriced_model when set (CGUI-144: a subagent's model left the
+ * session unpriced), else the session's own model (pre-v9 rows included).
  */
 export function queryUnpricedModels(db: Database.Database): UnpricedModel[] {
   const rows = db.prepare<[], { model: string; sessionCount: number }>(`
-    SELECT model, COUNT(*) AS sessionCount
+    SELECT COALESCE(unpriced_model, model) AS model, COUNT(*) AS sessionCount
     FROM code_sessions
-    WHERE cost_usd IS NULL AND model IS NOT NULL
-    GROUP BY model
+    WHERE cost_usd IS NULL AND COALESCE(unpriced_model, model) IS NOT NULL
+    GROUP BY COALESCE(unpriced_model, model)
     ORDER BY sessionCount DESC
   `).all();
   return rows.filter((r) => getPricing(r.model) === null);

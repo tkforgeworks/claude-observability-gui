@@ -105,3 +105,44 @@ describeDb('queryUnpricedModels (CGUI-137)', () => {
     expect(queryUnpricedModels(db)).toEqual([]);
   });
 });
+
+// CGUI-144: a session can be unpriced because a subagent ran on a model with no
+// pricing entry while the session's own (first) model is priced.
+describeDb('subagent unpriced models (CGUI-144)', () => {
+  const setUnpriced = (db: Database.Database, id: string, model: string) =>
+    db.prepare(`UPDATE code_sessions SET unpriced_model = ? WHERE session_id = ?`).run(model, id);
+  const unpricedModel = (db: Database.Database, id: string) =>
+    (db.prepare(`SELECT unpriced_model FROM code_sessions WHERE session_id = ?`).get(id) as {
+      unpriced_model: string | null;
+    }).unpriced_model;
+
+  it('names the subagent model in the banner list, not the session model', () => {
+    const db = makeDb();
+    insertSession(db, 'mixed', 'claude-fable-5-1', null);
+    setUnpriced(db, 'mixed', 'claude-future-9');
+    insertSession(db, 'plain', 'claude-future-9', null); // pre-v9 style row: unpriced_model NULL
+
+    expect(queryUnpricedModels(db)).toEqual([{ model: 'claude-future-9', sessionCount: 2 }]);
+  });
+
+  it('does not reprice a session whose subagent model is still unpriced', () => {
+    const db = makeDb();
+    insertSession(db, 'mixed', 'claude-fable-5-1', null);
+    setUnpriced(db, 'mixed', 'claude-future-9');
+
+    expect(repriceUnpricedSessions(db)).toBe(0);
+    expect(cost(db, 'mixed')).toBeNull();
+    expect(hourCosts(db, 'mixed')).toEqual([null, null]);
+  });
+
+  it('reprices at the session model and clears unpriced_model once the subagent model is priced', () => {
+    const db = makeDb();
+    insertSession(db, 'mixed', 'claude-opus-5-5', null);
+    setUnpriced(db, 'mixed', 'claude-haiku-5-5'); // priced since CGUI-143
+
+    expect(repriceUnpricedSessions(db)).toBe(1);
+    expect(cost(db, 'mixed')).toBeCloseTo(29.2, 6); // whole session at Opus 5.5 rates
+    expect(unpricedModel(db, 'mixed')).toBeNull();
+    expect(queryUnpricedModels(db)).toEqual([]);
+  });
+});
