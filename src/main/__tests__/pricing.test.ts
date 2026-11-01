@@ -12,6 +12,14 @@ describe('PRICING_TABLE', () => {
         'claude-sonnet-5',
         'claude-sonnet-4-6',
         'claude-haiku-4-5-20251001',
+        // CGUI-143
+        'claude-sonnet-5-5',
+        'claude-haiku-5-5',
+        'claude-mythos-5-1',
+        'claude-mythos-5',
+        'claude-opus-4-5',
+        'claude-sonnet-4-5',
+        'claude-haiku-4-5',
       ])
     );
   });
@@ -91,6 +99,58 @@ describe('getPricing', () => {
       expect(pricing).not.toBeNull();
       expect(pricing!.inputPerMillion).toBe(1.0);
       expect(pricing!.outputPerMillion).toBe(5.0);
+    });
+  });
+
+  // CGUI-143: rates from platform.claude.com/docs/en/about-claude/pricing,
+  // verified 2026-11-01. Order: input, 5m write, 1h write, cache read, output.
+  describe('models added in CGUI-143', () => {
+    const rates = (model: string) => {
+      const p = getPricing(model);
+      expect(p).not.toBeNull();
+      return [
+        p!.inputPerMillion,
+        p!.cacheWritePerMillion,
+        p!.cacheWrite1hPerMillion,
+        p!.cacheReadPerMillion,
+        p!.outputPerMillion,
+      ];
+    };
+
+    it.each([
+      ['claude-sonnet-5-5', [2, 2.5, 4, 0.1, 10]],
+      ['claude-haiku-5-5', [0.1, 0.125, 0.2, 0.01, 0.5]],
+      ['claude-mythos-5-1', [10, 12.5, 20, 0.25, 50]],
+      ['claude-mythos-5', [10, 12.5, 20, 1, 50]],
+      ['claude-opus-4-5', [5, 6.25, 10, 0.5, 25]],
+      ['claude-sonnet-4-5', [3, 3.75, 6, 0.3, 15]],
+      ['claude-haiku-4-5', [1, 1.25, 2, 0.1, 5]],
+    ])('%s has the published rates', (model, expected) => {
+      expect(rates(model)).toEqual(expected);
+    });
+
+    it('prices Haiku 5.5 prompts over 100K tokens at the long-context tier', () => {
+      const tier = getPricing('claude-haiku-5-5')!.longContext;
+      expect(tier).toBeDefined();
+      expect(tier!.thresholdTokens).toBe(100_000);
+      expect([
+        tier!.inputPerMillion,
+        tier!.cacheWritePerMillion,
+        tier!.cacheWrite1hPerMillion,
+        tier!.cacheReadPerMillion,
+        tier!.outputPerMillion,
+      ]).toEqual([0.5, 0.625, 1, 0.05, 2.5]);
+    });
+
+    it('gives the Haiku 4.5 alias and dated snapshot the same rates', () => {
+      expect(getPricing('claude-haiku-4-5')).toEqual(getPricing('claude-haiku-4-5-20251001'));
+    });
+
+    it('gives no other model a long-context tier', () => {
+      const tiered = Object.entries(PRICING_TABLE)
+        .filter(([, p]) => p.longContext)
+        .map(([m]) => m);
+      expect(tiered).toEqual(['claude-haiku-5-5']);
     });
   });
 

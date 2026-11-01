@@ -1,4 +1,10 @@
-import { calculateCost, recalculateCost, TokenCounts } from '../importers/costCalculator';
+import {
+  calculateCost,
+  calculateRequestCost,
+  recalculateCost,
+  TokenCounts,
+} from '../importers/costCalculator';
+import { getPricing } from '../config/pricing';
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -194,5 +200,57 @@ describe('recalculateCost', () => {
     it('should return 0 for a zero-token session on a known model', () => {
       expect(recalculateCost('claude-sonnet-4-6', 0, 0, 0, 0)).toBe(0);
     });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// calculateRequestCost (CGUI-143: Haiku 5.5 is priced by prompt length)
+// ---------------------------------------------------------------------------
+
+describe('calculateRequestCost', () => {
+  const haiku55 = getPricing('claude-haiku-5-5')!;
+
+  it('prices an 80K-token prompt at the base tier', () => {
+    const cost = calculateRequestCost(haiku55, tokens({ inputTokens: 80_000, outputTokens: 1_000 }));
+    // 80K × $0.10 + 1K × $0.50 per MTok
+    expect(cost).toBeCloseTo(0.008 + 0.0005, 10);
+  });
+
+  it('prices a 150K-token prompt at the long-context tier', () => {
+    const cost = calculateRequestCost(haiku55, tokens({ inputTokens: 150_000, outputTokens: 1_000 }));
+    // 150K × $0.50 + 1K × $2.50 per MTok
+    expect(cost).toBeCloseTo(0.075 + 0.0025, 10);
+  });
+
+  it('keeps a prompt of exactly 100K tokens at the base tier (the higher rate is for "over")', () => {
+    const cost = calculateRequestCost(haiku55, tokens({ inputTokens: 100_000 }));
+    expect(cost).toBeCloseTo(0.01, 10);
+  });
+
+  it('counts cache reads and writes toward the prompt length', () => {
+    // 5K uncached + 90K cache read + 10K cache write = 105K prompt -> long tier
+    const t = tokens({ inputTokens: 5_000, cacheReadTokens: 90_000, cacheCreationTokens: 10_000 });
+    const cost = calculateRequestCost(haiku55, t);
+    expect(cost).toBeCloseTo(5_000 * 0.5e-6 + 90_000 * 0.05e-6 + 10_000 * 0.625e-6, 10);
+  });
+
+  it('applies the long-context 1h cache-write rate too', () => {
+    const t = tokens({ inputTokens: 100_000, cacheCreationTokens: 20_000, cacheCreation1hTokens: 20_000 });
+    expect(calculateRequestCost(haiku55, t)).toBeCloseTo(100_000 * 0.5e-6 + 20_000 * 1e-6, 10);
+  });
+
+  it('matches calculateCost for a flat-rate model at any prompt size', () => {
+    const t = tokens({ inputTokens: 400_000, outputTokens: 20_000, cacheReadTokens: 300_000, cacheCreationTokens: 50_000 });
+    expect(calculateRequestCost(getPricing('claude-sonnet-5-5')!, t)).toBeCloseTo(
+      calculateCost('claude-sonnet-5-5', t).costUsd,
+      10
+    );
+  });
+});
+
+describe('calculateCost on totals for a tiered model', () => {
+  it('uses the base tier, since totals carry no per-request prompt size', () => {
+    const result = calculateCost('claude-haiku-5-5', tokens({ inputTokens: 1_000_000 }));
+    expect(result.costUsd).toBeCloseTo(0.1, 10);
   });
 });
