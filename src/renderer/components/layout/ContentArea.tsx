@@ -1,6 +1,6 @@
 /**
  * Right content area that renders the active view.
- * @see §Application Shell wireframe in 04-wireframes.md
+ * @see §Application Shell wireframe in docs/archive/04-wireframes.md
  */
 
 import React from 'react';

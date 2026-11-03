@@ -1,7 +1,7 @@
 /**
  * Main application shell.
  * Fixed left sidebar + right content area layout.
- * @see §Application Shell wireframe in 04-wireframes.md
+ * @see §Application Shell wireframe in docs/archive/04-wireframes.md
  */
 
 import React, { useEffect } from 'react';
