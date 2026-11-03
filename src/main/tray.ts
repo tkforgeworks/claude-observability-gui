@@ -1,6 +1,6 @@
 /**
  * System tray icon and context menu.
- * @see §9 "System Tray" wireframe in 04-wireframes.md
+ * @see §9 "System Tray" wireframe in docs/archive/04-wireframes.md
  */
 
 import { app, Menu, Tray, BrowserWindow, nativeImage } from 'electron';

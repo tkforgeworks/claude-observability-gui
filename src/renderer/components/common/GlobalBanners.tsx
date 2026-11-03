@@ -8,7 +8,7 @@
  * disconnect) advances an internal counter so any prior dismissal no
  * longer applies.
  *
- * @see CGUI-42, §10 "Warning / Status Banners" in 04-wireframes.md
+ * @see CGUI-42, §10 "Warning / Status Banners" in docs/archive/04-wireframes.md
  */
 
 import React, { useEffect, useState } from 'react';
