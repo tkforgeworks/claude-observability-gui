@@ -4,6 +4,9 @@ describe('PRICING_TABLE', () => {
   it('should contain entries for all expected models', () => {
     expect(Object.keys(PRICING_TABLE)).toEqual(
       expect.arrayContaining([
+        // CGUI-150
+        'claude-fable-5-2',
+        'claude-mythos-5-2',
         'claude-fable-5-1',
         'claude-fable-5',
         'claude-opus-5-5',
@@ -55,6 +58,21 @@ describe('getPricing', () => {
       expect(pricing!.cacheReadPerMillion).toBe(0.2);
       expect(pricing!.cacheWrite1hPerMillion).toBe(4.0);
     });
+
+    it.each(['claude-fable-5-2', 'claude-mythos-5-2'])(
+      'should return pricing for %s with the 0.025x cache-read rate (CGUI-150)',
+      (model) => {
+        const pricing = getPricing(model);
+        expect(pricing).toEqual({
+          inputPerMillion: 8.0,
+          outputPerMillion: 40.0,
+          cacheWritePerMillion: 10.0,
+          cacheReadPerMillion: 0.20,
+          cacheWrite1hPerMillion: 16.0,
+        });
+        expect(pricing!.cacheReadPerMillion).toBeCloseTo(0.025 * pricing!.inputPerMillion, 6);
+      }
+    );
 
     it('should return pricing for claude-fable-5-1 with the 0.025x cache-read rate', () => {
       const pricing = getPricing('claude-fable-5-1');

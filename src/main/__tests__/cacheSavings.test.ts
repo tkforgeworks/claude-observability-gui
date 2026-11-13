@@ -39,6 +39,7 @@ describe('calculateCacheSavings', () => {
   it('uses the Fable 5.1 $0.25/MTok cache-read rate against its $10 input rate', () => {
     // 1M cache-read tokens: fresh input would cost $10, cache read costs $0.25
     expect(calculateCacheSavings('claude-fable-5-1', 1_000_000)).toBeCloseTo(9.75, 6);
+    expect(calculateCacheSavings('claude-fable-5-2', 1_000_000)).toBeCloseTo(7.8, 6);
   });
 
   it('matches PRICING_TABLE for every known model', () => {

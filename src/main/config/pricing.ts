@@ -6,11 +6,9 @@
  * All rates are USD per million tokens.
  * Divide by 1,000,000 to get per-token rate for multiplication.
  *
- * Last updated: 2026-11-01 (CGUI-143: added claude-sonnet-5-5,
- * claude-haiku-5-5 with its long-context tier, claude-mythos-5-1,
- * claude-mythos-5, claude-opus-4-5, claude-sonnet-4-5 and the dateless
- * claude-haiku-4-5 alias; every rate verified against
- * platform.claude.com/docs/en/about-claude/pricing on 2026-11-01)
+ * Last updated: 2026-11-13 (CGUI-150: added claude-fable-5-2 and
+ * claude-mythos-5-2; rates verified against
+ * platform.claude.com/docs/en/about-claude/pricing on 2026-11-13)
  */
 
 export interface ModelRates {
@@ -54,6 +52,23 @@ const HAIKU_4_5: ModelPricing = {
 };
 
 export const PRICING_TABLE: Record<string, ModelPricing> = {
+  // Cache reads on Fable 5.2 are 0.025× input ($0.20/MTok), per footnote 1.
+  'claude-fable-5-2': {
+    inputPerMillion: 8.0,
+    outputPerMillion: 40.0,
+    cacheWritePerMillion: 10.0,
+    cacheReadPerMillion: 0.20,
+    cacheWrite1hPerMillion: 16.0, // 2× input price
+  },
+  // Limited-availability twin of Fable 5.2: same rates,
+  // including the 0.025× cache-read rate.
+  'claude-mythos-5-2': {
+    inputPerMillion: 8.0,
+    outputPerMillion: 40.0,
+    cacheWritePerMillion: 10.0,
+    cacheReadPerMillion: 0.20,
+    cacheWrite1hPerMillion: 16.0, // 2× input price
+  },
   // Cache reads on Fable 5.1 are 0.025× input (not the standard 0.1×) —
   // $0.25/MTok, per the pricing page's footnote.
   'claude-fable-5-1': {
