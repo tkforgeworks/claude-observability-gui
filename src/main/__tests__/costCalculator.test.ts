@@ -26,6 +26,17 @@ function tokens(overrides: Partial<TokenCounts> = {}): TokenCounts {
 // ---------------------------------------------------------------------------
 
 describe('calculateCost', () => {
+  it('should price mixed tokens for claude-fable-5-2 (CGUI-150)', () => {
+    const result = calculateCost('claude-fable-5-2', tokens({
+      inputTokens: 1_000_000,
+      outputTokens: 1_000_000,
+      cacheCreationTokens: 1_000_000,
+      cacheReadTokens: 1_000_000,
+    }));
+    expect(result.modelRecognised).toBe(true);
+    expect(result.costUsd).toBeCloseTo(58.20, 6);
+  });
+
   describe('when model is unrecognised', () => {
     it('should return modelRecognised: false for an unknown model', () => {
       const result = calculateCost('claude-unknown-x', tokens({ inputTokens: 1000 }));
